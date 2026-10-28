@@ -36,7 +36,7 @@
                     </DockPanel>
                 </Border>
 
-                <views:ConversationView x:Name="Chat" Grid.Row="1" />
+                <Grid x:Name="ChatHost" Grid.Row="1" />
             </Grid>
         </Border>
     </Grid>

@@ -15,16 +15,22 @@ public partial class MiniChatWindow : Window
     private readonly Action<PeerRef> _back;
     private bool _closing;
 
+    // Готовые ленты последних чатов (как в главном окне): переключение — просто показать другую, без перестройки.
+    private const int KeepViews = 4;
+    private readonly Dictionary<ConversationViewModel, ConversationView> _views = [];
+    private readonly List<ConversationViewModel> _recent = [];
+    private ConversationView? _current;
+    private ConversationViewModel? Current => _current?.DataContext as ConversationViewModel;
+
     public MiniChatWindow(Action<PeerRef> back)
     {
         _back = back;
         InitializeComponent();
         SourceInitialized += (_, _) => Helpers.WindowEffects.ApplyRoundedCorners(this, Color.FromRgb(0x2A, 0x38, 0x46));
-        Chat.IsCompactPanel = true;
         PreviewKeyDown += (_, e) =>
         {
             if (e.Key != Key.Escape) return;
-            if (Chat.DataContext is ConversationViewModel conv && conv.HandleEscape()) { e.Handled = true; return; }
+            if (Current is { } conv && conv.HandleEscape()) { e.Handled = true; return; }
             e.Handled = true;
             CloseAnimated();
         };
@@ -34,8 +40,8 @@ public partial class MiniChatWindow : Window
     public void ShowChat(ConversationViewModel conv, double top)
     {
         _closing = false;
-        var switching = IsVisible && Chat.DataContext is not null && Chat.DataContext != conv;
-        Chat.DataContext = conv;
+        var switching = IsVisible && Current is not null && Current != conv;
+        ShowView(conv);
         if (switching)
         {
             Activate();
@@ -77,7 +83,29 @@ public partial class MiniChatWindow : Window
         _closing = true;
         Card.BeginAnimation(OpacityProperty, null);
         Hide();
-        Chat.DataContext = null;
+        if (_current is not null) _current.Visibility = Visibility.Collapsed;
+        _current = null;
+    }
+
+    private void ShowView(ConversationViewModel conv)
+    {
+        if (!_views.TryGetValue(conv, out var view))
+        {
+            view = new ConversationView { DataContext = conv, IsCompactPanel = true };
+            _views[conv] = view;
+            ChatHost.Children.Add(view);
+        }
+        _recent.Remove(conv);
+        _recent.Insert(0, conv);
+        foreach (var old in _recent.Skip(KeepViews).ToList())
+        {
+            ChatHost.Children.Remove(_views[old]);
+            _views.Remove(old);
+            _recent.Remove(old);
+        }
+        foreach (var other in _views.Values) if (other != view) other.Visibility = Visibility.Collapsed;
+        view.Visibility = Visibility.Visible;
+        _current = view;
     }
 
     private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -89,7 +117,7 @@ public partial class MiniChatWindow : Window
 
     private void Back_Click(object sender, RoutedEventArgs e)
     {
-        if (Chat.DataContext is not ConversationViewModel conv) { CloseAnimated(); return; }
+        if (Current is not { } conv) { CloseAnimated(); return; }
         _back(conv.Peer);
     }
 

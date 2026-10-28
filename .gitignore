@@ -8,3 +8,6 @@ obj/
 dist/
 *.user
 .vs/
+
+# готовые exe для загрузки в релизы
+releases/
