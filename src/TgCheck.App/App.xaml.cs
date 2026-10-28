@@ -9,8 +9,27 @@ public partial class App : Application
 {
     private MainViewModel? _main;
 
+    // Одна копия приложения: вторая не открывает ту же сессию параллельно, а показывает уже запущенное окно.
+    private static Mutex? _single;
+    private static EventWaitHandle? _activate;
+
     protected override void OnStartup(StartupEventArgs e)
     {
+        _single = new Mutex(true, @"Local\TgCheck.SingleInstance", out var first);
+        _activate = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\TgCheck.Activate");
+        if (!first)
+        {
+            _activate.Set();
+            Shutdown();
+            return;
+        }
+        var listener = new Thread(() =>
+        {
+            while (_activate.WaitOne())
+                Dispatcher.BeginInvoke(() => (MainWindow as MainWindow)?.RestoreFromBackground());
+        }) { IsBackground = true, Name = "TgCheck.Activate" };
+        listener.Start();
+
         base.OnStartup(e);
         // Закрытие окна прячет его в трей; выход — из меню значка.
         ShutdownMode = ShutdownMode.OnExplicitShutdown;

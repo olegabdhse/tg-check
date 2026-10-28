@@ -24,6 +24,9 @@ public sealed partial class NowPlaying : ObservableObject
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowFloatingRound))] private bool _roundOutOfView;
 
     public bool IsActive => Title is not null;
+
+    /// <summary>Голосовое, которое выбрали последним (пока файл качается, могли выбрать другое).</summary>
+    public string? RequestedAudio { get; set; }
     public bool ShowFloatingRound => RoundBrush is not null && RoundOutOfView;
 
     private Action? _toggle;
@@ -70,6 +73,9 @@ public sealed partial class NowPlaying : ObservableObject
     // ---- кружки (MediaElement в VideoNoteView)
     public void StartRound(string title, Brush video, Action toggle, Action stop)
     {
+        // Играл другой кружок со звуком — выключаем его: одновременно звучит только одно.
+        if (RoundBrush is not null && !ReferenceEquals(RoundBrush, video)) _stop?.Invoke();
+        RequestedAudio = null; // голосовое, которое ещё качается, после загрузки не включится
         _audioKey = null;
         if (AudioPlayer.Instance.Key is not null) AudioPlayer.Instance.Stop();
         Set(title, "Видеосообщение", toggle, stop, null);

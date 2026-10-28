@@ -16,14 +16,24 @@ internal sealed class ProtectedSessionStore(string path)
         lock (_lock)
         {
             if (!File.Exists(path)) return null;
-            try
+            // Файл может быть на мгновение занят записью (замена через .tmp) — несколько попыток,
+            // прежде чем считать сессию потерянной: иначе пользователь зря попадает на экран входа.
+            for (var attempt = 1; ; attempt++)
             {
-                return ProtectedData.Unprotect(File.ReadAllBytes(path), Entropy, DataProtectionScope.CurrentUser);
-            }
-            catch (CryptographicException)
-            {
-                // Файл повреждён или создан другим пользователем — начинаем с чистой сессии.
-                return null;
+                try
+                {
+                    return ProtectedData.Unprotect(File.ReadAllBytes(path), Entropy, DataProtectionScope.CurrentUser);
+                }
+                catch (Exception ex) when (ex is IOException or CryptographicException && attempt < 5)
+                {
+                    Thread.Sleep(150);
+                }
+                catch (CryptographicException)
+                {
+                    // Файл повреждён или создан другим пользователем — начинаем с чистой сессии.
+                    Logging.Write("session: не удалось расшифровать session.dat, нужен повторный вход");
+                    return null;
+                }
             }
         }
     }

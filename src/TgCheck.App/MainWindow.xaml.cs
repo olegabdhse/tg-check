@@ -122,7 +122,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RestoreFromBackground()
+    public void RestoreFromBackground()
     {
         Show();
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;

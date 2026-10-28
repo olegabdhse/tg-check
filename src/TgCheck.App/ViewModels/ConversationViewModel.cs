@@ -1000,10 +1000,13 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
                 return;
             }
             m.IsLoadingAudio = true;
+            NowPlaying.Instance.RequestedAudio = m.AudioKey;
             var path = await _tg.Media.GetMediaFileAsync(m.Item, new Progress<double>(p => m.DownloadProgress = p));
             m.DownloadProgress = -1;
             m.IsLoadingAudio = false;
             if (path is null) throw new IOException("Не удалось загрузить аудио.");
+            // Пока файл качался, выбрали другое сообщение — играем только последнее выбранное.
+            if (NowPlaying.Instance.RequestedAudio != m.AudioKey) return;
             AudioPlayer.Instance.Play(m.AudioKey, path);
             NowPlaying.Instance.StartAudio(m.AudioKey, m.IsOut ? "Вы" : (m.SenderName is { Length: > 0 } s ? s : Title),
                 m.IsVoice ? "Голосовое сообщение" : (m.FileTitle ?? "Аудио"));
