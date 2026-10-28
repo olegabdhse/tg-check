@@ -105,6 +105,8 @@ public sealed class MessageItem : MediaHolder
     public bool IsOut { get; init; }
     public DateTime? EditDateUtc { get; set; }
     public int? ReplyToId { get; init; }
+    /// <summary>Корень ветки (комментарии к посту), если сообщение — ответ внутри ветки.</summary>
+    public int? ThreadTopId { get; init; }
     public string? ForwardedFrom { get; init; }
     public string? PostAuthor { get; init; }
     public int Views { get; init; }
@@ -129,6 +131,7 @@ public sealed class MessageItem : MediaHolder
     public string? KeyboardPlaceholder { get; init; }
     /// <summary>Комментарии к посту канала (null — комментарии выключены).</summary>
     public int? Comments { get; init; }
+    public IReadOnlyList<ReactionInfo> Reactions { get; init; } = [];
 
     /// <summary>Геопозиция (точка, место, трансляция).</summary>
     public double? Latitude { get; init; }

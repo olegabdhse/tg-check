@@ -18,6 +18,8 @@ public sealed partial class TelegramService
     /// <summary>Новое сообщение (входящее или отправленное с другого устройства).</summary>
     public event Action<MessageItem>? MessageReceived;
     public event Action<MessageItem>? MessageEdited;
+    /// <summary>Реакции под сообщением изменились (peerKey, id, реакции).</summary>
+    public event Action<long, int, IReadOnlyList<ReactionInfo>>? ReactionsUpdated;
     /// <summary>Удалены сообщения: ключ чата (null — личные/обычные группы, id глобальные) и id.</summary>
     public event Action<long?, int[]>? MessagesDeleted;
     /// <summary>Прочитано: ключ чата, max id, outbox (собеседник прочитал наши) / inbox (мы прочитали на другом устройстве).</summary>
@@ -377,6 +379,9 @@ public sealed partial class TelegramService
             case UpdateMessagePoll poll:
                 OnPollUpdate(poll);
                 break;
+            case UpdateMessageReactions r when PeerOf(r.peer) is { } rp:
+                ReactionsUpdated?.Invoke(rp.Key, r.msg_id, MapReactions(r.reactions));
+                break;
             case UpdateUserStatus s when !IsIgnored(s.user_id):
                 var (presence, seen) = MapStatus(s.status);
                 if (_users.TryGetValue(s.user_id, out var su)) su.status = s.status;
@@ -423,6 +428,7 @@ public sealed partial class TelegramService
             IsOut = msg.flags.HasFlag(Message.Flags.out_),
             EditDateUtc = msg.flags.HasFlag(Message.Flags.has_edit_date) && !msg.flags.HasFlag(Message.Flags.edit_hide) ? msg.edit_date : null,
             ReplyToId = reply is > 0 ? reply : null,
+            ThreadTopId = msg.reply_to is MessageReplyHeader { flags: var rf } rh && rf.HasFlag(MessageReplyHeader.Flags.has_reply_to_top_id) ? rh.reply_to_top_id : null,
             ForwardedFrom = fwd,
             PostAuthor = msg.post_author,
             Views = msg.views,
@@ -433,6 +439,7 @@ public sealed partial class TelegramService
             ReplyKeyboard = msg.reply_markup is ReplyKeyboardMarkup rk ? rk.rows.Select(r => (IReadOnlyList<BotButton>)r.buttons.Select(b => new BotButton { Text = b.text, Kind = BotButtonKind.Text }).ToList()).ToList() : null,
             KeyboardPlaceholder = (msg.reply_markup as ReplyKeyboardMarkup)?.placeholder,
             Comments = msg.replies is { } rep && rep.flags.HasFlag(MessageReplies.Flags.comments) ? rep.replies : null,
+            Reactions = MapReactions(msg.reactions),
         };
         return WithMedia(item, msg.media);
     }
@@ -482,7 +489,7 @@ public sealed partial class TelegramService
                     Id = geoItem.Id, PeerKey = geoItem.PeerKey, FromKey = geoItem.FromKey, From = geoItem.From, DateUtc = geoItem.DateUtc,
                     Text = geoItem.Text, IsOut = geoItem.IsOut, EditDateUtc = geoItem.EditDateUtc, ReplyToId = geoItem.ReplyToId,
                     ForwardedFrom = geoItem.ForwardedFrom, PostAuthor = geoItem.PostAuthor, Views = geoItem.Views, GroupedId = geoItem.GroupedId,
-                    CustomEmoji = geoItem.CustomEmoji, InlineButtons = geoItem.InlineButtons, Comments = geoItem.Comments, Media = MediaKind.Location, MediaTitle = geoItem.MediaTitle,
+                    CustomEmoji = geoItem.CustomEmoji, InlineButtons = geoItem.InlineButtons, Comments = geoItem.Comments, Reactions = geoItem.Reactions, Media = MediaKind.Location, MediaTitle = geoItem.MediaTitle,
                     Latitude = point.lat, Longitude = point.lon, GeoAccessHash = point.access_hash, VenueAddress = venue?.address,
                 };
             case MessageMediaWebPage:
@@ -567,9 +574,9 @@ public sealed partial class TelegramService
         int w = 0, int h = 0, string? title = null, string? emoji = null, double duration = 0, IReadOnlyList<byte>? waveform = null) => new()
     {
         Id = i.Id, PeerKey = i.PeerKey, FromKey = i.FromKey, From = i.From, DateUtc = i.DateUtc, Text = i.Text,
-        IsOut = i.IsOut, EditDateUtc = i.EditDateUtc, ReplyToId = i.ReplyToId, ForwardedFrom = i.ForwardedFrom,
+        IsOut = i.IsOut, EditDateUtc = i.EditDateUtc, ReplyToId = i.ReplyToId, ThreadTopId = i.ThreadTopId, ForwardedFrom = i.ForwardedFrom,
         PostAuthor = i.PostAuthor, Views = i.Views, GroupedId = i.GroupedId, CustomEmoji = i.CustomEmoji,
-        InlineButtons = i.InlineButtons, ReplyKeyboard = i.ReplyKeyboard, KeyboardPlaceholder = i.KeyboardPlaceholder, Comments = i.Comments,
+        InlineButtons = i.InlineButtons, ReplyKeyboard = i.ReplyKeyboard, KeyboardPlaceholder = i.KeyboardPlaceholder, Comments = i.Comments, Reactions = i.Reactions,
         Media = kind, Photo = photo, Document = doc, MediaWidth = w, MediaHeight = h,
         MediaTitle = title, MediaSize = doc?.size ?? 0, StickerEmoji = emoji, DurationSeconds = duration, Waveform = waveform,
     };

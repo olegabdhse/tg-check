@@ -84,12 +84,14 @@ public partial class MainWindow : Window
 
     private void OnIncoming(ChatItemViewModel chat) => Dispatcher.BeginInvoke(() =>
     {
+        if (!UiSettings.Notifications || (chat.IsArchived && !UiSettings.NotifyArchived)) return;
         // Окно на виду и активно — уведомление не нужно (чат и так виден в списке).
         if (IsVisible && IsActive && WindowState != WindowState.Minimized) return;
         if (_notifyShell?.MiniChat?.Peer.Key == chat.Key && Application.Current.Windows.OfType<MiniChatWindow>().Any(w => w.IsActive)) return;
         chat.EnsureAvatar(_notifyShell!.Chats.Media);
         var data = new NotificationData(chat.Peer, chat.Title, chat.LastText, chat.Avatar, chat.AvatarBrush, chat.Initials);
         NotificationWindow.Show(data, OpenChatFromNotification);
+        if (UiSettings.NotificationSound) Notifier.PlaySound();
     });
 
     private void OpenChatFromNotification(PeerRef peer)
@@ -104,6 +106,7 @@ public partial class MainWindow : Window
     {
         if (WindowState == WindowState.Minimized)
         {
+            if (!UiSettings.ShowIsland) return;
             if (DataContext is not MainViewModel { CurrentPage: ShellViewModel shell }) return;
             if (_island is null || _islandShell != shell)
             {

@@ -1,6 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using TgCheck.App.Helpers;
 using TgCheck.App.ViewModels;
@@ -24,9 +26,37 @@ public partial class ConversationView : UserControl
     /// <summary>Показывать кнопку «назад» в шапке (узкое окно, мини-окно).</summary>
     public static readonly DependencyProperty ShowBackProperty = DependencyProperty.Register(
         nameof(ShowBack), typeof(bool), typeof(ConversationView),
-        new PropertyMetadata(false, (d, e) => ((ConversationView)d).BackButton.Visibility = e.NewValue is true ? Visibility.Visible : Visibility.Collapsed));
+        new PropertyMetadata(false, (d, e) => ((ConversationView)d).UpdateBack()));
+
+    // «Назад» видна в узком окне и всегда — в ветке комментариев.
+    private void UpdateBack() =>
+        BackButton.Visibility = ShowBack || _vm?.IsThread == true ? Visibility.Visible : Visibility.Collapsed;
 
     public bool ShowBack { get => (bool)GetValue(ShowBackProperty); set => SetValue(ShowBackProperty, value); }
+
+    /// <summary>
+    /// Узкий режим (мини-окно): мини-профиль открывается поверх чата на всю ширину, с кнопкой «назад» к чату.
+    /// </summary>
+    public bool IsCompactPanel
+    {
+        get => _compactPanel;
+        set
+        {
+            _compactPanel = value;
+            Grid.SetColumn(SidePanel, value ? 0 : 1);
+            Grid.SetColumnSpan(SidePanel, value ? 2 : 1);
+            SidePanel.Width = value ? double.NaN : 320;
+            SidePanel.BorderThickness = value ? new Thickness(0) : new Thickness(1, 0, 0, 0);
+            Panel.SetZIndex(SidePanel, value ? 10 : 0);
+            SideCompactBack.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+            SideCloseButton.Visibility = value ? Visibility.Collapsed : Visibility.Visible;
+            SideStackBack.Opacity = value ? 0 : 1; // в узком режиме роль «назад» у SideCompactBack
+            SideStackBack.IsHitTestVisible = !value;
+            if (value) SideStackBack.Width = 0;
+        }
+    }
+
+    private bool _compactPanel;
 
     public ConversationView()
     {
@@ -46,9 +76,13 @@ public partial class ConversationView : UserControl
         if (_vm is null) return;
         _vm.ScrollToBottomRequested += ScrollToBottom;
         _vm.ScrollToMessageRequested += ScrollToMessage;
+        _vm.FeedResetting += HideFeed;
         _vm.InsertTextRequested += InsertText;
         _vm.PropertyChanged += OnVmPropertyChanged;
         _vm.IsAtBottom = () => IsNearBottom(Scroller.VerticalOffset);
+        UpdateBack();
+        // Первая загрузка: лента появляется уже прокрученной вниз, без мигания и прыжка сверху вниз.
+        if (_vm.Items.Count == 0) HideFeed();
         _stickToBottom = true;
         ScrollToBottom(false);
     }
@@ -58,6 +92,7 @@ public partial class ConversationView : UserControl
         if (_vm is null) return;
         _vm.ScrollToBottomRequested -= ScrollToBottom;
         _vm.ScrollToMessageRequested -= ScrollToMessage;
+        _vm.FeedResetting -= HideFeed;
         _vm.InsertTextRequested -= InsertText;
         _vm.PropertyChanged -= OnVmPropertyChanged;
         _vm.IsAtBottom = null;
@@ -72,9 +107,27 @@ public partial class ConversationView : UserControl
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
             Scroller.UpdateLayout();
-            if (animated) SmoothScroll.ScrollTo(Scroller, Scroller.ScrollableHeight);
-            else Scroller.ScrollToEnd();
+            if (animated && !_feedHidden) SmoothScroll.ScrollTo(Scroller, Scroller.ScrollableHeight);
+            else SmoothScroll.JumpTo(Scroller, Scroller.ScrollableHeight);
+            if (_vm is { Items.Count: > 0 }) RevealFeed();
         });
+    }
+
+    // Лента пересобирается (переход к далёкому сообщению): прячем её, пока не встанет на место, — без мигания.
+    private bool _feedHidden;
+
+    private void HideFeed()
+    {
+        _feedHidden = true;
+        Scroller.BeginAnimation(OpacityProperty, null);
+        Scroller.Opacity = 0;
+    }
+
+    private void RevealFeed()
+    {
+        if (!_feedHidden) return;
+        _feedHidden = false;
+        Scroller.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(160)));
     }
 
     // Переход к сообщению (закреп, ответ): сообщение — по центру экрана.
@@ -84,10 +137,15 @@ public partial class ConversationView : UserControl
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
             Scroller.UpdateLayout();
-            if (Feed.ItemContainerGenerator.ContainerFromItem(message) is not FrameworkElement el) return;
-            var top = el.TransformToAncestor(Scroller).Transform(new Point(0, 0)).Y + Scroller.VerticalOffset;
-            var target = Math.Clamp(top - (Scroller.ViewportHeight - el.ActualHeight) / 2, 0, Scroller.ScrollableHeight);
-            SmoothScroll.ScrollTo(Scroller, target);
+            if (Feed.ItemContainerGenerator.ContainerFromItem(message) is FrameworkElement el)
+            {
+                var top = el.TransformToAncestor(Scroller).Transform(new Point(0, 0)).Y + Scroller.VerticalOffset;
+                var target = Math.Clamp(top - (Scroller.ViewportHeight - el.ActualHeight) / 2, 0, Scroller.ScrollableHeight);
+                // После пересборки — сразу на место; если сообщение уже рядом — плавно.
+                if (_feedHidden) SmoothScroll.JumpTo(Scroller, target);
+                else SmoothScroll.ScrollTo(Scroller, target);
+            }
+            RevealFeed();
         });
     }
 
@@ -123,7 +181,7 @@ public partial class ConversationView : UserControl
         }
 
         // Фоновая подгрузка истории заранее (за ~1500 px до верха), позиция сохраняется — незаметно для глаза.
-        if (!_loadingOlder && Scroller.VerticalOffset < 1500 && e.VerticalChange < 0 && _vm.HasMoreHistory)
+        if (!_loadingOlder && !_feedHidden && Scroller.VerticalOffset < 1500 && e.VerticalChange < 0 && _vm.HasMoreHistory)
         {
             _loadingOlder = true;
             _stickToBottom = false;
@@ -153,6 +211,9 @@ public partial class ConversationView : UserControl
                 e.Handled = true;
                 if (_vm.SendCommand.CanExecute(null)) _vm.SendCommand.Execute(null);
                 break;
+            case Key.V when Keyboard.Modifiers == ModifierKeys.Control:
+                if (_vm.PasteFromClipboard()) { e.Handled = true; FocusCaption(); }
+                break;
             case Key.Up when Composer.Text.Length == 0:
                 // Как в Telegram: ↑ в пустом поле — редактировать последнее своё сообщение.
                 var lastOwn = _vm.Items.OfType<MessageViewModel>().LastOrDefault(m => m.IsOut && m.HasText);
@@ -163,12 +224,100 @@ public partial class ConversationView : UserControl
                     Composer.CaretIndex = Composer.Text.Length;
                 }
                 break;
-            case Key.V when Keyboard.Modifiers == ModifierKeys.Control && Clipboard.ContainsFileDropList():
-                e.Handled = true;
-                _vm.AddAttachments(Clipboard.GetFileDropList().Cast<string>());
-                break;
         }
     }
+
+    // Реакция выбрана в меню — закрываем меню (кнопка внутри меню сама его не закрывает).
+    private void Reaction_Click(object sender, RoutedEventArgs e)
+    {
+        DependencyObject? p = sender as DependencyObject;
+        while (p is not null && p is not System.Windows.Controls.ContextMenu) p = VisualTreeHelper.GetParent(p) ?? LogicalTreeHelper.GetParent(p);
+        if (p is System.Windows.Controls.ContextMenu menu) menu.IsOpen = false;
+    }
+
+    // ---- запись голосового: логика кнопки микрофона Telegram Desktop
+    private Point _micStart;
+    private bool _micReleasing;
+
+    private void Mic_Down(object sender, MouseButtonEventArgs e)
+    {
+        if (_vm is null) return;
+        e.Handled = true;
+        if (_vm.IsRecordLocked)
+        {
+            _vm.SendRecordingCommand.Execute(null); // закреплённая запись: клик — отправить
+            return;
+        }
+        _micStart = e.GetPosition(this);
+        _micReleasing = false;
+        MicButton.CaptureMouse();
+        _vm.StartRecording();
+    }
+
+    private void Mic_Move(object sender, MouseEventArgs e)
+    {
+        if (_vm is not { IsRecording: true, IsRecordLocked: false } || !MicButton.IsMouseCaptured) return;
+        var pos = e.GetPosition(this);
+        if (_micStart.Y - pos.Y > 70)
+        {
+            // Потянули вверх — запись продолжается без удержания.
+            _vm.LockRecordingCommand.Execute(null);
+            _micReleasing = true;
+            MicButton.ReleaseMouseCapture();
+            return;
+        }
+        // Курсор ушёл с кнопки — подсказываем, что отпускание отменит запись.
+        var inside = new Rect(0, 0, MicButton.ActualWidth, MicButton.ActualHeight).Contains(e.GetPosition(MicButton));
+        MicCircle.Fill = inside ? (Brush)FindResource("AccentBrush") : (Brush)FindResource("DangerBrush");
+    }
+
+    private void Mic_Up(object sender, MouseButtonEventArgs e)
+    {
+        if (_vm is not { IsRecording: true, IsRecordLocked: false } || !MicButton.IsMouseCaptured) return;
+        e.Handled = true;
+        var inside = new Rect(0, 0, MicButton.ActualWidth, MicButton.ActualHeight).Contains(e.GetPosition(MicButton));
+        _micReleasing = true;
+        MicButton.ReleaseMouseCapture();
+        _ = _vm.FinishRecordingAsync(cancel: !inside);
+    }
+
+    // Захват потерян не по нашей воле (Alt+Tab и т.п.) — запись отменяется.
+    private void Mic_LostCapture(object sender, MouseEventArgs e)
+    {
+        if (_micReleasing || _vm is not { IsRecording: true, IsRecordLocked: false }) return;
+        _ = _vm.FinishRecordingAsync(cancel: true);
+    }
+
+    private void UpdateMicVisual()
+    {
+        if (_vm is null) return;
+        var recording = _vm.IsRecording;
+        MicCircle.Fill = recording ? (Brush)FindResource("AccentBrush") : Brushes.Transparent;
+        MicIcon.Foreground = recording ? Brushes.White : (Brush)FindResource("TextSecondaryBrush");
+        MicIcon.Text = _vm.IsRecordLocked ? "" : "";
+        var scale = recording ? 1.15 + Math.Min(_vm.RecordLevel * 1.6, 0.7) : 1;
+        MicPulse.Opacity = recording ? 0.3 : 0;
+        MicPulseScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(scale, TimeSpan.FromMilliseconds(100)));
+        MicPulseScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(scale, TimeSpan.FromMilliseconds(100)));
+    }
+
+    // ---- окно отправки вложений: Enter в подписи — отправить, Ctrl+V — добавить ещё
+    private void Caption_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (_vm is null) return;
+        if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            e.Handled = true;
+            if (_vm.SendCommand.CanExecute(null)) _vm.SendCommand.Execute(null);
+        }
+        else if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control && _vm.PasteFromClipboard()) e.Handled = true;
+    }
+
+    private void FocusCaption() => Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+    {
+        CaptionBox.Focus();
+        CaptionBox.CaretIndex = CaptionBox.Text.Length;
+    });
 
     // ---- перемотка голосового кликом по волне
     private void Wave_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -193,6 +342,7 @@ public partial class ConversationView : UserControl
     {
         DropHint.Visibility = Visibility.Collapsed;
         if (e.Data.GetData(DataFormats.FileDrop) is string[] files) _vm?.AddAttachments(files);
+        FocusCaption();
     }
 
     protected override void OnDragLeave(DragEventArgs e)
@@ -218,10 +368,14 @@ public partial class ConversationView : UserControl
     private void OnVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (_vm is null) return;
-        if (e.PropertyName == nameof(ConversationViewModel.Comments) && _vm.Comments is { } comments)
+        if (e.PropertyName == nameof(ConversationViewModel.IsLoading) && !_vm.IsLoading)
         {
-            comments.ScrollToBottomRequested += () =>
-                Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => CommentsScroller.ScrollToEnd());
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, RevealFeed); // после прокрутки; пустой чат или ошибка — показать как есть
+            return;
+        }
+        if (e.PropertyName is nameof(ConversationViewModel.IsRecording) or nameof(ConversationViewModel.IsRecordLocked) or nameof(ConversationViewModel.RecordLevel))
+        {
+            UpdateMicVisual();
             return;
         }
         if (e.PropertyName != nameof(ConversationViewModel.ViewerVideoPath)) return;

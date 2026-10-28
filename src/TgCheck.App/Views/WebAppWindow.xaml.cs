@@ -25,7 +25,7 @@ public partial class WebAppWindow : Window
         _url = url;
         _openTgLink = openTgLink;
         InitializeComponent();
-        TitleText.Text = title;
+        Helpers.RichText.SetText(TitleText, title);
         Loaded += async (_, _) => await InitAsync();
         SourceInitialized += (_, _) => WindowEffects.ApplyDarkTitleBar(this, (Color)FindResource("BgColor"));
     }
@@ -54,6 +54,8 @@ public partial class WebAppWindow : Window
                 Helpers.Shell.Open(e.Uri);
             };
             core.Settings.AreDevToolsEnabled = false;
+            core.Settings.IsZoomControlEnabled = false;
+            core.Settings.IsPinchZoomEnabled = false;
             core.Navigate(_url);
         }
         catch (Exception ex)
@@ -86,7 +88,33 @@ public partial class WebAppWindow : Window
                 case "web_app_ready":
                 case "web_app_expand":
                     SendViewport();
-                    if (type == "web_app_ready") Send("theme_changed", $$"""{"theme_params":{{TelegramService.ThemeJson}}}""");
+                    if (type == "web_app_ready")
+                    {
+                        Send("theme_changed", $$"""{"theme_params":{{TelegramService.ThemeJson}}}""");
+                        SendSafeAreas();
+                    }
+                    break;
+                // Новые SDK ждут отступы «безопасной зоны»: у окна на ПК их нет — нули, иначе страница рисует поля по краям.
+                case "web_app_request_safe_area":
+                case "web_app_request_content_safe_area":
+                    SendSafeAreas();
+                    break;
+                case "web_app_set_background_color" when data.ValueKind == JsonValueKind.Object && data.TryGetProperty("color", out var bg):
+                    try
+                    {
+                        var c = (Color)ColorConverter.ConvertFromString(bg.GetString()!);
+                        Web.DefaultBackgroundColor = System.Drawing.Color.FromArgb(c.R, c.G, c.B);
+                        Background = new SolidColorBrush(c);
+                    }
+                    catch { }
+                    break;
+                case "web_app_request_fullscreen":
+                    WindowState = WindowState.Maximized;
+                    Send("fullscreen_changed", """{"is_fullscreen":true}""");
+                    break;
+                case "web_app_exit_fullscreen":
+                    WindowState = WindowState.Normal;
+                    Send("fullscreen_changed", """{"is_fullscreen":false}""");
                     break;
                 case "web_app_open_link" when data.ValueKind == JsonValueKind.Object && data.TryGetProperty("url", out var url):
                     Helpers.Shell.Open(url.GetString()!);
@@ -108,6 +136,13 @@ public partial class WebAppWindow : Window
         {
             Logging("webapp event: " + ex.Message);
         }
+    }
+
+    private void SendSafeAreas()
+    {
+        const string zero = """{"top":0,"bottom":0,"left":0,"right":0}""";
+        Send("safe_area_changed", zero);
+        Send("content_safe_area_changed", zero);
     }
 
     private void SendViewport() =>

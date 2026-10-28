@@ -63,6 +63,8 @@
                 </Grid>
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding VersionText}" Style="{StaticResource Caption}" FontSize="10"
                            HorizontalAlignment="Center" />
+                <Button DockPanel.Dock="Bottom" Style="{StaticResource IconButton}" Content="&#xE713;" FontSize="19" Padding="10"
+                        HorizontalAlignment="Center" Margin="0,0,0,8" ToolTip="Настройки" Command="{Binding ToggleSettingsCommand}" />
                 <StackPanel>
                     <RadioButton Style="{StaticResource RailButton}" GroupName="rail" ToolTip="Чаты"
                                  IsChecked="{Binding Section, Converter={StaticResource EnumToBool}, ConverterParameter=Chats}">
@@ -125,6 +127,50 @@
                 <views:ProfileView x:Name="MyProfilePage" DataContext="{Binding MyProfile}" Visibility="Collapsed" />
                 <ContentControl x:Name="PageHost" Focusable="False" Visibility="Collapsed" />
             </Grid>
+        </Grid>
+
+        <!-- ================================================= Настройки -->
+        <Grid Grid.ColumnSpan="2" Visibility="Collapsed" helpers:Anim.Mode="Fade" helpers:Anim.Show="{Binding IsSettingsOpen}">
+            <Border Background="{StaticResource OverlayBrush}">
+                <Border.InputBindings>
+                    <MouseBinding MouseAction="LeftClick" Command="{Binding ToggleSettingsCommand}" />
+                </Border.InputBindings>
+            </Border>
+            <Border Width="420" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="16" Padding="12,10,12,14"
+                    Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                    DataContext="{Binding Settings}">
+                <StackPanel>
+                    <DockPanel Margin="8,4,0,8">
+                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" ToolTip="Закрыть (Esc)"
+                                Command="{Binding DataContext.ToggleSettingsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                        <TextBlock Text="Настройки" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    </DockPanel>
+
+                    <TextBlock Text="Уведомления" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="13" Margin="12,6,0,2" />
+                    <CheckBox Style="{StaticResource SettingSwitch}" IsChecked="{Binding Notifications}">
+                        <StackPanel>
+                            <TextBlock Text="Всплывающие уведомления" />
+                            <TextBlock Text="Когда окно свёрнуто, закрыто или не в фокусе" Style="{StaticResource Caption}" />
+                        </StackPanel>
+                    </CheckBox>
+                    <CheckBox Style="{StaticResource SettingSwitch}" IsChecked="{Binding NotificationSound}" IsEnabled="{Binding Notifications}"
+                              Content="Звук уведомления" />
+                    <CheckBox Style="{StaticResource SettingSwitch}" IsChecked="{Binding NotifyArchived}" IsEnabled="{Binding Notifications}">
+                        <StackPanel>
+                            <TextBlock Text="Чаты из архива" />
+                            <TextBlock Text="Чаты без звука не уведомляют никогда" Style="{StaticResource Caption}" />
+                        </StackPanel>
+                    </CheckBox>
+
+                    <TextBlock Text="Окно" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="13" Margin="12,12,0,2" />
+                    <CheckBox Style="{StaticResource SettingSwitch}" IsChecked="{Binding ShowIsland}">
+                        <StackPanel>
+                            <TextBlock Text="Островок при сворачивании" />
+                            <TextBlock Text="Последние чаты сверху экрана, пока окно свёрнуто" Style="{StaticResource Caption}" />
+                        </StackPanel>
+                    </CheckBox>
+                </StackPanel>
+            </Border>
         </Grid>
 
         <!-- ================================================= Истории -->

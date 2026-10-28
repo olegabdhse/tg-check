@@ -160,4 +160,20 @@ public static class WindowEffects
         var colorRef = caption.R | caption.G << 8 | caption.B << 16;
         DwmSetWindowAttribute(hwnd, 35, ref colorRef, sizeof(int)); // DWMWA_CAPTION_COLOR (Windows 11)
     }
+
+    /// <summary>
+    /// Скруглённые углы и системная тень Windows 11 для окна без рамки — вместо прозрачного (layered) окна
+    /// с эффектом тени, которое перерисовывается целиком на каждое изменение и мерцает.
+    /// </summary>
+    public static void ApplyRoundedCorners(Window window, Color border)
+    {
+        var hwnd = new WindowInteropHelper(window).Handle;
+        if (hwnd == IntPtr.Zero) return;
+        var round = 2; // DWMWCP_ROUND
+        DwmSetWindowAttribute(hwnd, 33, ref round, sizeof(int)); // DWMWA_WINDOW_CORNER_PREFERENCE
+        var colorRef = border.R | border.G << 8 | border.B << 16;
+        DwmSetWindowAttribute(hwnd, 34, ref colorRef, sizeof(int)); // DWMWA_BORDER_COLOR
+        var on = 1;
+        DwmSetWindowAttribute(hwnd, 20, ref on, sizeof(int)); // тёмная тема рамки
+    }
 }

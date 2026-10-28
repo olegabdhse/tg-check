@@ -19,6 +19,8 @@ public partial class MiniChatWindow : Window
     {
         _back = back;
         InitializeComponent();
+        SourceInitialized += (_, _) => Helpers.WindowEffects.ApplyRoundedCorners(this, Color.FromRgb(0x2A, 0x38, 0x46));
+        Chat.IsCompactPanel = true;
         PreviewKeyDown += (_, e) =>
         {
             if (e.Key != Key.Escape) return;
@@ -36,7 +38,6 @@ public partial class MiniChatWindow : Window
         Chat.DataContext = conv;
         if (switching)
         {
-            Helpers.Anim.SlideIn(Chat, 30);
             Activate();
             return;
         }
@@ -55,44 +56,26 @@ public partial class MiniChatWindow : Window
             Top = top;
             Height = Math.Min(720, area.Bottom - top - 8);
         }
-        Opacity = 0;
+        Card.Opacity = 0;
         if (!IsVisible) Show();
         Activate();
 
-        // Лёгкое появление: короткий fade + едва заметный масштаб — без «пружины», не грузит отрисовку.
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-        var duration = TimeSpan.FromMilliseconds(200);
-        BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(150)));
-        CardScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.96, 1, duration) { EasingFunction = ease });
-        CardScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.96, 1, duration) { EasingFunction = ease });
+        // Лёгкое появление содержимого (окно — обычное, его рисует Windows: никакого мерцания).
+        Card.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(140)));
     }
 
-    /// <summary>Плавно закрыть (сворачивается обратно к островку).</summary>
+    /// <summary>Закрыть (окно прячется и переиспользуется — следующий чат открывается мгновенно).</summary>
     public void CloseAnimated()
     {
         if (_closing || !IsVisible) return;
-        _closing = true;
-        var ease = new CubicEase { EasingMode = EasingMode.EaseIn };
-        var duration = TimeSpan.FromMilliseconds(200);
-        var fade = new DoubleAnimation(Opacity, 0, duration);
-        fade.Completed += (_, _) =>
-        {
-            if (!_closing) return;
-            Chat.DataContext = null;
-            Hide(); // окно переиспользуется — следующий чат открывается мгновенно
-        };
-        BeginAnimation(OpacityProperty, fade);
-        CardScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1, 0.9, duration) { EasingFunction = ease });
-        CardScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1, 0.7, duration) { EasingFunction = ease });
+        HideNow();
     }
 
     /// <summary>Скрыть сразу, без анимации (переход в приложение).</summary>
     public void HideNow()
     {
         _closing = true;
-        BeginAnimation(OpacityProperty, null);
-        CardScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        CardScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        Card.BeginAnimation(OpacityProperty, null);
         Hide();
         Chat.DataContext = null;
     }

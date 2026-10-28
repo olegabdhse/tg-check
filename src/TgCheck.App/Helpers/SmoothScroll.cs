@@ -74,6 +74,13 @@ public static class SmoothScroll
         sv.ScrollToVerticalOffset(sv.VerticalOffset + delta);
     }
 
+    /// <summary>Мгновенно встать на offset (без анимации и остатка прошлой прокрутки).</summary>
+    public static void JumpTo(ScrollViewer sv, double offset)
+    {
+        if (sv.GetValue(StateProperty) is Animator a) a.Stop();
+        sv.ScrollToVerticalOffset(offset);
+    }
+
     /// <summary>Плавно прокрутить к offset (например, «вниз к новым сообщениям»).</summary>
     public static void ScrollTo(ScrollViewer sv, double offset)
     {

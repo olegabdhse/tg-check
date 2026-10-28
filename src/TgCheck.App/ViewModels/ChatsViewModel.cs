@@ -34,6 +34,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
 
         _tg.MessageReceived += OnMessageReceivedEvent;
         _tg.MessageEdited += OnMessageEdited;
+        _tg.ReactionsUpdated += OnReactionsUpdated;
         _tg.MessagesDeleted += OnMessagesDeleted;
         _tg.HistoryRead += OnHistoryRead;
         _tg.UserTyping += OnUserTyping;
@@ -123,9 +124,31 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
 
     public ConversationViewModel? FindConversation(long key) => _conversations.GetValueOrDefault(key);
 
+    // Открытая ветка комментариев (одна): получает свои новые сообщения отдельно от чата обсуждения.
+    private ConversationViewModel? _thread;
+
+    public void OpenThread(ConversationViewModel thread)
+    {
+        thread.EnsureAvatar(_tg.Media);
+        _thread = thread;
+        Conversation = thread;
+        thread.UpdateStatus();
+        _ = thread.LoadAsync();
+    }
+
+    // Из ветки «назад» — к каналу, а не к списку.
+    private bool LeaveThread()
+    {
+        if (Conversation is not { ThreadParent: { } parent }) return false;
+        Conversation = parent;
+        _thread = null;
+        return true;
+    }
+
     public void CloseChat()
     {
         if (Conversation?.HandleEscape() == true) return;
+        if (LeaveThread()) return;
         Conversation = null;
         SelectedChat = null;
     }
@@ -135,6 +158,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     {
         if (Confirm is not null) { CancelConfirm(); return true; }
         if (Conversation?.HandleEscape() == true) return true;
+        if (LeaveThread()) return true;
         if (Conversation is not null) { Conversation = null; SelectedChat = null; return true; }
         if (Search.Length > 0) { Search = ""; return true; }
         if (ShowArchive) { ShowArchive = false; return true; }
@@ -226,7 +250,13 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     // Обновляем существующие строки, добавляем новые, убираем пропавшие — без мерцания списка.
     private void Merge(IReadOnlyList<ChatSummary> dialogs, bool archived, bool removeMissing)
     {
-        // Без сортировки во время массового добавления — одна пересортировка в конце (архив бывает огромным).
+        // Мало изменений — двигаем только изменившиеся строки (без перерисовки всего списка).
+        if (dialogs.Count(d => !_byKey.ContainsKey(d.Peer.Key)) <= 30)
+        {
+            foreach (var chat in MergeCore(dialogs, archived, removeMissing)) Reposition(chat);
+            return;
+        }
+        // Массовое добавление — без сортировки, одна пересортировка в конце (архив бывает огромным).
         var view = (ListCollectionView)ChatsView;
         var sort = view.CustomSort;
         view.CustomSort = null;
@@ -240,8 +270,40 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void MergeCore(IReadOnlyList<ChatSummary> dialogs, bool archived, bool removeMissing)
+    private static readonly ChatComparer Comparer = new();
+
+    /// <summary>
+    /// Поставить один чат на своё место (новое сообщение — вверх, под закреплённые). Если позиция не изменилась,
+    /// ничего не делаем; иначе переставляем только эту строку — список не мерцает.
+    /// </summary>
+    private void Reposition(ChatItemViewModel chat)
     {
+        var view = (ListCollectionView)ChatsView;
+        var index = view.IndexOf(chat);
+        var visible = Filter(chat);
+        if (index < 0 || !visible)
+        {
+            if ((index < 0) == visible) MoveItem(chat); // фильтр изменился: показать или скрыть строку
+            return;
+        }
+        var okBefore = index == 0 || Comparer.Compare(view.GetItemAt(index - 1), chat) <= 0;
+        var okAfter = index == view.Count - 1 || Comparer.Compare(chat, view.GetItemAt(index + 1)) <= 0;
+        if (!okBefore || !okAfter) MoveItem(chat);
+    }
+
+    // Удалить и добавить заново: представление вставит строку сразу в нужное место (и применит фильтр).
+    private void MoveItem(ChatItemViewModel chat)
+    {
+        var selected = ReferenceEquals(SelectedChat, chat);
+        Chats.Remove(chat);
+        Chats.Add(chat);
+        if (selected) SelectedChat = chat;
+        OnPropertyChanged(nameof(IsListEmpty));
+    }
+
+    private List<ChatItemViewModel> MergeCore(IReadOnlyList<ChatSummary> dialogs, bool archived, bool removeMissing)
+    {
+        var touched = new List<ChatItemViewModel>();
         var seen = new HashSet<long>();
         var order = 0;
         foreach (var d in dialogs)
@@ -251,6 +313,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
             {
                 existing.Update(d);
                 existing.Order = order++;
+                touched.Add(existing);
                 continue;
             }
             var vm = new ChatItemViewModel(d, order++);
@@ -258,12 +321,13 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
             _byKey[d.Peer.Key] = vm;
             Chats.Add(vm);
         }
-        if (!removeMissing) return;
+        if (!removeMissing) return touched;
         foreach (var gone in Chats.Where(c => c.IsArchived == archived && !seen.Contains(c.Key) && c != SelectedChat).ToList())
         {
             Chats.Remove(gone);
             _byKey.Remove(gone.Key);
         }
+        return touched;
     }
 
     private async Task LoadStoriesAsync()
@@ -317,7 +381,6 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         {
             await Task.Delay(1500, cts.Token);
             Merge(await _tg.GetDialogsAsync(archived: false), false, removeMissing: false);
-            RefreshView();
         }
         catch (TaskCanceledException) { }
         catch (Exception ex) { TgErrors.Describe(ex); }
@@ -412,8 +475,14 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
             _byKey[peer.Key] = item;
             Chats.Add(item);
         }
-        if (item.IsArchived && Tab != ChatTab.Personal) ShowArchive = true;
-        RefreshView();
+        // Личный чат (даже архивный) показываем во вкладке «Личные», в архив уходим только для остальных.
+        if (item.IsPersonal && (item.IsArchived || Tab == ChatTab.Personal))
+        {
+            ShowArchive = false;
+            Tab = ChatTab.Personal;
+        }
+        else if (item.IsArchived && !ShowArchive) ShowArchive = true;
+        Reposition(item);
         SelectedChat = item;
     }
 
@@ -451,6 +520,11 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
 
     public void OnMessageReceived(MessageItem m, bool fromConversation)
     {
+        if (_thread?.BelongsToThread(m) == true)
+        {
+            _thread.OnMessageReceived(m);
+            if (!_byKey.ContainsKey(m.PeerKey)) return; // группа обсуждения может не быть в списке чатов
+        }
         if (!_byKey.TryGetValue(m.PeerKey, out var chat))
         {
             ReloadSoon();
@@ -461,7 +535,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         var isOpen = Conversation?.Peer.Key == m.PeerKey || Shell.MiniChat?.Peer.Key == m.PeerKey;
         if (!m.IsOut && !isOpen && m.ServiceText is null) chat.Unread++;
         if (!fromConversation && _conversations.TryGetValue(m.PeerKey, out var conv)) conv.OnMessageReceived(m);
-        RefreshView();
+        Reposition(chat);
         NotifyArchive();
         if (m.IsOut) Shell.NotifyIslandChanged();
         if (!m.IsOut && !chat.IsMuted) Shell.OnIncoming(chat);
@@ -471,6 +545,13 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     {
         if (_byKey.TryGetValue(m.PeerKey, out var chat) && chat.Last?.Id == m.Id) chat.Last = m;
         if (_conversations.TryGetValue(m.PeerKey, out var conv)) conv.OnMessageEdited(m);
+        if (_thread?.Peer.Key == m.PeerKey) _thread.OnMessageEdited(m);
+    });
+
+    private void OnReactionsUpdated(long peerKey, int id, IReadOnlyList<ReactionInfo> reactions) => Anim.Ui(() =>
+    {
+        if (_conversations.TryGetValue(peerKey, out var conv)) conv.OnReactions(id, reactions);
+        if (_thread?.Peer.Key == peerKey) _thread.OnReactions(id, reactions);
     });
 
     private void OnPollUpdated(long pollId, PollInfo poll) => Anim.Ui(() =>
@@ -540,6 +621,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         _presenceTimer.Stop();
         _tg.MessageReceived -= OnMessageReceivedEvent;
         _tg.MessageEdited -= OnMessageEdited;
+        _tg.ReactionsUpdated -= OnReactionsUpdated;
         _tg.MessagesDeleted -= OnMessagesDeleted;
         _tg.HistoryRead -= OnHistoryRead;
         _tg.UserTyping -= OnUserTyping;

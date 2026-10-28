@@ -37,6 +37,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public ChatsViewModel Chats { get; }
     public MediaPickerViewModel Picker { get; }
     public ProfileViewModel MyProfile { get; }
+    public SettingsViewModel Settings { get; } = new();
+    [ObservableProperty] private bool _isSettingsOpen;
+
+    [RelayCommand]
+    private void ToggleSettings() => IsSettingsOpen = !IsSettingsOpen;
+
     public string VersionText => "v" + BuildInfo.VersionText;
 
     [ObservableProperty] private object _currentPage;
@@ -95,6 +101,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public bool HandleEscape()
     {
         if (StoryViewer is { } stories) { stories.Close(); return true; }
+        if (IsSettingsOpen) { IsSettingsOpen = false; return true; }
         if (CurrentPage is ChatsViewModel chats) return chats.HandleEscape();
         if (CurrentPage is ProfileViewModel profile)
         {

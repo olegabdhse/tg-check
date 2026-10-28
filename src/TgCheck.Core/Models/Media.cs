@@ -126,3 +126,9 @@ public sealed record BotMenu(string Text, string? Url, bool HasMainApp);
 
 /// <summary>Ответ бота на нажатие кнопки.</summary>
 public sealed record BotCallbackResult(string? Message, string? Url, bool IsAlert);
+
+/// <summary>Реакция под сообщением: обычный эмодзи, премиум-эмодзи (CustomEmojiId) или звёзды.</summary>
+public sealed record ReactionInfo(string? Emoji, long CustomEmojiId, int Count, bool Chosen, bool IsPaid = false)
+{
+    public string Key => CustomEmojiId != 0 ? "c" + CustomEmojiId : IsPaid ? "paid" : Emoji ?? "";
+}

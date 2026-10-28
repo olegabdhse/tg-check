@@ -103,11 +103,25 @@ public sealed partial class MediaPickerViewModel : ObservableObject
 
     public Task EnsureLoadedAsync() => _loading ??= LoadAsync();
 
+    /// <summary>Наборы изменились (добавили или удалили) — перечитать при следующем открытии.</summary>
+    public void Reset()
+    {
+        if (_loading is { IsCompleted: false }) return;
+        StickerSets.Clear();
+        Gifs.Clear();
+        _loading = null;
+    }
+
     private async Task LoadAsync()
     {
         IsLoading = true;
         try
         {
+            var faved = await _tg.GetFavedStickersAsync();
+            var favedVm = new StickerSetViewModel(null, "Избранные") { Loaded = true, Cover = faved.FirstOrDefault() };
+            foreach (var s in faved) favedVm.Stickers.Add(s);
+            if (faved.Count > 0) StickerSets.Add(favedVm);
+
             var recent = await _tg.GetRecentStickersAsync();
             var recentVm = new StickerSetViewModel(null, "Недавние") { Loaded = true, Cover = recent.FirstOrDefault() };
             foreach (var s in recent) recentVm.Stickers.Add(s);
@@ -190,4 +204,14 @@ public sealed partial class MediaPickerViewModel : ObservableObject
         }
         catch { /* не критично */ }
     }
+}
+
+/// <summary>Открытый набор стикеров: название, стикеры, добавлен ли он у пользователя.</summary>
+public sealed partial class StickerPackViewModel(StickerSetInfo info, IReadOnlyList<StickerItem> stickers, bool installed) : ObservableObject
+{
+    public StickerSetInfo Info { get; } = info;
+    public IReadOnlyList<StickerItem> Stickers { get; } = stickers;
+    public string Title => Info.Title;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ActionText))] private bool _installed = installed;
+    public string ActionText => Installed ? "Удалить набор" : $"Добавить {Fmt.N(Stickers.Count)} {Fmt.Plural(Stickers.Count, "стикер", "стикера", "стикеров")}";
 }

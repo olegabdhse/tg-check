@@ -49,7 +49,7 @@ public partial class ChatsView : UserControl
     {
         var compact = _vm?.IsCompact == true;
         var hasChat = _vm?.HasConversation == true;
-        foreach (var view in _views.Values) view.ShowBack = compact;
+        foreach (var view in _views.Values) { view.ShowBack = compact; view.IsCompactPanel = compact; }
         if (!compact)
         {
             ListColumn.Width = new GridLength(ActualWidth < 1050 ? 300 : 350);
@@ -86,7 +86,7 @@ public partial class ChatsView : UserControl
 
         if (!_views.TryGetValue(conv, out var target))
         {
-            target = new ConversationView { DataContext = conv, ShowBack = _vm?.IsCompact == true };
+            target = new ConversationView { DataContext = conv, ShowBack = _vm?.IsCompact == true, IsCompactPanel = _vm?.IsCompact == true };
             _views[conv] = target;
             ConversationsHost.Children.Add(target);
         }

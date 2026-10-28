@@ -24,6 +24,7 @@ public sealed class GifView : Grid
         nameof(CornerRadius), typeof(double), typeof(GifView), new PropertyMetadata(10d, (d, _) => ((GifView)d).UpdateClip()));
 
     public MediaHolder? Media { get => (MediaHolder?)GetValue(MediaProperty); set => SetValue(MediaProperty, value); }
+
     public double CornerRadius { get => (double)GetValue(CornerRadiusProperty); set => SetValue(CornerRadiusProperty, value); }
 
     private readonly Image _preview = new() { Stretch = Stretch.UniformToFill };
@@ -98,6 +99,10 @@ public sealed class VideoNoteView : Grid
     public static readonly DependencyProperty MediaProperty = DependencyProperty.Register(
         nameof(Media), typeof(MediaHolder), typeof(VideoNoteView), new PropertyMetadata(null, (d, _) => ((VideoNoteView)d).Reload()));
 
+    public static readonly DependencyProperty TitleProperty = DependencyProperty.Register(nameof(Title), typeof(string), typeof(VideoNoteView));
+    /// <summary>Имя отправителя — для панели плеера.</summary>
+    public string? Title { get => (string?)GetValue(TitleProperty); set => SetValue(TitleProperty, value); }
+
     public MediaHolder? Media { get => (MediaHolder?)GetValue(MediaProperty); set => SetValue(MediaProperty, value); }
 
     private readonly Image _preview = new() { Stretch = Stretch.UniformToFill };
@@ -151,7 +156,11 @@ public sealed class VideoNoteView : Grid
     // Без звука кружок крутится только на экране; файл качается в фоновой очереди, когда кружок показался.
     private void UpdateViewport()
     {
-        if (_withSound) return;
+        if (_withSound)
+        {
+            ReportRound();
+            return;
+        }
         var inView = IsLoaded && IsVisible && Viewport.Contains(this);
         if (inView && _player.Source is null) { _ = EnsureFileAsync(priority: false); return; }
         if (_player.Source is null) return;
@@ -194,16 +203,42 @@ public sealed class VideoNoteView : Grid
         _player.Position = TimeSpan.Zero;
         _player.Play();
         _timer.Start();
+        _paused = false;
+        _roundBrush ??= new VisualBrush(_player) { Stretch = Stretch.UniformToFill };
+        ViewModels.NowPlaying.Instance.StartRound(Title ?? "Видеосообщение", _roundBrush, TogglePause, StopSound);
+        _viewportTimer.Interval = TimeSpan.FromMilliseconds(150);
     }
 
     private void StopSound()
     {
         _withSound = false;
+        _paused = false;
+        _viewportTimer.Interval = TimeSpan.FromMilliseconds(450);
+        if (_roundBrush is not null) ViewModels.NowPlaying.Instance.EndRound(_roundBrush);
         _player.IsMuted = true;
         _timer.Stop();
         _ring.Data = null;
         _time.Text = Fmt.Duration(Media?.DurationSeconds ?? 0);
         _player.Play();
+    }
+
+    // Кружок со звуком: пауза с панели плеера.
+    private bool _paused;
+    private VisualBrush? _roundBrush;
+
+    private void TogglePause()
+    {
+        if (!_withSound) return;
+        _paused = !_paused;
+        if (_paused) _player.Pause(); else _player.Play();
+        ReportRound();
+    }
+
+    private void ReportRound()
+    {
+        if (!_withSound || !_player.NaturalDuration.HasTimeSpan) return;
+        ViewModels.NowPlaying.Instance.UpdateRound(_player.Position.TotalSeconds, _player.NaturalDuration.TimeSpan.TotalSeconds,
+            !_paused, !Viewport.Contains(this));
     }
 
     private void UpdateRing()

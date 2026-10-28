@@ -1,0 +1,22 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+using TgCheck.App.Helpers;
+
+namespace TgCheck.App.ViewModels;
+
+/// <summary>Настройки приложения (сохраняются сразу, в ui.json).</summary>
+public sealed partial class SettingsViewModel : ObservableObject
+{
+    [ObservableProperty] private bool _showIsland = UiSettings.ShowIsland;
+    [ObservableProperty] private bool _notifications = UiSettings.Notifications;
+    [ObservableProperty] private bool _notificationSound = UiSettings.NotificationSound;
+    [ObservableProperty] private bool _notifyArchived = UiSettings.NotifyArchived;
+
+    partial void OnShowIslandChanged(bool value) => UiSettings.ShowIsland = value;
+    partial void OnNotificationsChanged(bool value) => UiSettings.Notifications = value;
+    partial void OnNotificationSoundChanged(bool value)
+    {
+        UiSettings.NotificationSound = value;
+        if (value) Notifier.PlaySound();
+    }
+    partial void OnNotifyArchivedChanged(bool value) => UiSettings.NotifyArchived = value;
+}

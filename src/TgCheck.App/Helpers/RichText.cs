@@ -23,6 +23,16 @@ public static partial class RichText
     public static readonly DependencyProperty CustomEmojiProperty = DependencyProperty.RegisterAttached(
         "CustomEmoji", typeof(IReadOnlyList<TgCheck.Core.Models.CustomEmojiSpan>), typeof(RichText), new PropertyMetadata(null, OnChanged));
 
+    /// <summary>
+    /// Пустое место в конце текста под время и галочки (как в Telegram): если на последней строке
+    /// хватает места — время встаёт рядом с текстом, иначе переносится на новую строку справа.
+    /// </summary>
+    public static readonly DependencyProperty TrailingSpaceProperty = DependencyProperty.RegisterAttached(
+        "TrailingSpace", typeof(double), typeof(RichText), new PropertyMetadata(0d, OnChanged));
+
+    public static double GetTrailingSpace(DependencyObject d) => (double)d.GetValue(TrailingSpaceProperty);
+    public static void SetTrailingSpace(DependencyObject d, double v) => d.SetValue(TrailingSpaceProperty, v);
+
     public static IReadOnlyList<TgCheck.Core.Models.CustomEmojiSpan>? GetCustomEmoji(DependencyObject d) => (IReadOnlyList<TgCheck.Core.Models.CustomEmojiSpan>?)d.GetValue(CustomEmojiProperty);
     public static void SetCustomEmoji(DependencyObject d, IReadOnlyList<TgCheck.Core.Models.CustomEmojiSpan>? v) => d.SetValue(CustomEmojiProperty, v);
 
@@ -34,6 +44,13 @@ public static partial class RichText
     private static void OnChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is not TextBlock tb) return;
+        Build(tb);
+        if (GetTrailingSpace(tb) is > 0 and var trailing)
+            tb.Inlines.Add(new InlineUIContainer(new FrameworkElement { Width = trailing, Height = 1 }) { BaselineAlignment = BaselineAlignment.Bottom });
+    }
+
+    private static void Build(TextBlock tb)
+    {
         tb.Inlines.Clear();
         var text = GetText(tb) ?? "";
         var size = GetEmojiSize(tb) is > 0 and var s ? s : tb.FontSize * 1.3;

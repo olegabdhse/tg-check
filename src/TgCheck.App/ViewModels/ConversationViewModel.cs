@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Media;
@@ -19,12 +19,14 @@ public sealed partial class AttachmentViewModel(string path) : ObservableObject
     public string SizeText => Fmt.FileSize(new FileInfo(Path).Length);
     public bool IsImage => System.IO.Path.GetExtension(Path).ToLowerInvariant() is ".jpg" or ".jpeg" or ".png" or ".webp" or ".bmp" or ".gif";
     public ImageSource? Thumb { get; } = LoadThumb(path);
+    public bool IsVideo => System.IO.Path.GetExtension(Path).ToLowerInvariant() is ".mp4" or ".mov" or ".webm" or ".mkv" or ".avi";
+    public string Icon => IsVideo ? "\uE714" : System.IO.Path.GetExtension(Path).ToLowerInvariant() is ".mp3" or ".ogg" or ".wav" or ".m4a" or ".flac" ? "\uE8D6" : "\uE8A5";
     [ObservableProperty] private double _progress;
 
     private static ImageSource? LoadThumb(string path)
     {
         if (System.IO.Path.GetExtension(path).ToLowerInvariant() is not (".jpg" or ".jpeg" or ".png" or ".bmp" or ".gif")) return null;
-        try { return Images.FromBytes(File.ReadAllBytes(path), 96); }
+        try { return Images.FromBytes(File.ReadAllBytes(path), 480); }
         catch { return null; }
     }
 }
@@ -47,7 +49,38 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         _readOutboxMaxId = readOutboxMaxId;
         UpdateStatus();
         AudioPlayer.Instance.Ended += OnAudioEnded;
+        Attachments.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ShowMic));
     }
+
+    /// <summary>Ветка комментариев к посту канала: чат обсуждения, отфильтрованный по исходному сообщению.</summary>
+    public ConversationViewModel(TelegramService tg, ChatsViewModel owner, PeerRef discussion, int topId, ConversationViewModel parent, MessageItem? post)
+        : this(tg, owner, discussion, 0)
+    {
+        ThreadTopId = topId;
+        ThreadParent = parent;
+        _threadPost = post;
+    }
+
+    public int? ThreadTopId { get; }
+    public ConversationViewModel? ThreadParent { get; }
+    public bool IsThread => ThreadTopId is not null;
+    private readonly MessageItem? _threadPost;
+    public string HeaderTitle => IsThread ? "Комментарии" : Title;
+
+    // История: обычный чат или ответы в ветке (исходный пост — первым сообщением ветки).
+    private async Task<IReadOnlyList<MessageItem>> FetchAsync(int offsetId)
+    {
+        if (ThreadTopId is not { } top) return await _tg.GetHistoryAsync(Peer, offsetId, 50);
+        var replies = await _tg.GetRepliesAsync(Peer, top, offsetId, 50);
+        if (replies.Count < 50 && _threadPost is not null && replies.All(m => m.Id != _threadPost.Id))
+            return [_threadPost, .. replies];
+        return replies;
+    }
+
+    /// <summary>Сообщение относится к этой ветке?</summary>
+    public bool BelongsToThread(MessageItem m) =>
+        ThreadTopId is { } top && m.PeerKey == Peer.Key &&
+        (m.ReplyToId == top || m.ThreadTopId == top || (m.ReplyToId is { } r && _byId.ContainsKey(r)));
 
     public ChatsViewModel Owner => _owner;
     public MediaPickerViewModel Picker => _owner.Shell.Picker;
@@ -89,7 +122,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     /// <summary>Сколько новых сообщений пришло, пока пользователь читал историю выше.</summary>
     [ObservableProperty] private int _pendingNewCount;
 
-    public bool CanWrite => Peer.CanWrite;
+    public bool CanWrite => IsThread || Peer.CanWrite;
     public bool HasComposerBar => ReplyTo is not null || Editing is not null;
     public bool HasAttachments => Attachments.Count > 0;
     public string ComposerBarTitle => Editing is not null ? "Редактирование" : $"В ответ {(ReplyTo is { IsOut: true } ? "себе" : ReplyTo?.SenderName)}";
@@ -112,7 +145,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         Error = null;
 
         // 1) Мгновенно — из локального кэша.
-        var cached = _loadedOnce ? null : await Task.Run(() => _tg.GetCachedHistory(Peer));
+        var cached = _loadedOnce || IsThread ? null : await Task.Run(() => _tg.GetCachedHistory(Peer));
         if (cached is { Count: > 0 } && Items.Count == 0)
         {
             ResetItems(cached);
@@ -123,7 +156,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         // 2) Из сети — слияние без перерисовки всей ленты.
         try
         {
-            var history = await _tg.GetHistoryAsync(Peer, 0, 50);
+            var history = await FetchAsync(0);
             if (Items.Count == 0) ResetItems(history);
             else Merge(history);
             HasMoreHistory = history.Count >= 50;
@@ -185,7 +218,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         try
         {
             var oldest = _byId.Keys.Min();
-            var older = await _tg.GetHistoryAsync(Peer, oldest, 50);
+            var older = await FetchAsync(oldest);
             HasMoreHistory = older.Count >= 50;
             PrependRange(older);
             await ResolveRepliesAsync(older);
@@ -341,6 +374,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             return;
         }
         if (m.Poll is { } poll) vm.SetPoll(poll);
+        if (!m.Reactions.SequenceEqual(vm.ReactionInfos)) vm.SetReactions(m.Reactions);
         if (vm.Text == m.Text && vm.IsEdited == (m.EditDateUtc is not null)) return;
         vm.Text = m.Text;
         vm.IsEdited = m.EditDateUtc is not null;
@@ -410,6 +444,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
 
     public void MarkRead()
     {
+        if (IsThread) return;
         var max = LastMessageId;
         if (max <= _lastMarkedRead || max == 0) return;
         _lastMarkedRead = max;
@@ -423,11 +458,12 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     public bool HandleEscape()
     {
         if (IsViewerOpen) { CloseViewer(); return true; }
+        if (IsForwardOpen) { Forwarding = null; return true; }
+        if (IsStickerPackOpen) { StickerPack = null; return true; }
         if (IsPickerOpen) { IsPickerOpen = false; return true; }
         if (HasAttachments) { Attachments.Clear(); OnPropertyChanged(nameof(HasAttachments)); return true; }
         if (HasComposerBar) { CancelComposerBar(); return true; }
         if (SideProfile is { IsAvatarViewerOpen: true } sp) { sp.IsAvatarViewerOpen = false; return true; }
-        if (IsCommentsOpen) { Comments = null; return true; }
         if (IsSideProfileOpen) { SideBack(); return true; }
         return false;
     }
@@ -436,6 +472,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
 
     partial void OnDraftChanged(string value)
     {
+        OnPropertyChanged(nameof(ShowMic));
         if (value.Length > 0 && Editing is null) _ = _tg.NotifyTypingAsync(Peer);
     }
 
@@ -464,7 +501,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             }
             else
             {
-                var reply = ReplyTo?.Id;
+                var reply = ReplyTo?.Id ?? ThreadTopId;
                 Draft = "";
                 ReplyTo = null;
                 var sent = await _tg.SendTextAsync(Peer, text, reply);
@@ -491,7 +528,135 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         foreach (var p in paths.Where(File.Exists))
             if (Attachments.All(a => a.Path != p)) Attachments.Add(new AttachmentViewModel(p));
         OnPropertyChanged(nameof(HasAttachments));
+        OnPropertyChanged(nameof(AttachmentsTitle));
         SendCommand.NotifyCanExecuteChanged();
+    }
+
+    // ===================================================================== Запись голосовых (как в Telegram Desktop)
+    // Пустое поле — вместо «отправить» микрофон: держите — идёт запись, отпустили — отправилось,
+    // увели курсор с кнопки и отпустили — отмена, потянули вверх — запись «закрепляется» без удержания.
+
+    private VoiceRecorder? _recorder;
+    private System.Windows.Threading.DispatcherTimer? _recordTimer;
+
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowMic))] private bool _isRecording;
+    [ObservableProperty] private bool _isRecordLocked;
+    [ObservableProperty] private string _recordTime = "0:00,0";
+    [ObservableProperty] private double _recordLevel;
+
+    public bool ShowMic => string.IsNullOrWhiteSpace(Draft) && Editing is null && !HasAttachments;
+
+    partial void OnEditingChanged(MessageViewModel? value) => OnPropertyChanged(nameof(ShowMic));
+
+    public void StartRecording()
+    {
+        if (IsRecording || !CanWrite) return;
+        try
+        {
+            AudioPlayer.Instance.Stop();
+            _recorder = new VoiceRecorder();
+            _recorder.Start();
+        }
+        catch (Exception ex)
+        {
+            _recorder = null;
+            _owner.ShowToast("Микрофон недоступен: " + TgErrors.Describe(ex), true);
+            return;
+        }
+        IsRecordLocked = false;
+        IsRecording = true;
+        _recordTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+        _recordTimer.Tick += (_, _) =>
+        {
+            if (_recorder is null) return;
+            var s = _recorder.Seconds;
+            RecordTime = $"{(int)s / 60}:{(int)s % 60:00},{(int)(s * 10) % 10}";
+            RecordLevel = _recorder.Level;
+        };
+        _recordTimer.Start();
+        _ = _tg.NotifyTypingAsync(Peer);
+    }
+
+    [RelayCommand]
+    private void LockRecording() => IsRecordLocked = IsRecording;
+
+    [RelayCommand]
+    private void CancelRecording() => _ = FinishRecordingAsync(cancel: true);
+
+    [RelayCommand]
+    private Task SendRecording() => FinishRecordingAsync(cancel: false);
+
+    public async Task FinishRecordingAsync(bool cancel)
+    {
+        if (_recorder is not { } recorder) return;
+        _recorder = null;
+        _recordTimer?.Stop();
+        IsRecording = false;
+        IsRecordLocked = false;
+        RecordLevel = 0;
+        var voice = await Task.Run(() => recorder.Stop(cancel));
+        RecordTime = "0:00,0";
+        if (voice is null)
+        {
+            if (!cancel) _owner.ShowToast("Удерживайте кнопку, чтобы записать голосовое");
+            return;
+        }
+        try
+        {
+            var reply = ReplyTo?.Id ?? ThreadTopId;
+            ReplyTo = null;
+            var sent = await _tg.SendVoiceAsync(Peer, voice, reply);
+            OnMessageReceived(sent);
+            _owner.OnMessageReceived(sent, fromConversation: true);
+        }
+        catch (Exception ex) { _owner.ShowToast(TgErrors.Describe(ex), true); }
+    }
+
+    public string AttachmentsTitle
+    {
+        get
+        {
+            var n = Attachments.Count;
+            if (n > 0 && !SendAsFiles && Attachments.All(a => a.IsImage || a.IsVideo))
+                return Attachments.All(a => a.IsImage) ? $"Отправить {Fmt.N(n)} {Fmt.Plural(n, "фото", "фото", "фото")}" : $"Отправить {Fmt.N(n)} медиа";
+            return $"Отправить {Fmt.N(n)} {Fmt.Plural(n, "файл", "файла", "файлов")}";
+        }
+    }
+
+    partial void OnSendAsFilesChanged(bool value) => OnPropertyChanged(nameof(AttachmentsTitle));
+
+    [RelayCommand]
+    private void CancelAttachments()
+    {
+        Attachments.Clear();
+        OnPropertyChanged(nameof(HasAttachments));
+        SendCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>Ctrl+V: файлы и картинки из буфера обмена — во вложения. true — вставка обработана.</summary>
+    public bool PasteFromClipboard()
+    {
+        try
+        {
+            if (System.Windows.Clipboard.ContainsFileDropList())
+            {
+                AddAttachments(System.Windows.Clipboard.GetFileDropList().Cast<string>().ToList());
+                return true;
+            }
+            if (System.Windows.Clipboard.ContainsImage() && System.Windows.Clipboard.GetImage() is { } image)
+            {
+                var dir = Path.Combine(Path.GetTempPath(), "TgCheck", "paste");
+                Directory.CreateDirectory(dir);
+                var file = Path.Combine(dir, $"image_{DateTime.Now:yyyyMMdd_HHmmss}.png");
+                var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(image));
+                using (var fs = File.Create(file)) encoder.Save(fs);
+                AddAttachments([file]);
+                return true;
+            }
+        }
+        catch (Exception ex) { _owner.ShowToast(TgErrors.Describe(ex), true); }
+        return false; // обычный текст вставит само поле ввода
     }
 
     [RelayCommand]
@@ -507,6 +672,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         if (a is null) return;
         Attachments.Remove(a);
         OnPropertyChanged(nameof(HasAttachments));
+        OnPropertyChanged(nameof(AttachmentsTitle));
         SendCommand.NotifyCanExecuteChanged();
     }
 
@@ -516,7 +682,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         var files = Attachments.ToList();
         try
         {
-            await _tg.SendFilesAsync(Peer, files.Select(f => f.Path).ToList(), caption.Length > 0 ? caption : null, ReplyTo?.Id,
+            await _tg.SendFilesAsync(Peer, files.Select(f => f.Path).ToList(), caption.Length > 0 ? caption : null, ReplyTo?.Id ?? ThreadTopId,
                 SendAsFiles, new Progress<(int Index, double Fraction)>(p => files[p.Index].Progress = p.Fraction));
             Attachments.Clear();
             OnPropertyChanged(nameof(HasAttachments));
@@ -557,7 +723,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         IsPickerOpen = false;
         try
         {
-            var reply = ReplyTo?.Id;
+            var reply = ReplyTo?.Id ?? ThreadTopId;
             ReplyTo = null;
             var sent = await _tg.SendDocumentAsync(Peer, media, reply);
             OnMessageReceived(sent);
@@ -592,6 +758,167 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         if (Editing is not null) Draft = "";
         Editing = null;
         ReplyTo = null;
+    }
+
+    [RelayCommand]
+    private async Task CopyImage(MessageViewModel? m)
+    {
+        if (m?.Item.Media is not MediaKind.Photo) return;
+        try
+        {
+            var bytes = await _tg.Media.GetFullPhotoAsync(m.Item);
+            if (bytes is null || Images.FromBytes(bytes) is not { } image) return;
+            Clipboard.SetImage(image);
+            _owner.ShowToast("Картинка скопирована");
+        }
+        catch (Exception ex) { _owner.ShowToast(TgErrors.Describe(ex), true); }
+    }
+
+    // ---- просмотр набора стикеров (клик по стикеру в чате)
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsStickerPackOpen))] private StickerPackViewModel? _stickerPack;
+    public bool IsStickerPackOpen => StickerPack is not null;
+
+    [RelayCommand]
+    private async Task OpenStickerPack(MessageViewModel? m)
+    {
+        if (m is null || !m.IsSticker) return;
+        try
+        {
+            var pack = await _tg.GetStickerPackOfAsync(m.Item);
+            if (pack is not { } p) { _owner.ShowToast("Набор стикеров недоступен"); return; }
+            StickerPack = new StickerPackViewModel(p.Info, p.Stickers, p.Installed);
+        }
+        catch (Exception ex) { _owner.ShowToast(TgErrors.Describe(ex), true); }
+    }
+
+    [RelayCommand]
+    private void CloseStickerPack() => StickerPack = null;
+
+    [RelayCommand]
+    private async Task ToggleStickerPackInstalled()
+    {
+        if (StickerPack is not { } pack) return;
+        try
+        {
+            await _tg.SetStickerPackInstalledAsync(pack.Info, !pack.Installed);
+            pack.Installed = !pack.Installed;
+            _owner.ShowToast(pack.Installed ? "Набор добавлен" : "Набор удалён");
+            Picker.Reset(); // панель стикеров перечитает наборы
+        }
+        catch (Exception ex) { _owner.ShowToast(TgErrors.Describe(ex), true); }
+    }
+
+    [RelayCommand]
+    private async Task SendFromPack(StickerItem? sticker)
+    {
+        if (sticker is null || !CanWrite) return;
+        StickerPack = null;
+        await SendSticker(sticker);
+    }
+
+    // ---- реакции: одна своя реакция (как без премиума), повторный выбор — снять
+    public IReadOnlyList<string> QuickReactions { get; } = TelegramService.QuickReactions;
+
+    /// <summary>Параметр — MessageViewModel и эмодзи (из меню) либо плашка реакции (клик под сообщением).</summary>
+    [RelayCommand]
+    private async Task React(object? parameter)
+    {
+        MessageViewModel? m;
+        ReactionInfo picked;
+        switch (parameter)
+        {
+            case ReactionViewModel chip:
+                m = chip.Message;
+                picked = chip.Info;
+                break;
+            case QuickReactionItem quick:
+                m = quick.Message;
+                picked = new ReactionInfo(quick.Emoji, 0, 0, false);
+                break;
+            default:
+                return;
+        }
+        if (picked.IsPaid) return; // звёздные реакции не ставим
+        var before = m.ReactionInfos;
+        var mineAlready = before.Any(r => r.Chosen && r.Key == picked.Key);
+        // Оптимистично обновляем сразу, сервер затем пришлёт точные цифры.
+        var after = before
+            .Select(r => r.Chosen ? r with { Count = r.Count - 1, Chosen = false } : r)
+            .Where(r => r.Count > 0)
+            .ToList();
+        if (!mineAlready)
+        {
+            var index = after.FindIndex(r => r.Key == picked.Key);
+            if (index >= 0) after[index] = after[index] with { Count = after[index].Count + 1, Chosen = true };
+            else after.Add(picked with { Count = 1, Chosen = true });
+        }
+        m.SetReactions(after);
+        try
+        {
+            await _tg.SetReactionsAsync(Peer, m.Id, mineAlready ? [] : [picked]);
+        }
+        catch (Exception ex)
+        {
+            m.SetReactions(before);
+            _owner.ShowToast(TgErrors.Describe(ex), true);
+        }
+    }
+
+    public void OnReactions(int messageId, IReadOnlyList<ReactionInfo> reactions)
+    {
+        if (_byId.TryGetValue(messageId, out var vm) && vm.Id == messageId) vm.SetReactions(reactions);
+    }
+
+    // ---- пересылка: выбор чата из своего списка с поиском
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsForwardOpen))] private MessageViewModel? _forwarding;
+    [ObservableProperty] private string _forwardQuery = "";
+    public bool IsForwardOpen => Forwarding is not null;
+    public ObservableCollection<ChatItemViewModel> ForwardChats { get; } = [];
+
+    partial void OnForwardQueryChanged(string value) => FillForwardChats();
+
+    private void FillForwardChats()
+    {
+        ForwardChats.Clear();
+        var q = ForwardQuery.Trim();
+        var list = _owner.Chats
+            .Where(c => q.Length > 0 || !c.IsArchived)
+            .Where(c => q.Length == 0 || c.Title.Contains(q, StringComparison.CurrentCultureIgnoreCase) ||
+                        c.Peer.Username?.Contains(q.TrimStart('@'), StringComparison.OrdinalIgnoreCase) == true)
+            .Where(c => c.Peer.CanWrite)
+            .OrderByDescending(c => c.IsPinned).ThenByDescending(c => c.SortDate)
+            .Take(60);
+        foreach (var c in list)
+        {
+            c.EnsureAvatar(_tg.Media);
+            ForwardChats.Add(c);
+        }
+    }
+
+    [RelayCommand]
+    private void Forward(MessageViewModel? m)
+    {
+        if (m is null) return;
+        ForwardQuery = "";
+        Forwarding = m;
+        FillForwardChats();
+    }
+
+    [RelayCommand]
+    private void CancelForward() => Forwarding = null;
+
+    [RelayCommand]
+    private async Task ForwardTo(ChatItemViewModel? target)
+    {
+        if (Forwarding is not { } m || target is null) return;
+        Forwarding = null;
+        try
+        {
+            var ids = m.IsAlbum ? m.Album.Select(a => a.Id).ToList() : [m.Id];
+            await _tg.ForwardAsync(Peer, ids, target.Peer);
+            _owner.ShowToast($"Переслано: {target.Title}");
+        }
+        catch (Exception ex) { _owner.ShowToast(TgErrors.Describe(ex), true); }
     }
 
     [RelayCommand]
@@ -678,6 +1005,8 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             m.IsLoadingAudio = false;
             if (path is null) throw new IOException("Не удалось загрузить аудио.");
             AudioPlayer.Instance.Play(m.AudioKey, path);
+            NowPlaying.Instance.StartAudio(m.AudioKey, m.IsOut ? "Вы" : (m.SenderName is { Length: > 0 } s ? s : Title),
+                m.IsVoice ? "Голосовое сообщение" : (m.FileTitle ?? "Аудио"));
         }
         catch (Exception ex)
         {
@@ -744,7 +1073,6 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     private void ToggleSideProfile()
     {
         if (SideProfile is not null) { SideProfile = null; return; }
-        Comments = null;
         // Аватар уже загружен в шапке — не качаем его заново.
         var vm = new ProfileViewModel(_tg, Peer, () => Task.CompletedTask, _owner.Shell, compact: true) { Avatar = Avatar };
         SideProfile = vm;
@@ -854,17 +1182,18 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
 
     // ===================================================================== Комментарии к постам
 
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsCommentsOpen))] private CommentsViewModel? _comments;
-    public bool IsCommentsOpen => Comments is not null;
-
+    /// <summary>Комментарии открываются как обычный чат-ветка (как в Telegram Desktop), «назад» — к каналу.</summary>
     [RelayCommand]
     private async Task OpenComments(MessageViewModel? post)
     {
         if (post is null) return;
         SideProfile = null;
-        var vm = new CommentsViewModel(_tg, Peer, post, () => Comments = null, _owner.ShowToast);
-        Comments = vm;
-        await vm.LoadAsync();
+        try
+        {
+            var (discussion, topId, top) = await _tg.GetThreadAsync(Peer, post.Id);
+            _owner.OpenThread(new ConversationViewModel(_tg, _owner, discussion, topId, this, top));
+        }
+        catch (Exception ex) { _owner.ShowToast(TgErrors.Describe(ex), true); }
     }
 
     // ===================================================================== Закреплённые и переход к сообщению
@@ -877,6 +1206,8 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
 
     /// <summary>View: прокрутить к сообщению и подсветить его.</summary>
     public event Action<MessageViewModel>? ScrollToMessageRequested;
+    /// <summary>View: лента сейчас будет пересобрана (переход далеко) — спрятать её, чтобы не мигала.</summary>
+    public event Action? FeedResetting;
     public bool IsDetached => _detached;
     private bool _detached;
 
@@ -908,6 +1239,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             try
             {
                 var around = await _tg.GetHistoryAroundAsync(Peer, id);
+                FeedResetting?.Invoke();
                 ResetItems(around);
                 HasMoreHistory = true;
                 _detached = true;
@@ -921,6 +1253,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             await Task.Delay(1600);
             vm.IsHighlighted = false;
         }
+        else ScrollToBottomRequested?.Invoke(false);
     }
 
     [RelayCommand]
@@ -1048,7 +1381,8 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         {
             // После перехода к старому сообщению лента «оторвана» — возвращаем последние.
             _detached = false;
-            try { ResetItems(await _tg.GetHistoryAsync(Peer, 0, 50)); } catch { }
+            FeedResetting?.Invoke();
+            try { ResetItems(await FetchAsync(0)); } catch { }
             ScrollToBottomRequested?.Invoke(false);
         }
         else ScrollToBottomRequested?.Invoke(true);

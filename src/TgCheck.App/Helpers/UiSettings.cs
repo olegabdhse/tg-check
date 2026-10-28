@@ -14,6 +14,10 @@ public static class UiSettings
     {
         public double? MiniLeft { get; set; }
         public double? MiniTop { get; set; }
+        public bool HideIsland { get; set; }
+        public bool NotificationsOff { get; set; }
+        public bool SoundOff { get; set; }
+        public bool NotifyArchived { get; set; }
     }
 
     private static Data _data = Load();
@@ -35,6 +39,18 @@ public static class UiSettings
             Save();
         }
     }
+
+    /// <summary>Островок с чатами при сворачивании окна.</summary>
+    public static bool ShowIsland { get => !_data.HideIsland; set { _data.HideIsland = !value; Save(); } }
+
+    /// <summary>Всплывающие уведомления о новых сообщениях.</summary>
+    public static bool Notifications { get => !_data.NotificationsOff; set { _data.NotificationsOff = !value; Save(); } }
+
+    /// <summary>Звук уведомления.</summary>
+    public static bool NotificationSound { get => !_data.SoundOff; set { _data.SoundOff = !value; Save(); } }
+
+    /// <summary>Уведомлять и о чатах из архива (по умолчанию — нет, как в Telegram).</summary>
+    public static bool NotifyArchived { get => _data.NotifyArchived; set { _data.NotifyArchived = value; Save(); } }
 
     private static Data Load()
     {

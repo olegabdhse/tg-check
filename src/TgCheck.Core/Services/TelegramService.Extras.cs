@@ -39,6 +39,26 @@ public sealed partial class TelegramService
         return result.OrderByDescending(p => p.Peer.IsSelf).ThenByDescending(p => p.HasUnread).ToList();
     }
 
+    /// <summary>Истории в профиле (закреплённые), для своего профиля — по желанию архив. Новые первыми.</summary>
+    public async Task<IReadOnlyList<StoryInfo>> GetProfileStoriesAsync(PeerRef peer, bool archive = false)
+    {
+        if (IsIgnored(peer)) return [];
+        try
+        {
+            var res = archive
+                ? await _client.Stories_GetStoriesArchive(peer.Info.ToInputPeer(), limit: 60)
+                : await _client.Stories_GetPinnedStories(peer.Info.ToInputPeer(), limit: 60);
+            foreach (var (k, v) in res.users) _users[k] = v;
+            foreach (var (k, v) in res.chats) _chats[k] = v;
+            return res.stories.OfType<StoryItem>().Select(MapStory).OfType<StoryInfo>().OrderByDescending(s => s.Id).ToList();
+        }
+        catch (Exception ex)
+        {
+            Logging.Write("profile stories: " + ex.Message);
+            return [];
+        }
+    }
+
     private static StoryInfo? MapStory(StoryItem s) => s.media switch
     {
         MessageMediaPhoto { photo: Photo p } => new StoryInfo { Id = s.id, DateUtc = s.date, Caption = s.caption, Photo = p },
@@ -79,6 +99,31 @@ public sealed partial class TelegramService
         return (res as Messages_RecentStickers)?.stickers.OfType<Document>().Select(ToSticker).ToList() ?? [];
     }
 
+    /// <summary>Избранные (сохранённые) стикеры пользователя.</summary>
+    public async Task<IReadOnlyList<StickerItem>> GetFavedStickersAsync()
+    {
+        var res = await _client.Messages_GetFavedStickers(0);
+        return (res as Messages_FavedStickers)?.stickers.OfType<Document>().Select(ToSticker).ToList() ?? [];
+    }
+
+    /// <summary>Набор, к которому относится стикер: название, стикеры и установлен ли он у пользователя.</summary>
+    public async Task<(StickerSetInfo Info, IReadOnlyList<StickerItem> Stickers, bool Installed)?> GetStickerPackOfAsync(MediaHolder sticker)
+    {
+        if (sticker.Document?.attributes?.OfType<DocumentAttributeSticker>().FirstOrDefault()?.stickerset is not { } input) return null;
+        var res = await _client.Messages_GetStickerSet(input, 0);
+        var set = res.set;
+        var info = new StickerSetInfo { Id = set.id, AccessHash = set.access_hash, Title = set.title, Count = set.count };
+        return (info, res.documents.OfType<Document>().Select(ToSticker).ToList(), set.flags.HasFlag(StickerSet.Flags.has_installed_date));
+    }
+
+    /// <summary>Добавить набор стикеров себе или удалить его.</summary>
+    public async Task SetStickerPackInstalledAsync(StickerSetInfo set, bool install)
+    {
+        var input = new InputStickerSetID { id = set.Id, access_hash = set.AccessHash };
+        if (install) await _client.Messages_InstallStickerSet(input, false);
+        else await _client.Messages_UninstallStickerSet(input);
+    }
+
     private static StickerItem ToSticker(Document d) => new()
     {
         Document = d,
@@ -102,6 +147,72 @@ public sealed partial class TelegramService
         if (media.Document is not { } doc) throw new InvalidOperationException("Нет документа для отправки.");
         var input = new InputMediaDocument { id = new InputDocument { id = doc.id, access_hash = doc.access_hash, file_reference = doc.file_reference } };
         var msg = await _client.SendMessageAsync(peer.Info.ToInputPeer(), "", input, replyToId ?? 0);
+        return MapMessage(msg);
+    }
+
+    // ===================================================================== Реакции
+
+    internal static IReadOnlyList<ReactionInfo> MapReactions(MessageReactions? reactions)
+    {
+        if (reactions?.results is not { Length: > 0 } results) return [];
+        return results.Select(r => r.reaction switch
+            {
+                ReactionEmoji e => new ReactionInfo(e.emoticon, 0, r.count, r.flags.HasFlag(ReactionCount.Flags.has_chosen_order)),
+                ReactionCustomEmoji c => new ReactionInfo(null, c.document_id, r.count, r.flags.HasFlag(ReactionCount.Flags.has_chosen_order)),
+                ReactionPaid => new ReactionInfo("⭐", 0, r.count, r.flags.HasFlag(ReactionCount.Flags.has_chosen_order), IsPaid: true),
+                _ => null,
+            })
+            .OfType<ReactionInfo>()
+            .ToList();
+    }
+
+    /// <summary>Поставить реакции (пустой список — снять). Возвращает новые реакции сообщения.</summary>
+    public async Task SetReactionsAsync(PeerRef peer, int messageId, IReadOnlyList<ReactionInfo> mine)
+    {
+        Reaction[] reaction = [.. mine.Where(r => !r.IsPaid).Select(r => r.CustomEmojiId != 0
+            ? (Reaction)new ReactionCustomEmoji { document_id = r.CustomEmojiId }
+            : new ReactionEmoji { emoticon = r.Emoji })];
+        var updates = await _client.Messages_SendReaction(peer.Info.ToInputPeer(), messageId, reaction);
+        // Сервер присылает UpdateMessageReactions — его разберёт общий обработчик обновлений.
+        foreach (var u in updates.UpdateList) if (u is UpdateMessageReactions r && PeerOf(r.peer) is { } rp)
+            ReactionsUpdated?.Invoke(rp.Key, r.msg_id, MapReactions(r.reactions));
+    }
+
+    /// <summary>Быстрые реакции (как стандартный набор Telegram).</summary>
+    public static readonly string[] QuickReactions = ["👍", "❤", "🔥", "🥰", "👏", "😁", "🤔", "😢", "🎉", "🤩", "🙏", "👌", "😍", "🤣", "💯", "😭", "🤯", "😱", "👎", "💔"];
+
+    /// <summary>Переслать сообщения (альбом — целиком) в другой чат.</summary>
+    public async Task ForwardAsync(PeerRef from, IReadOnlyList<int> ids, PeerRef to)
+    {
+        EnsureNotIgnored(to);
+        var random = ids.Select(_ => WTelegram.Helpers.RandomLong()).ToArray();
+        await _client.Messages_ForwardMessages(from.Info.ToInputPeer(), [.. ids], random, to.Info.ToInputPeer());
+    }
+
+    /// <summary>Фото в полном размере (для копирования в буфер обмена).</summary>
+    public async Task<byte[]?> GetPhotoBytesAsync(MediaHolder media) => await Media.GetFullPhotoAsync(media);
+
+    /// <summary>Отправить записанное голосовое (Ogg/Opus с волной).</summary>
+    public async Task<MessageItem> SendVoiceAsync(PeerRef peer, Media.VoiceRecording voice, int? replyToId = null)
+    {
+        EnsureNotIgnored(peer);
+        var file = await _client.UploadFileAsync(voice.Path);
+        var media = new InputMediaUploadedDocument
+        {
+            file = file,
+            mime_type = "audio/ogg",
+            attributes =
+            [
+                new DocumentAttributeAudio
+                {
+                    flags = DocumentAttributeAudio.Flags.voice | DocumentAttributeAudio.Flags.has_waveform,
+                    duration = (int)Math.Round(voice.DurationSeconds),
+                    waveform = voice.Waveform,
+                },
+            ],
+        };
+        var msg = await _client.SendMessageAsync(peer.Info.ToInputPeer(), "", media, replyToId ?? 0);
+        try { File.Delete(voice.Path); } catch { }
         return MapMessage(msg);
     }
 
@@ -253,16 +364,21 @@ public sealed partial class TelegramService
     // ===================================================================== Комментарии к постам каналов
 
     /// <summary>Обсуждение поста: группа обсуждения, id исходного сообщения в ней и комментарии (по порядку).</summary>
-    public async Task<(PeerRef Discussion, int TopId, IReadOnlyList<MessageItem> Comments)> GetCommentsAsync(PeerRef channel, int postId)
+    public async Task<(PeerRef Discussion, int TopId, MessageItem Top)> GetThreadAsync(PeerRef channel, int postId)
     {
         var discussion = await _client.Messages_GetDiscussionMessage(channel.Info.ToInputPeer(), postId);
         foreach (var (k, v) in discussion.users) _users[k] = v;
         foreach (var (k, v) in discussion.chats) _chats[k] = v;
         var top = discussion.messages.OfType<Message>().MinBy(m => m.id) ?? throw new PeerNotFoundException("Обсуждение недоступно.");
         var group = PeerOf(top.peer_id) ?? throw new PeerNotFoundException("Обсуждение недоступно.");
-        var replies = await _client.Messages_GetReplies(channel.Info.ToInputPeer(), postId, limit: 100);
-        var items = await Task.Run(() => MapHistory(replies));
-        return (group, top.id, items);
+        return (group, top.id, MapMessage(top));
+    }
+
+    /// <summary>Ответы в ветке обсуждения (по порядку), страницами от offsetId вниз.</summary>
+    public async Task<IReadOnlyList<MessageItem>> GetRepliesAsync(PeerRef discussion, int topId, int offsetId = 0, int limit = 50)
+    {
+        var replies = await _client.Messages_GetReplies(discussion.Info.ToInputPeer(), topId, offset_id: offsetId, limit: limit);
+        return await Task.Run(() => MapHistory(replies));
     }
 
     public async Task<MessageItem> SendCommentAsync(PeerRef discussion, int topId, string text) =>

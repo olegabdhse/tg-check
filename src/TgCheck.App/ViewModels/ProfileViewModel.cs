@@ -183,6 +183,48 @@ public sealed partial class ProfileViewModel : ObservableObject
 
     // ===================================================================== Подарки
 
+    // ===================================================================== Истории в профиле
+
+    public ObservableCollection<ProfileStoryViewModel> Stories { get; } = [];
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(StoriesTitle))] private bool _showStoryArchive;
+    public bool HasStories => Stories.Count > 0 || IsSelfProfile;
+    public bool IsSelfProfile => Profile?.Peer.IsSelf == true;
+    public bool ShowNoStories => IsSelfProfile && Stories.Count == 0;
+    public string StoriesTitle => ShowStoryArchive ? "Архив историй" : "Истории";
+
+    partial void OnShowStoryArchiveChanged(bool value) => _ = LoadStoriesAsync();
+
+    private async Task LoadStoriesAsync()
+    {
+        if (Profile?.Peer is not { } peer) return;
+        var stories = await _tg.GetProfileStoriesAsync(peer, archive: ShowStoryArchive && peer.IsSelf);
+        Stories.Clear();
+        foreach (var s in stories)
+        {
+            var item = new ProfileStoryViewModel(s);
+            Stories.Add(item);
+            _ = item.LoadPreviewAsync(_tg);
+        }
+        OnPropertyChanged(nameof(HasStories));
+        OnPropertyChanged(nameof(IsSelfProfile));
+        OnPropertyChanged(nameof(ShowNoStories));
+    }
+
+    [RelayCommand]
+    private void ToggleStoryArchive() => ShowStoryArchive = !ShowStoryArchive;
+
+    /// <summary>Открыть историю из профиля: просмотр с неё и дальше по списку.</summary>
+    [RelayCommand]
+    private void OpenStory(ProfileStoryViewModel? story)
+    {
+        if (story is null || Profile?.Peer is not { } peer) return;
+        var list = Stories.Select(s => s.Story).ToList();
+        var start = list.IndexOf(story.Story);
+        var ordered = list.Skip(start).Concat(list.Take(start)).ToList();
+        var storyPeer = new StoryPeer { Peer = peer, Stories = ordered, MaxReadId = int.MaxValue };
+        _shell.OpenStories([new StoryPeerViewModel(storyPeer) { Avatar = Avatar }], 0);
+    }
+
     public ObservableCollection<GiftViewModel> Gifts { get; } = [];
     public ICollectionView GiftsView { get; }
 
@@ -289,6 +331,7 @@ public sealed partial class ProfileViewModel : ObservableObject
             foreach (var name in new[] { nameof(IsGroupProfile), nameof(IsBotProfile), nameof(HasBotCommands), nameof(ShowGifts), nameof(MembersTitle) })
                 OnPropertyChanged(name);
             _ = LoadMembersAsync();
+            _ = LoadStoriesAsync();
             if (ShowGifts) await LoadGiftsAsync();
         }
         catch (Exception ex)
@@ -697,4 +740,16 @@ public sealed partial class ProfileViewModel : ObservableObject
         }
         catch (TaskCanceledException) { }
     }
+}
+
+/// <summary>Плитка истории в профиле (9:16).</summary>
+public sealed partial class ProfileStoryViewModel(StoryInfo story) : ObservableObject
+{
+    public StoryInfo Story { get; } = story;
+    public string DateText => Story.DateUtc.ToLocalTime().ToString("d MMM", Fmt.Ru);
+    public bool IsVideo => Story.IsVideo;
+    [ObservableProperty] private ImageSource? _preview;
+
+    public async Task LoadPreviewAsync(TelegramService tg) =>
+        Preview = Images.FromBytes(await tg.Media.GetMessagePreviewAsync(Story), 240);
 }

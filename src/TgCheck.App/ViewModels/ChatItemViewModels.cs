@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using TgCheck.App.Helpers;
 using TgCheck.Core.Media;
 using TgCheck.Core.Models;
+using TgCheck.Core.Services;
 
 namespace TgCheck.App.ViewModels;
 
@@ -159,6 +160,21 @@ public sealed class DateSeparatorViewModel(DateTime localDate)
 public enum MediaLayout { None, PhotoVideo, Gif, Sticker, Round, Voice, Poll, File, VisualAlbum, FileAlbum, Map }
 
 /// <summary>Кнопка под сообщением бота/канала.</summary>
+/// <summary>Быстрая реакция в меню сообщения.</summary>
+public sealed record QuickReactionItem(MessageViewModel Message, string Emoji);
+
+/// <summary>Плашка реакции под сообщением.</summary>
+public sealed class ReactionViewModel(MessageViewModel message, ReactionInfo info)
+{
+    public MessageViewModel Message { get; } = message;
+    public ReactionInfo Info { get; } = info;
+    public string? Emoji => Info.CustomEmojiId == 0 ? Info.Emoji : null;
+    public long CustomEmojiId => Info.CustomEmojiId;
+    public bool IsCustom => Info.CustomEmojiId != 0;
+    public string CountText => Fmt.N(Info.Count);
+    public bool Chosen => Info.Chosen;
+}
+
 public sealed class InlineButtonViewModel(MessageViewModel message, BotButton button)
 {
     public MessageViewModel Message { get; } = message;
@@ -338,6 +354,21 @@ public sealed partial class MessageViewModel : ObservableObject
         _inlineRows ??= Item.InlineButtons.Select(r => (IReadOnlyList<InlineButtonViewModel>)r.Select(b => new InlineButtonViewModel(this, b)).ToList()).ToList();
     public bool HasInlineButtons => Item.InlineButtons.Count > 0;
     public bool HasComments => Item.Comments is not null;
+
+    // ---- реакции
+    private ObservableCollection<ReactionViewModel>? _reactions;
+    public ObservableCollection<ReactionViewModel> Reactions => _reactions ??= new(Item.Reactions.Select(r => new ReactionViewModel(this, r)));
+    public bool HasReactions => Reactions.Count > 0;
+    public IReadOnlyList<QuickReactionItem> QuickReactionItems => _quick ??= TelegramService.QuickReactions.Take(8).Select(e => new QuickReactionItem(this, e)).ToList();
+    private IReadOnlyList<QuickReactionItem>? _quick;
+    public IReadOnlyList<ReactionInfo> ReactionInfos => Reactions.Select(r => r.Info).ToList();
+
+    public void SetReactions(IReadOnlyList<ReactionInfo> reactions)
+    {
+        Reactions.Clear();
+        foreach (var r in reactions) Reactions.Add(new ReactionViewModel(this, r));
+        OnPropertyChanged(nameof(HasReactions));
+    }
     public string CommentsText => Item.Comments is not { } n || n == 0 ? "Оставить комментарий"
         : $"{Fmt.N(n)} {Fmt.Plural(n, "комментарий", "комментария", "комментариев")}";
     /// <summary>Подсветка после перехода к сообщению (закреп, ответ).</summary>
