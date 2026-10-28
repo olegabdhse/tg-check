@@ -40,9 +40,10 @@ public sealed class AppEnv
     {
         var searched = new List<string>();
         var path = FindEnvFile(searched);
-        var values = path is null
-            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            : Parse(File.ReadAllLines(path));
+        // Основа — ключи, зашитые в exe при сборке; .env рядом с программой их переопределяет.
+        var values = ReadEmbedded();
+        if (path is not null)
+            foreach (var (k, v) in Parse(File.ReadAllLines(path))) values[k] = v;
 
         string? Get(string key)
         {
@@ -122,6 +123,29 @@ public sealed class AppEnv
         var cwd = Path.Combine(Environment.CurrentDirectory, FileName);
         searched.Add(Environment.CurrentDirectory);
         return File.Exists(cwd) ? cwd : null;
+    }
+
+    /// <summary>Ключи, зашитые в exe при сборке (ресурс TgCheck.embedded.env), или пустой набор.</summary>
+    private static Dictionary<string, string> ReadEmbedded()
+    {
+        try
+        {
+            using var stream = System.Reflection.Assembly.GetEntryAssembly()?.GetManifestResourceStream("TgCheck.embedded.env");
+            if (stream is null) return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            // Формат — как в build\embed-env.ps1: IV (16 байт) + AES-256-CBC.
+            using var ms = new MemoryStream();
+            stream.CopyTo(ms);
+            var blob = ms.ToArray();
+            using var aes = System.Security.Cryptography.Aes.Create();
+            aes.Key = System.Security.Cryptography.SHA256.HashData("TgCheck.EmbeddedEnv.v1|7f3c9a1e"u8);
+            aes.IV = blob[..16];
+            var plain = aes.CreateDecryptor().TransformFinalBlock(blob, 16, blob.Length - 16);
+            return Parse(System.Text.Encoding.UTF8.GetString(plain).Split('\n'));
+        }
+        catch
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
     }
 
     internal static Dictionary<string, string> Parse(IEnumerable<string> lines)

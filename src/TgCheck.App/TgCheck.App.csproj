@@ -33,6 +33,25 @@
     <Using Remove="System.Drawing" />
   </ItemGroup>
 
+  <!-- Ключи из .env (в корне проекта) зашиваются в exe: скачанная из релиза программа работает без своего .env.
+       В git файла нет; .env рядом с exe, если он есть, важнее зашитого. -->
+  <!-- Встраиваются в зашифрованном виде (build\embed-env.ps1): в exe нет ключей открытым текстом. -->
+  <PropertyGroup>
+    <EnvSource>$(MSBuildThisFileDirectory)..\..\.env</EnvSource>
+    <EnvBlob>$(MSBuildProjectDirectory)\obj\env.bin</EnvBlob>
+  </PropertyGroup>
+
+  <Target Name="EncryptEnv" Condition="Exists('$(EnvSource)')"
+          Inputs="$(EnvSource);$(MSBuildThisFileDirectory)..\..\build\embed-env.ps1" Outputs="$(EnvBlob)">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\..\build\embed-env.ps1&quot; -EnvFile &quot;$(EnvSource)&quot; -OutFile &quot;$(EnvBlob)&quot;" />
+  </Target>
+
+  <Target Name="EmbedEnv" BeforeTargets="BeforeBuild" DependsOnTargets="EncryptEnv" Condition="Exists('$(EnvSource)')">
+    <ItemGroup>
+      <EmbeddedResource Include="$(EnvBlob)" LogicalName="TgCheck.embedded.env" />
+    </ItemGroup>
+  </Target>
+
   <Import Project="..\..\build\Logo.targets" />
 
 </Project>
