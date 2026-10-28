@@ -1,0 +1,117 @@
+<Window x:Class="TgCheck.App.Views.IslandWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:TgCheck.App.ViewModels"
+        xmlns:controls="clr-namespace:TgCheck.App.Controls"
+        xmlns:helpers="clr-namespace:TgCheck.App.Helpers"
+        Title="TG Check" WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize"
+        SizeToContent="WidthAndHeight" FontFamily="{StaticResource UiFont}" Foreground="{StaticResource TextBrush}"
+        UseLayoutRounding="True">
+
+    <Window.Resources>
+        <LinearGradientBrush x:Key="RingUnread" StartPoint="0,1" EndPoint="1,0">
+            <GradientStop Color="#2AABEE" Offset="0" />
+            <GradientStop Color="#8E6BF5" Offset="1" />
+        </LinearGradientBrush>
+    </Window.Resources>
+
+    <!-- Отступ под тень -->
+    <Grid Margin="22,8,22,22">
+        <Border x:Name="Pill" CornerRadius="28" Background="#F20B1016" Padding="8,7" BorderBrush="#26FFFFFF" BorderThickness="1"
+                RenderTransformOrigin="0.5,0">
+            <Border.RenderTransform>
+                <ScaleTransform x:Name="PillScale" />
+            </Border.RenderTransform>
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="22" ShadowDepth="4" Opacity="0.55" />
+            </Border.Effect>
+            <StackPanel Orientation="Horizontal">
+                <!-- Значок приложения: клик — развернуть окно -->
+                <Button x:Name="AppButton" Width="42" Height="42" Cursor="Hand" ToolTip="Открыть TG Check" Click="AppButton_Click"
+                        FocusVisualStyle="{x:Null}">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Grid>
+                                <Ellipse x:Name="C" Fill="{StaticResource AccentBrush}" />
+                                <Image Source="{Binding Logo, RelativeSource={RelativeSource AncestorType=Window}}" Margin="2"
+                                       Visibility="{Binding Logo, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource NullToVis}}" />
+                                <Path Data="{StaticResource PlaneGeometry}" Fill="White" Stretch="Uniform" Margin="11,12,12,11"
+                                      Visibility="{Binding Logo, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource InvNullToVis}}" />
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="C" Property="Fill" Value="{StaticResource AccentHoverBrush}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+                <Border Width="1" Height="26" Background="#33FFFFFF" Margin="10,0,6,0" />
+
+                <ItemsControl x:Name="ChatsList">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:ChatItemViewModel}">
+                            <Button Width="46" Height="46" Margin="4,0" Cursor="Hand" FocusVisualStyle="{x:Null}" Click="Chat_Click"
+                                    ToolTip="{Binding Title}">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Grid x:Name="G" RenderTransformOrigin="0.5,0.5" Background="Transparent">
+                                            <Grid.RenderTransform>
+                                                <ScaleTransform x:Name="S" />
+                                            </Grid.RenderTransform>
+                                            <ContentPresenter />
+                                        </Grid>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Trigger.EnterActions>
+                                                    <BeginStoryboard>
+                                                        <Storyboard>
+                                                            <DoubleAnimation Storyboard.TargetName="S" Storyboard.TargetProperty="ScaleX" To="1.12" Duration="0:0:0.16">
+                                                                <DoubleAnimation.EasingFunction>
+                                                                    <BackEase EasingMode="EaseOut" Amplitude="0.4" />
+                                                                </DoubleAnimation.EasingFunction>
+                                                            </DoubleAnimation>
+                                                            <DoubleAnimation Storyboard.TargetName="S" Storyboard.TargetProperty="ScaleY" To="1.12" Duration="0:0:0.16">
+                                                                <DoubleAnimation.EasingFunction>
+                                                                    <BackEase EasingMode="EaseOut" Amplitude="0.4" />
+                                                                </DoubleAnimation.EasingFunction>
+                                                            </DoubleAnimation>
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </Trigger.EnterActions>
+                                                <Trigger.ExitActions>
+                                                    <BeginStoryboard>
+                                                        <Storyboard>
+                                                            <DoubleAnimation Storyboard.TargetName="S" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.16" />
+                                                            <DoubleAnimation Storyboard.TargetName="S" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.16" />
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </Trigger.ExitActions>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                                <Grid>
+                                    <controls:AvatarView Width="46" Height="46" Source="{Binding Avatar}" Fill="{Binding AvatarBrush}"
+                                                         Initials="{Binding Initials}" Ring="{Binding UnreadRing}" />
+                                    <Border Background="{StaticResource AccentBrush}" CornerRadius="8" MinWidth="16" Height="16" Padding="4,0"
+                                            HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-3,-4,0" BorderThickness="1.5" BorderBrush="#0B1016"
+                                            Visibility="{Binding Unread, Converter={StaticResource NullToVis}}">
+                                        <TextBlock Text="{Binding UnreadText}" FontSize="9" FontWeight="Bold" Foreground="White"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                </Grid>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

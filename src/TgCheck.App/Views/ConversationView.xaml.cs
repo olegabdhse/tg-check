@@ -1,0 +1,284 @@
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Threading;
+using TgCheck.App.Helpers;
+using TgCheck.App.ViewModels;
+using TgCheck.Core.Media;
+
+namespace TgCheck.App.Views;
+
+/// <summary>
+/// Лента чата: старт снизу, «прилипание» к низу при новых сообщениях, подгрузка истории без скачков,
+/// перемотка голосовых, перетаскивание файлов, видеоплеер.
+/// </summary>
+public partial class ConversationView : UserControl
+{
+    private const double BottomThreshold = 60;
+    private ConversationViewModel? _vm;
+    private bool _stickToBottom = true;
+    private bool _loadingOlder;
+    private readonly DispatcherTimer _videoTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
+    private bool _videoPlaying;
+
+    /// <summary>Показывать кнопку «назад» в шапке (узкое окно, мини-окно).</summary>
+    public static readonly DependencyProperty ShowBackProperty = DependencyProperty.Register(
+        nameof(ShowBack), typeof(bool), typeof(ConversationView),
+        new PropertyMetadata(false, (d, e) => ((ConversationView)d).BackButton.Visibility = e.NewValue is true ? Visibility.Visible : Visibility.Collapsed));
+
+    public bool ShowBack { get => (bool)GetValue(ShowBackProperty); set => SetValue(ShowBackProperty, value); }
+
+    public ConversationView()
+    {
+        InitializeComponent();
+        DataContextChanged += OnDataContextChanged;
+        Unloaded += (_, _) => { Detach(); VideoPlayer.Stop(); _videoTimer.Stop(); };
+        Loaded += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.Input, () => Composer.Focus());
+        _videoTimer.Tick += (_, _) => UpdateVideoTime();
+        Anim.SetShow(JumpButton, false);
+        JumpButton.Visibility = Visibility.Collapsed;
+    }
+
+    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        Detach();
+        _vm = DataContext as ConversationViewModel;
+        if (_vm is null) return;
+        _vm.ScrollToBottomRequested += ScrollToBottom;
+        _vm.ScrollToMessageRequested += ScrollToMessage;
+        _vm.InsertTextRequested += InsertText;
+        _vm.PropertyChanged += OnVmPropertyChanged;
+        _vm.IsAtBottom = () => IsNearBottom(Scroller.VerticalOffset);
+        _stickToBottom = true;
+        ScrollToBottom(false);
+    }
+
+    private void Detach()
+    {
+        if (_vm is null) return;
+        _vm.ScrollToBottomRequested -= ScrollToBottom;
+        _vm.ScrollToMessageRequested -= ScrollToMessage;
+        _vm.InsertTextRequested -= InsertText;
+        _vm.PropertyChanged -= OnVmPropertyChanged;
+        _vm.IsAtBottom = null;
+        _vm = null;
+    }
+
+    private bool IsNearBottom(double offset) => offset >= Scroller.ScrollableHeight - BottomThreshold;
+
+    private void ScrollToBottom(bool animated)
+    {
+        _stickToBottom = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            Scroller.UpdateLayout();
+            if (animated) SmoothScroll.ScrollTo(Scroller, Scroller.ScrollableHeight);
+            else Scroller.ScrollToEnd();
+        });
+    }
+
+    // Переход к сообщению (закреп, ответ): сообщение — по центру экрана.
+    private void ScrollToMessage(MessageViewModel message)
+    {
+        _stickToBottom = false;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            Scroller.UpdateLayout();
+            if (Feed.ItemContainerGenerator.ContainerFromItem(message) is not FrameworkElement el) return;
+            var top = el.TransformToAncestor(Scroller).Transform(new Point(0, 0)).Y + Scroller.VerticalOffset;
+            var target = Math.Clamp(top - (Scroller.ViewportHeight - el.ActualHeight) / 2, 0, Scroller.ScrollableHeight);
+            SmoothScroll.ScrollTo(Scroller, target);
+        });
+    }
+
+    private void InsertText(string text)
+    {
+        var caret = Composer.CaretIndex;
+        Composer.Text = Composer.Text.Insert(caret, text);
+        Composer.CaretIndex = caret + text.Length;
+        Composer.Focus();
+    }
+
+    private async void Scroller_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (_vm is null) return;
+
+        if (e.ExtentHeightChange != 0 && e.VerticalChange == 0)
+        {
+            // Контент вырос (догрузились картинки/пришли сообщения): если были внизу — остаёмся внизу.
+            if (_stickToBottom) Scroller.ScrollToEnd();
+        }
+        else
+        {
+            _stickToBottom = IsNearBottom(Scroller.VerticalOffset);
+        }
+
+        var atBottom = IsNearBottom(Scroller.VerticalOffset);
+        var showJump = (!atBottom && Scroller.ScrollableHeight > 1) || _vm.IsDetached;
+        if (Anim.GetShow(JumpButton) != showJump) Anim.SetShow(JumpButton, showJump);
+        if (atBottom && _vm.PendingNewCount > 0)
+        {
+            _vm.PendingNewCount = 0;
+            _vm.MarkRead();
+        }
+
+        // Фоновая подгрузка истории заранее (за ~1500 px до верха), позиция сохраняется — незаметно для глаза.
+        if (!_loadingOlder && Scroller.VerticalOffset < 1500 && e.VerticalChange < 0 && _vm.HasMoreHistory)
+        {
+            _loadingOlder = true;
+            _stickToBottom = false;
+            try
+            {
+                var extentBefore = Scroller.ExtentHeight;
+                if (await _vm.LoadOlderAsync())
+                {
+                    Scroller.UpdateLayout();
+                    var delta = Scroller.ExtentHeight - extentBefore;
+                    if (delta > 0) SmoothScroll.ShiftBy(Scroller, delta);
+                }
+            }
+            finally
+            {
+                _loadingOlder = false;
+            }
+        }
+    }
+
+    private void Composer_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (_vm is null) return;
+        switch (e.Key)
+        {
+            case Key.Enter when Keyboard.Modifiers == ModifierKeys.None:
+                e.Handled = true;
+                if (_vm.SendCommand.CanExecute(null)) _vm.SendCommand.Execute(null);
+                break;
+            case Key.Up when Composer.Text.Length == 0:
+                // Как в Telegram: ↑ в пустом поле — редактировать последнее своё сообщение.
+                var lastOwn = _vm.Items.OfType<MessageViewModel>().LastOrDefault(m => m.IsOut && m.HasText);
+                if (lastOwn is not null)
+                {
+                    e.Handled = true;
+                    _vm.EditCommand.Execute(lastOwn);
+                    Composer.CaretIndex = Composer.Text.Length;
+                }
+                break;
+            case Key.V when Keyboard.Modifiers == ModifierKeys.Control && Clipboard.ContainsFileDropList():
+                e.Handled = true;
+                _vm.AddAttachments(Clipboard.GetFileDropList().Cast<string>());
+                break;
+        }
+    }
+
+    // ---- перемотка голосового кликом по волне
+    private void Wave_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: MessageViewModel m } wave || _vm is null) return;
+        var fraction = e.GetPosition(wave).X / wave.ActualWidth;
+        if (AudioPlayer.Instance.Key == m.AudioKey) AudioPlayer.Instance.Seek(fraction);
+        else _vm.PlayAudioCommand.Execute(m);
+        e.Handled = true;
+    }
+
+    // ---- перетаскивание файлов
+    private void Root_DragOver(object sender, DragEventArgs e)
+    {
+        var files = e.Data.GetDataPresent(DataFormats.FileDrop);
+        e.Effects = files ? DragDropEffects.Copy : DragDropEffects.None;
+        DropHint.Visibility = files ? Visibility.Visible : Visibility.Collapsed;
+        e.Handled = true;
+    }
+
+    private void Root_Drop(object sender, DragEventArgs e)
+    {
+        DropHint.Visibility = Visibility.Collapsed;
+        if (e.Data.GetData(DataFormats.FileDrop) is string[] files) _vm?.AddAttachments(files);
+    }
+
+    protected override void OnDragLeave(DragEventArgs e)
+    {
+        DropHint.Visibility = Visibility.Collapsed;
+        base.OnDragLeave(e);
+    }
+
+    // ←/→ листают медиа в просмотрщике.
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        if (_vm?.IsViewerOpen == true && Keyboard.FocusedElement is not TextBox)
+        {
+            if (e.Key == Key.Left) { _vm.ViewerPrevCommand.Execute(null); e.Handled = true; }
+            else if (e.Key == Key.Right) { _vm.ViewerNextCommand.Execute(null); e.Handled = true; }
+        }
+        base.OnPreviewKeyDown(e);
+    }
+
+    // ---- видеоплеер
+
+    // В ручном режиме MediaElement не открывает файл, пока не вызван Play() — запускаем сами, как только путь готов.
+    private void OnVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_vm is null) return;
+        if (e.PropertyName == nameof(ConversationViewModel.Comments) && _vm.Comments is { } comments)
+        {
+            comments.ScrollToBottomRequested += () =>
+                Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => CommentsScroller.ScrollToEnd());
+            return;
+        }
+        if (e.PropertyName != nameof(ConversationViewModel.ViewerVideoPath)) return;
+        if (_vm.ViewerVideoPath is null) { VideoPlayer.Stop(); _videoTimer.Stop(); return; }
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            VideoPlayer.Play();
+            _videoPlaying = true;
+            PlayPauseButton.Content = "";
+            _videoTimer.Start();
+        });
+    }
+    private void VideoPlayer_MediaOpened(object sender, RoutedEventArgs e)
+    {
+        AudioPlayer.Instance.Stop();
+        VideoPlayer.Play();
+        _videoPlaying = true;
+        PlayPauseButton.Content = "";
+        _videoTimer.Start();
+    }
+
+    private void VideoPlayer_MediaEnded(object sender, RoutedEventArgs e)
+    {
+        VideoPlayer.Position = TimeSpan.Zero;
+        if (_vm?.ViewerMessage?.IsGif == true) { VideoPlayer.Play(); return; }
+        VideoPlayer.Pause();
+        _videoPlaying = false;
+        PlayPauseButton.Content = "";
+    }
+
+    private void PlayPause_Click(object sender, RoutedEventArgs e)
+    {
+        if (_videoPlaying) VideoPlayer.Pause();
+        else VideoPlayer.Play();
+        _videoPlaying = !_videoPlaying;
+        PlayPauseButton.Content = _videoPlaying ? "" : "";
+    }
+
+    private void Mute_Click(object sender, RoutedEventArgs e)
+    {
+        VideoPlayer.IsMuted = !VideoPlayer.IsMuted;
+        MuteButton.Content = VideoPlayer.IsMuted ? "" : "";
+    }
+
+    private void SeekSlider_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (VideoPlayer.NaturalDuration.HasTimeSpan)
+            VideoPlayer.Position = TimeSpan.FromSeconds(SeekSlider.Value * VideoPlayer.NaturalDuration.TimeSpan.TotalSeconds);
+    }
+
+    private void UpdateVideoTime()
+    {
+        if (_vm?.IsViewerOpen != true) { VideoPlayer.Stop(); _videoTimer.Stop(); return; }
+        if (!VideoPlayer.NaturalDuration.HasTimeSpan) return;
+        var total = VideoPlayer.NaturalDuration.TimeSpan.TotalSeconds;
+        var pos = VideoPlayer.Position.TotalSeconds;
+        if (!SeekSlider.IsMouseCaptureWithin) SeekSlider.Value = total > 0 ? pos / total : 0;
+        VideoTime.Text = $"{Fmt.Duration(pos)} / {Fmt.Duration(total)}";
+    }
+}

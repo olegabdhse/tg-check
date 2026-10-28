@@ -1,0 +1,10 @@
+# секреты
+.env
+dist/.env
+
+# сборка
+bin/
+obj/
+dist/
+*.user
+.vs/

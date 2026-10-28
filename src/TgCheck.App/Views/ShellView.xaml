@@ -1,0 +1,252 @@
+<UserControl x:Class="TgCheck.App.Views.ShellView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:TgCheck.App.ViewModels"
+             xmlns:views="clr-namespace:TgCheck.App.Views"
+             xmlns:helpers="clr-namespace:TgCheck.App.Helpers"
+             xmlns:controls="clr-namespace:TgCheck.App.Controls">
+
+    <UserControl.Resources>
+        <DataTemplate DataType="{x:Type vm:ChatsViewModel}">
+            <views:ChatsView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ProfileViewModel}">
+            <views:ProfileView />
+        </DataTemplate>
+
+        <!-- Кнопка боковой панели -->
+        <Style x:Key="RailButton" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Grid Width="60" Height="56" Background="Transparent">
+                            <Border x:Name="Bd" CornerRadius="12" Margin="6,2" Background="Transparent" />
+                            <Border x:Name="Bar" Width="3" CornerRadius="2" HorizontalAlignment="Left" Margin="0,12"
+                                    Background="{StaticResource AccentBrush}" Visibility="Collapsed" />
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface2Brush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface2Brush}" />
+                                <Setter TargetName="Bar" Property="Visibility" Value="Visible" />
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="72" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ================================================= Боковая панель -->
+        <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
+            <DockPanel Margin="0,14,0,12">
+                <Grid DockPanel.Dock="Top" Width="38" Height="38" Margin="0,0,0,18">
+                    <Ellipse Fill="{StaticResource AccentBrush}" Visibility="{Binding MyProfile.Logo, Converter={StaticResource InvNullToVis}}" />
+                    <Path Data="{StaticResource PlaneGeometry}" Fill="White" Stretch="Uniform" Margin="9,10,10,9"
+                          Visibility="{Binding MyProfile.Logo, Converter={StaticResource InvNullToVis}}" />
+                    <Image Source="{Binding MyProfile.Logo}" RenderOptions.BitmapScalingMode="HighQuality"
+                           Visibility="{Binding MyProfile.Logo, Converter={StaticResource NullToVis}}" />
+                </Grid>
+                <TextBlock DockPanel.Dock="Bottom" Text="{Binding VersionText}" Style="{StaticResource Caption}" FontSize="10"
+                           HorizontalAlignment="Center" />
+                <StackPanel>
+                    <RadioButton Style="{StaticResource RailButton}" GroupName="rail" ToolTip="Чаты"
+                                 IsChecked="{Binding Section, Converter={StaticResource EnumToBool}, ConverterParameter=Chats}">
+                        <Grid>
+                            <StackPanel>
+                                <TextBlock Text="&#xE8BD;" Style="{StaticResource Icon}" FontSize="20" HorizontalAlignment="Center" />
+                                <TextBlock Text="Чаты" FontSize="10" HorizontalAlignment="Center" Margin="0,3,0,0" />
+                            </StackPanel>
+                            <Border Background="{StaticResource AccentBrush}" CornerRadius="8" MinWidth="16" Height="16" Padding="4,0"
+                                    HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-6,-12,0"
+                                    Visibility="{Binding ChatsUnread, Converter={StaticResource NullToVis}}">
+                                <TextBlock Text="{Binding ChatsUnread}" FontSize="10" FontWeight="Bold" Foreground="White"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                        </Grid>
+                    </RadioButton>
+                    <RadioButton Style="{StaticResource RailButton}" GroupName="rail" ToolTip="Мой профиль"
+                                 IsChecked="{Binding Section, Converter={StaticResource EnumToBool}, ConverterParameter=Profile}">
+                        <StackPanel>
+                            <controls:AvatarView Width="30" Height="30" HorizontalAlignment="Center" Source="{Binding MyProfile.Avatar}"
+                                                 Fill="{Binding MyProfile.AvatarBrush}" Initials="{Binding MyProfile.Initials}"
+                                                 Ring="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" />
+                            <TextBlock Text="Профиль" FontSize="10" HorizontalAlignment="Center" Margin="0,3,0,0" />
+                        </StackPanel>
+                    </RadioButton>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- ================================================= Контент -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Border Height="12" />
+
+            <!-- Баннер обновления -->
+            <Border Grid.Row="1" Margin="18,10,18,0" CornerRadius="12" Padding="14,9" Background="#1F3A52"
+                    helpers:Anim.FadeOnVisible="True"
+                    Visibility="{Binding UpdateText, Converter={StaticResource NullToVis}}">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" Padding="6" FontSize="11"
+                            Command="{Binding DismissUpdateCommand}" ToolTip="Позже" Margin="6,0,0,0"
+                            Visibility="{Binding IsUpdating, Converter={StaticResource InvBoolToVis}}" />
+                    <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Padding="14,6" Content="Обновить"
+                            Command="{Binding InstallUpdateCommand}"
+                            Visibility="{Binding IsUpdating, Converter={StaticResource InvBoolToVis}}" />
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="&#xE896;" Style="{StaticResource Icon}" Foreground="{StaticResource AccentBrush}" Margin="0,0,10,0" />
+                        <TextBlock Text="{Binding UpdateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <Grid Grid.Row="2">
+                <views:ChatsView x:Name="ChatsPage" DataContext="{Binding Chats}" />
+                <views:ProfileView x:Name="MyProfilePage" DataContext="{Binding MyProfile}" Visibility="Collapsed" />
+                <ContentControl x:Name="PageHost" Focusable="False" Visibility="Collapsed" />
+            </Grid>
+        </Grid>
+
+        <!-- ================================================= Истории -->
+        <Grid Grid.ColumnSpan="2" Visibility="Collapsed" helpers:Anim.Mode="Scale" helpers:Anim.Show="{Binding IsStoriesOpen}">
+            <Border Background="#F5050A10" />
+            <Grid DataContext="{Binding StoryViewer}" Margin="0,24">
+                <!-- Карточка 9:16 -->
+                <Grid x:Name="StoryCard" Width="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource Mul}, ConverterParameter=0.5625}"
+                      HorizontalAlignment="Center" MaxWidth="460">
+                    <Border CornerRadius="16" Background="#101820" />
+                    <Grid helpers:RoundClip.Radius="16">
+                        <Image Source="{Binding Image}" Stretch="UniformToFill" />
+                        <MediaElement x:Name="StoryVideo" LoadedBehavior="Manual" UnloadedBehavior="Close" Stretch="UniformToFill"
+                                      Source="{Binding VideoPath, Converter={StaticResource ToUri}}"
+                                      MediaOpened="StoryVideo_MediaOpened" MediaEnded="StoryVideo_MediaEnded" />
+                        <!-- Затемнение сверху и снизу для читаемости -->
+                        <Border VerticalAlignment="Top" Height="110">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                    <GradientStop Color="#99000000" Offset="0" />
+                                    <GradientStop Color="#00000000" Offset="1" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+                        <Border VerticalAlignment="Bottom" Height="160" Visibility="{Binding HasCaption, Converter={StaticResource BoolToVis}}">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,1" EndPoint="0,0">
+                                    <GradientStop Color="#CC000000" Offset="0" />
+                                    <GradientStop Color="#00000000" Offset="1" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+
+                        <!-- Зоны клика: назад / вперёд -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="0.35*" />
+                                <ColumnDefinition Width="0.65*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Background="Transparent" Cursor="Hand">
+                                <Border.InputBindings>
+                                    <MouseBinding MouseAction="LeftClick" Command="{Binding PreviousCommand}" />
+                                </Border.InputBindings>
+                            </Border>
+                            <Border Grid.Column="1" Background="Transparent" Cursor="Hand">
+                                <Border.InputBindings>
+                                    <MouseBinding MouseAction="LeftClick" Command="{Binding NextCommand}" />
+                                </Border.InputBindings>
+                            </Border>
+                        </Grid>
+
+                        <!-- Сегменты прогресса -->
+                        <ItemsControl ItemsSource="{Binding Segments}" VerticalAlignment="Top" Margin="10,10,10,0" IsHitTestVisible="False">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Rows="1" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:StorySegment}">
+                                    <Grid Height="3.5" Margin="2,0">
+                                        <Border CornerRadius="1.75" Background="#66FFFFFF" />
+                                        <Border CornerRadius="1.75" Background="White" RenderTransformOrigin="0,0.5">
+                                            <Border.RenderTransform>
+                                                <ScaleTransform ScaleX="{Binding Progress}" />
+                                            </Border.RenderTransform>
+                                        </Border>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- Автор -->
+                        <DockPanel VerticalAlignment="Top" Margin="14,24,10,0">
+                            <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" Foreground="White"
+                                    Command="{Binding CloseCommand}" ToolTip="Закрыть (Esc)" />
+                            <Button Command="{Binding OpenProfileCommand}" HorizontalAlignment="Left" Cursor="Hand" Foreground="White" FocusVisualStyle="{x:Null}">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <ContentPresenter />
+                                    </ControlTemplate>
+                                </Button.Template>
+                                <StackPanel Orientation="Horizontal" Background="Transparent">
+                                    <controls:AvatarView Width="38" Height="38" Source="{Binding Current.Avatar}" Fill="{Binding Current.AvatarBrush}"
+                                                         Initials="{Binding Current.Initials}" Ring="White" />
+                                    <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock helpers:RichText.Text="{Binding Current.Title}" Foreground="White" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding TimeText}" Foreground="#CCFFFFFF" FontSize="12" FontWeight="Normal" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Button>
+                        </DockPanel>
+
+                        <TextBlock helpers:RichText.Text="{Binding Story.Caption}" Foreground="White" TextWrapping="Wrap" FontSize="14"
+                                   VerticalAlignment="Bottom" Margin="18,0,18,22" TextAlignment="Center" IsHitTestVisible="False" />
+                        <views:Spinner Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Grid>
+
+        <!-- Уведомление -->
+        <Border Grid.ColumnSpan="2" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,28"
+                CornerRadius="12" Padding="18,12" MaxWidth="640" helpers:Anim.FadeOnVisible="True"
+                Visibility="{Binding Toast, Converter={StaticResource NullToVis}}">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Background" Value="#F0223140" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ToastIsError}" Value="True">
+                            <Setter Property="Background" Value="#F07A2622" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="24" ShadowDepth="0" Opacity="0.4" />
+            </Border.Effect>
+            <Border.InputBindings>
+                <MouseBinding MouseAction="LeftClick" Command="{Binding HideToastCommand}" />
+            </Border.InputBindings>
+            <TextBlock Text="{Binding Toast}" TextWrapping="Wrap" Foreground="White" />
+        </Border>
+    </Grid>
+</UserControl>

@@ -1,0 +1,64 @@
+<Project>
+  <!--
+    Иконка приложения из папки logo\ в корне репозитория.
+      * Подходит .ico, .png, .jpg, .jpeg, .bmp (берётся первый файл; .ico в приоритете).
+      * PNG/JPG автоматически конвертируются в многоразмерный .ico (16…256 px).
+      * Картинка также встраивается в приложение (экран входа, заголовок окна).
+      * Если папка пустая — exe собирается без иконки.
+  -->
+  <PropertyGroup>
+    <TgLogoDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', 'logo'))</TgLogoDir>
+    <TgLogoOutDir>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', 'obj', 'logo'))</TgLogoOutDir>
+    <TgLogoIco>$(TgLogoOutDir)app.ico</TgLogoIco>
+    <TgLogoPng>$(TgLogoOutDir)app.png</TgLogoPng>
+    <TgMakeIconScript>$(MSBuildThisFileDirectory)make-icon.ps1</TgMakeIconScript>
+  </PropertyGroup>
+
+  <Target Name="TgResolveLogo">
+    <ItemGroup>
+      <_TgLogoCandidate Include="$(TgLogoDir)*.ico" />
+      <_TgLogoCandidate Include="$(TgLogoDir)*.png" />
+      <_TgLogoCandidate Include="$(TgLogoDir)*.jpg;$(TgLogoDir)*.jpeg;$(TgLogoDir)*.bmp" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_TgLogoList>@(_TgLogoCandidate->'%(FullPath)')</_TgLogoList>
+      <TgLogoSource Condition="'$(_TgLogoList)' != ''">$([System.Text.RegularExpressions.Regex]::Match('$(_TgLogoList)', '^[^;]+').Value)</TgLogoSource>
+    </PropertyGroup>
+    <Message Importance="high" Condition="'$(TgLogoSource)' == ''"
+             Text="TgCheck: в папке logo\ нет картинки — exe будет собран без иконки." />
+    <Message Importance="high" Condition="'$(TgLogoSource)' != ''"
+             Text="TgCheck: иконка приложения — $(TgLogoSource)" />
+  </Target>
+
+  <Target Name="TgConvertLogo" Condition="'$(TgLogoSource)' != ''"
+          Inputs="$(TgLogoSource);$(TgMakeIconScript)" Outputs="$(TgLogoIco);$(TgLogoPng)">
+    <Exec Command="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(TgMakeIconScript)&quot; -Source &quot;$(TgLogoSource)&quot; -OutIco &quot;$(TgLogoIco)&quot; -OutPng &quot;$(TgLogoPng)&quot;" />
+  </Target>
+
+  <Target Name="TgApplyLogo" BeforeTargets="PrepareForBuild" DependsOnTargets="TgResolveLogo;TgConvertLogo">
+    <PropertyGroup Condition="'$(TgLogoSource)' != '' and Exists('$(TgLogoIco)')">
+      <ApplicationIcon>$(TgLogoIco)</ApplicationIcon>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(TgLogoSource)' != '' and Exists('$(TgLogoPng)')">
+      <Resource Include="$(TgLogoPng)" Link="Assets\applogo.png" />
+    </ItemGroup>
+
+    <!-- Логотип добавили/заменили/удалили → принудительно пересобираем сборку и ресурсы WPF,
+         иначе инкрементальная сборка оставит в exe старую иконку. -->
+    <PropertyGroup>
+      <_TgLogoStateFile>$(TgLogoOutDir)logo.state</_TgLogoStateFile>
+      <_TgLogoState>none</_TgLogoState>
+      <_TgLogoState Condition="'$(TgLogoSource)' != ''">$(TgLogoSource)|$([System.IO.File]::GetLastWriteTime('$(TgLogoSource)').Ticks)</_TgLogoState>
+      <_TgLogoOldState />
+    </PropertyGroup>
+    <ReadLinesFromFile File="$(_TgLogoStateFile)" Condition="Exists('$(_TgLogoStateFile)')">
+      <Output TaskParameter="Lines" PropertyName="_TgLogoOldState" />
+    </ReadLinesFromFile>
+    <Delete Files="$(IntermediateOutputPath)$(AssemblyName).g.resources" Condition="'$(_TgLogoOldState)' != '$(_TgLogoState)'" />
+    <MakeDir Directories="$(TgLogoOutDir)" />
+    <WriteLinesToFile File="$(_TgLogoStateFile)" Lines="$(_TgLogoState)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <CustomAdditionalCompileInputs Include="$(_TgLogoStateFile)" />
+    </ItemGroup>
+  </Target>
+</Project>

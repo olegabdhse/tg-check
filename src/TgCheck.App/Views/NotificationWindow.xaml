@@ -1,0 +1,39 @@
+<Window x:Class="TgCheck.App.Views.NotificationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:TgCheck.App.Controls"
+        xmlns:helpers="clr-namespace:TgCheck.App.Helpers"
+        Title="TG Check" Width="360" SizeToContent="Height" WindowStyle="None" AllowsTransparency="True"
+        Background="Transparent" ResizeMode="NoResize" ShowInTaskbar="False" Topmost="True" ShowActivated="False"
+        FontFamily="{StaticResource UiFont}" Foreground="{StaticResource TextBrush}" UseLayoutRounding="True">
+    <Border x:Name="Card" Margin="10" CornerRadius="14" Background="#F21C2733" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+            Padding="14,12" Cursor="Hand" MouseLeftButtonUp="Card_Click" RenderTransformOrigin="1,1">
+        <Border.RenderTransform>
+            <TranslateTransform x:Name="Slide" />
+        </Border.RenderTransform>
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.45" Color="Black" />
+        </Border.Effect>
+        <DockPanel>
+            <controls:AvatarView DockPanel.Dock="Left" Width="44" Height="44" VerticalAlignment="Top" Margin="0,0,12,0"
+                                 Source="{Binding Avatar}" Fill="{Binding AvatarBrush}" Initials="{Binding Initials}"
+                                 Ring="{StaticResource AccentBrush}" />
+            <StackPanel>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="10" Padding="6"
+                            Margin="0,-6,-8,0" ToolTip="Закрыть" Click="Close_Click" />
+                    <TextBlock helpers:RichText.Text="{Binding Title}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis" />
+                </DockPanel>
+                <TextBlock helpers:RichText.Text="{Binding Text}" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}"
+                           TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="40" Margin="0,2,0,8" />
+                <Button HorizontalAlignment="Left" Style="{StaticResource GhostButton}" Padding="12,5" Click="Reply_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE97A;" Style="{StaticResource Icon}" FontSize="12" Foreground="{StaticResource AccentBrush}"
+                                   VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBlock Text="Ответить" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="13" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </DockPanel>
+    </Border>
+</Window>
