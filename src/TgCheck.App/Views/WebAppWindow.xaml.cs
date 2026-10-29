@@ -15,17 +15,32 @@ namespace TgCheck.App.Views;
 /// </summary>
 public partial class WebAppWindow : Window
 {
-    private readonly string _url;
+    private readonly Task<string> _url;
     private readonly Action<string>? _openTgLink;
 
     protected override System.Windows.Automation.Peers.AutomationPeer OnCreateAutomationPeer() => new LightWindowAutomationPeer(this);
 
-    public WebAppWindow(string title, string url, Action<string>? openTgLink = null)
+    // Окружение WebView2 одно на всё приложение и создаётся заранее: раньше каждое открытие мини-приложения
+    // заново поднимало его (заметная часть ожидания).
+    private static Task<CoreWebView2Environment>? _environment;
+
+    private static Task<CoreWebView2Environment> SharedEnvironment() => _environment ??= CoreWebView2Environment.CreateAsync(null,
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TgCheck", "webview"));
+
+    /// <summary>Подготовить WebView2 в простое — первое мини-приложение откроется быстрее.</summary>
+    public static void Prewarm() => _ = SharedEnvironment();
+
+    /// <param name="url">Адрес приложения: окно открывается сразу, а адрес (запрос к Telegram) приходит параллельно с подготовкой WebView2.</param>
+    public WebAppWindow(string title, Task<string> url, Action<string>? openTgLink = null)
     {
         _url = url;
         _openTgLink = openTgLink;
         InitializeComponent();
         Helpers.RichText.SetText(TitleText, title);
+        // Размер телефона: мини-приложения рассчитаны на мобильный экран — на ПК не растягиваем на весь монитор.
+        var area = SystemParameters.WorkArea;
+        Height = Math.Min(800, area.Height - 60);
+        Width = Math.Min(410, Height * 0.56);
         Loaded += async (_, _) => await InitAsync();
         SourceInitialized += (_, _) => WindowEffects.ApplyDarkTitleBar(this, (Color)FindResource("BgColor"));
     }
@@ -34,8 +49,7 @@ public partial class WebAppWindow : Window
     {
         try
         {
-            var dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TgCheck", "webview");
-            var env = await CoreWebView2Environment.CreateAsync(null, dataDir);
+            var env = await SharedEnvironment();
             await Web.EnsureCoreWebView2Async(env);
             var core = Web.CoreWebView2;
             // Прокси до загрузки страницы: Telegram Web App SDK ищет window.TelegramWebviewProxy.
@@ -47,6 +61,8 @@ public partial class WebAppWindow : Window
                 };
                 """);
             core.WebMessageReceived += OnWebMessage;
+            // Убираем загрузку, как только страница построена (DOM), а не после всех картинок и скриптов.
+            core.DOMContentLoaded += (_, _) => Loading.Visibility = Visibility.Collapsed;
             core.NavigationCompleted += (_, _) => Loading.Visibility = Visibility.Collapsed;
             core.NewWindowRequested += (_, e) =>
             {
@@ -56,10 +72,12 @@ public partial class WebAppWindow : Window
             core.Settings.AreDevToolsEnabled = false;
             core.Settings.IsZoomControlEnabled = false;
             core.Settings.IsPinchZoomEnabled = false;
-            core.Navigate(_url);
+            core.Navigate(await _url);
         }
         catch (Exception ex)
         {
+            // Telegram не выдал адрес — ошибку уже показал чат (всплывашкой), окно просто закрываем.
+            if (_url.IsFaulted) { Close(); return; }
             Loading.Visibility = Visibility.Collapsed;
             MessageBox.Show(this, "Не удалось открыть мини-приложение: " + TgErrors.Describe(ex) +
                 "\n\nНужен Microsoft Edge WebView2 Runtime (в Windows 11 он уже есть).", "Мини-приложение");
@@ -108,12 +126,11 @@ public partial class WebAppWindow : Window
                     }
                     catch { }
                     break;
+                // Окно на ПК остаётся размером с телефон (как приложение и рассчитано) — полноэкранный режим не включаем.
                 case "web_app_request_fullscreen":
-                    WindowState = WindowState.Maximized;
-                    Send("fullscreen_changed", """{"is_fullscreen":true}""");
+                    Send("fullscreen_failed", """{"error":"UNSUPPORTED"}""");
                     break;
                 case "web_app_exit_fullscreen":
-                    WindowState = WindowState.Normal;
                     Send("fullscreen_changed", """{"is_fullscreen":false}""");
                     break;
                 case "web_app_open_link" when data.ValueKind == JsonValueKind.Object && data.TryGetProperty("url", out var url):

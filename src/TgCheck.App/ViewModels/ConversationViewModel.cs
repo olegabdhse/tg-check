@@ -1424,13 +1424,12 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
 
     private async Task OpenWebAppAsync(PeerRef bot, string? url, bool fromMenu, string title)
     {
-        try
-        {
-            var appUrl = await _tg.RequestWebAppAsync(Peer, bot, url, fromMenu);
-            var window = new Views.WebAppWindow(title.Length > 0 ? title : bot.DisplayTitle, appUrl,
-                link => _ = _owner.Shell.OpenLinkAsync(link)) { Owner = Application.Current.MainWindow };
-            window.Show();
-        }
+        // Окно — сразу (WebView2 готовится, пока Telegram выдаёт адрес приложения), а не после ответа сервера.
+        var appUrl = _tg.RequestWebAppAsync(Peer, bot, url, fromMenu);
+        var window = new Views.WebAppWindow(title.Length > 0 ? title : bot.DisplayTitle, appUrl,
+            link => _ = _owner.Shell.OpenLinkAsync(link)) { Owner = Application.Current.MainWindow };
+        window.Show();
+        try { await appUrl; }
         catch (Exception ex) { _owner.ShowToast(TgErrors.Describe(ex), true); }
     }
 
