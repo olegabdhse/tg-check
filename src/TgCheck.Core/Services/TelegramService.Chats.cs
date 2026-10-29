@@ -24,6 +24,8 @@ public sealed partial class TelegramService
     public event Action<long, int, IReadOnlyList<ReactionInfo>>? ReactionsUpdated;
     /// <summary>Удалены сообщения: ключ чата (null — личные/обычные группы, id глобальные) и id.</summary>
     public event Action<long?, int[]>? MessagesDeleted;
+    /// <summary>Прослушаны голосовые/кружки: ключ чата (null — личные/обычные группы, id глобальные) и id.</summary>
+    public event Action<long?, int[]>? MediaListened;
     /// <summary>Прочитано: ключ чата, max id, outbox (собеседник прочитал наши) / inbox (мы прочитали на другом устройстве).</summary>
     /// <summary>Прочитано (peerKey, до id, исходящие?, сколько осталось непрочитанных или -1).</summary>
     public event Action<long, int, bool, int>? HistoryRead;
@@ -327,6 +329,17 @@ public sealed partial class TelegramService
         catch (Exception ex) { Logging.Write("read: " + ex.Message); }
     }
 
+    /// <summary>Отметить голосовое/кружок прослушанным (у собеседника пропадёт точка «не прослушано»).</summary>
+    public async Task MarkMediaListenedAsync(PeerRef peer, int messageId)
+    {
+        try
+        {
+            if (peer.Info is Channel channel) await _client.Channels_ReadMessageContents(channel, messageId);
+            else await _client.Messages_ReadMessageContents(messageId);
+        }
+        catch (Exception ex) { Logging.Write("listened: " + ex.Message); }
+    }
+
     /// <summary>Показать собеседнику «печатает…» (не чаще раза в 5 секунд).</summary>
     public async Task NotifyTypingAsync(PeerRef peer)
     {
@@ -416,6 +429,13 @@ public sealed partial class TelegramService
             case UpdateDeleteChannelMessages d:
                 MessagesDeleted?.Invoke(-1_000_000_000_000 - d.channel_id, d.messages);
                 break;
+            // Голосовые/кружки прослушаны (собеседником — наши, или нами на другом устройстве).
+            case UpdateReadMessagesContents rc:
+                MediaListened?.Invoke(null, rc.messages);
+                break;
+            case UpdateChannelReadMessagesContents rcc:
+                MediaListened?.Invoke(-1_000_000_000_000 - rcc.channel_id, rcc.messages);
+                break;
             case UpdateDeleteMessages d:
                 MessagesDeleted?.Invoke(null, d.messages);
                 break;
@@ -500,6 +520,7 @@ public sealed partial class TelegramService
             DateUtc = msg.date,
             Text = msg.message ?? "",
             IsOut = msg.flags.HasFlag(Message.Flags.out_),
+            MediaUnread = msg.flags.HasFlag(Message.Flags.media_unread),
             EditDateUtc = msg.flags.HasFlag(Message.Flags.has_edit_date) && !msg.flags.HasFlag(Message.Flags.edit_hide) ? msg.edit_date : null,
             ReplyToId = reply is > 0 ? reply : null,
             ThreadTopId = msg.reply_to is MessageReplyHeader { flags: var rf } rh && rf.HasFlag(MessageReplyHeader.Flags.has_reply_to_top_id) ? rh.reply_to_top_id : null,

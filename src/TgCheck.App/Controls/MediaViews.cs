@@ -103,6 +103,18 @@ public sealed class VideoNoteView : Grid
         nameof(Media), typeof(MediaHolder), typeof(VideoNoteView), new PropertyMetadata(null, (d, _) => ((VideoNoteView)d).Reload()));
 
     public static readonly DependencyProperty TitleProperty = DependencyProperty.Register(nameof(Title), typeof(string), typeof(VideoNoteView));
+
+    /// <summary>Не прослушано — точка рядом со временем (как в Telegram).</summary>
+    public static readonly DependencyProperty IsUnlistenedProperty = DependencyProperty.Register(nameof(IsUnlistened), typeof(bool), typeof(VideoNoteView),
+        new PropertyMetadata(false, (d, e) => ((VideoNoteView)d)._dot.Visibility = e.NewValue is true ? Visibility.Visible : Visibility.Collapsed));
+
+    public bool IsUnlistened
+    {
+        get => (bool)GetValue(IsUnlistenedProperty);
+        set => SetValue(IsUnlistenedProperty, value);
+    }
+
+    private readonly System.Windows.Shapes.Ellipse _dot = new() { Width = 6, Height = 6, Fill = Brushes.White, Margin = new Thickness(5, 1, 0, 0), VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
     /// <summary>Имя отправителя — для панели плеера.</summary>
     public string? Title { get => (string?)GetValue(TitleProperty); set => SetValue(TitleProperty, value); }
 
@@ -135,7 +147,7 @@ public sealed class VideoNoteView : Grid
         {
             Background = new SolidColorBrush(Color.FromArgb(0x99, 0, 0, 0)), CornerRadius = new CornerRadius(9),
             Padding = new Thickness(7, 2, 7, 2), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom,
-            Margin = new Thickness(18, 0, 0, 14), Child = _time,
+            Margin = new Thickness(18, 0, 0, 14), Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { _time, _dot } },
         };
         Children.Add(_badge);
 
@@ -212,8 +224,13 @@ public sealed class VideoNoteView : Grid
         _paused = false;
         _roundBrush ??= new VisualBrush(_player) { Stretch = Stretch.UniformToFill };
         ViewModels.NowPlaying.Instance.StartRound(Title ?? "Видеосообщение", _roundBrush, TogglePause, StopSound);
+        RaiseEvent(new RoutedEventArgs(SoundStartedEvent, this));
         _viewportTimer.Interval = TimeSpan.FromMilliseconds(150);
     }
+
+    /// <summary>Кружок начали слушать со звуком — лента отмечает его прослушанным.</summary>
+    public static readonly RoutedEvent SoundStartedEvent = EventManager.RegisterRoutedEvent(
+        "SoundStarted", RoutingStrategy.Bubble, typeof(RoutedEventHandler), typeof(VideoNoteView));
 
     private void StopSound()
     {

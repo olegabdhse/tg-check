@@ -147,6 +147,14 @@ public sealed partial class TelegramService
         return res.documents.OfType<Document>().Select(ToSticker).ToList();
     }
 
+    /// <summary>Стикер — в «Недавние» на сервере (видно и в других клиентах).</summary>
+    public async Task SaveRecentStickerAsync(MediaHolder sticker)
+    {
+        if (sticker.Document is not { } doc) return;
+        try { await _client.Messages_SaveRecentSticker(doc, unsave: false); }
+        catch (Exception ex) { Logging.Write("recent sticker: " + ex.Message); }
+    }
+
     public async Task<IReadOnlyList<StickerItem>> GetRecentStickersAsync()
     {
         var res = await _client.Messages_GetRecentStickers(0);
@@ -176,6 +184,40 @@ public sealed partial class TelegramService
         var input = new InputStickerSetID { id = set.Id, access_hash = set.AccessHash };
         if (install) await _client.Messages_InstallStickerSet(input, false);
         else await _client.Messages_UninstallStickerSet(input);
+    }
+
+    // ===================================================================== Эмодзи Telegram
+
+    /// <summary>
+    /// Эмодзи в оформлении Telegram (набор «анимированных эмодзи» — те же картинки, что в официальных приложениях):
+    /// эмодзи (без вариационного селектора U+FE0F) → стикер. Сначала из кэша, затем обновляется с сервера.
+    /// </summary>
+    public IReadOnlyDictionary<string, StickerItem>? GetCachedTelegramEmoji() =>
+        _cache.Load<Messages_StickerSet>("tg_emoji") is { } set ? MapEmojiSet(set) : null;
+
+    public async Task<IReadOnlyDictionary<string, StickerItem>?> GetTelegramEmojiAsync()
+    {
+        try
+        {
+            if (await _client.Messages_GetStickerSet(new InputStickerSetAnimatedEmoji(), 0).ConfigureAwait(false) is not { } set) return null;
+            await Task.Yield(); // разбор — в пуле потоков, не в сетевом потоке
+            _cache.Save("tg_emoji", set);
+            return MapEmojiSet(set);
+        }
+        catch (Exception ex) { Logging.Write("tg emoji: " + ex.Message); return null; }
+    }
+
+    private static Dictionary<string, StickerItem> MapEmojiSet(Messages_StickerSet set)
+    {
+        var docs = set.documents.OfType<Document>().ToDictionary(d => d.id);
+        var result = new Dictionary<string, StickerItem>();
+        foreach (var pack in set.packs)
+        {
+            var key = pack.emoticon.Replace("️", "");
+            if (result.ContainsKey(key) || pack.documents.Length == 0 || !docs.TryGetValue(pack.documents[0], out var doc)) continue;
+            result[key] = ToSticker(doc);
+        }
+        return result;
     }
 
     private static StickerItem ToSticker(Document d) => new()

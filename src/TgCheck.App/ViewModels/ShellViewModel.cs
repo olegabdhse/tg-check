@@ -142,6 +142,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     public async Task StartAsync()
     {
+        _ = LoadTelegramEmojiAsync();
         Chats.UnreadChanged += () => OnPropertyChanged(nameof(ChatsUnread));
         Settings.StoriesSettingChanged += Chats.OnStoriesSettingChanged;
         // Профиль (с подарками — это десятки запросов) — после основного списка чатов: при первом входе не отнимает у него сеть.
@@ -155,6 +156,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         Helpers.VlcRuntime.Prewarm(); // видеоплеер — заранее, в фоне: первое видео откроется без распаковки движка
         Views.WebAppWindow.Prewarm(); // и окружение мини-приложений — первое откроется быстрее
         OnPropertyChanged(nameof(ChatsUnread));
+    }
+
+    // Эмодзи в оформлении Telegram: из кэша — сразу, с сервера — следом (раз за запуск).
+    private async Task LoadTelegramEmojiAsync()
+    {
+        if (await Task.Run(() => _tg.GetCachedTelegramEmoji()) is { } cached) Helpers.EmojiImages.SetTelegramSet(cached);
+        if (await Task.Run(() => _tg.GetTelegramEmojiAsync()) is { } fresh) Helpers.EmojiImages.SetTelegramSet(fresh);
     }
 
     private readonly System.Windows.Threading.DispatcherTimer _updateTimer = new() { Interval = TimeSpan.FromMinutes(30) };

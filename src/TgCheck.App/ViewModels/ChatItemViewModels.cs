@@ -249,6 +249,7 @@ public sealed partial class MessageViewModel : ObservableObject
         _item = item;
         _text = item.Text;
         _isEdited = item.EditDateUtc is not null;
+        _isMediaUnread = item.MediaUnread;
         RebuildPoll();
     }
 
@@ -271,6 +272,8 @@ public sealed partial class MessageViewModel : ObservableObject
     [ObservableProperty] private double _playProgress;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(VoiceDurationText))] private string? _positionText;
     [ObservableProperty] private bool _isLoadingAudio;
+    /// <summary>Голосовое/кружок не прослушано (у своих — собеседником): маленькая закрашенная точка у длительности.</summary>
+    [ObservableProperty] private bool _isMediaUnread;
 
     public string PlayIcon => IsPlaying ? "" : "";
     public string VoiceDurationText => PositionText ?? Fmt.Duration(Item.DurationSeconds);

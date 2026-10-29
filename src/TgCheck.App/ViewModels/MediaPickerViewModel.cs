@@ -112,20 +112,35 @@ public sealed partial class MediaPickerViewModel : ObservableObject
         _loading = null;
     }
 
+    private StickerSetViewModel? _recentSet;
+
+    /// <summary>Отправленный стикер — первым в «Недавних» (сразу, не дожидаясь перезагрузки панели).</summary>
+    public void AddRecentSticker(StickerItem sticker)
+    {
+        if (_recentSet is null) return;
+        var existing = _recentSet.Stickers.FirstOrDefault(s => s.MediaId == sticker.MediaId);
+        if (existing is not null) _recentSet.Stickers.Remove(existing);
+        _recentSet.Stickers.Insert(0, existing ?? sticker);
+        while (_recentSet.Stickers.Count > 20) _recentSet.Stickers.RemoveAt(_recentSet.Stickers.Count - 1);
+        _recentSet.Cover = _recentSet.Stickers[0];
+        if (!StickerSets.Contains(_recentSet)) StickerSets.Insert(0, _recentSet);
+    }
+
     private async Task LoadAsync()
     {
         IsLoading = true;
         try
         {
+            // Как в Telegram: сначала недавние, потом избранные, потом наборы.
+            var recent = await _tg.GetRecentStickersAsync();
+            _recentSet = new StickerSetViewModel(null, "Недавние") { Loaded = true, Cover = recent.FirstOrDefault() };
+            foreach (var s in recent) _recentSet.Stickers.Add(s);
+            if (recent.Count > 0) StickerSets.Add(_recentSet);
+
             var faved = await _tg.GetFavedStickersAsync();
             var favedVm = new StickerSetViewModel(null, "Избранные") { Loaded = true, Cover = faved.FirstOrDefault() };
             foreach (var s in faved) favedVm.Stickers.Add(s);
             if (faved.Count > 0) StickerSets.Add(favedVm);
-
-            var recent = await _tg.GetRecentStickersAsync();
-            var recentVm = new StickerSetViewModel(null, "Недавние") { Loaded = true, Cover = recent.FirstOrDefault() };
-            foreach (var s in recent) recentVm.Stickers.Add(s);
-            if (recent.Count > 0) StickerSets.Add(recentVm);
 
             foreach (var set in await _tg.GetStickerSetsAsync())
                 StickerSets.Add(new StickerSetViewModel(set, set.Title));

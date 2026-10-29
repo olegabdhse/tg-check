@@ -515,6 +515,22 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         foreach (var vm in _byId.Values.Distinct().Where(v => v.Poll?.Id == pollId)) vm.SetPoll(poll);
     }
 
+    /// <summary>Сервер: голосовые/кружки прослушаны — убрать точку.</summary>
+    public void OnMediaListened(IEnumerable<int> ids)
+    {
+        foreach (var id in ids)
+            if (_byId.TryGetValue(id, out var vm)) { vm.IsMediaUnread = false; vm.Item.MediaUnread = false; }
+    }
+
+    /// <summary>Мы послушали чужое голосовое/кружок — точка пропадает и у собеседника (как в Telegram).</summary>
+    public void MarkListened(MessageViewModel m)
+    {
+        if (m.IsOut || !m.IsMediaUnread) return;
+        m.IsMediaUnread = false;
+        m.Item.MediaUnread = false;
+        _ = _tg.MarkMediaListenedAsync(Peer, m.Id);
+    }
+
     public void OnMessagesDeleted(IEnumerable<int> ids)
     {
         foreach (var id in ids)
@@ -872,6 +888,11 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             var sent = await _tg.SendDocumentAsync(Peer, media, reply);
             OnMessageReceived(sent);
             _owner.OnMessageReceived(sent, fromConversation: true);
+            if (media is StickerItem sticker)
+            {
+                _owner.Shell.Picker.AddRecentSticker(sticker);
+                _ = _tg.SaveRecentStickerAsync(sticker);
+            }
         }
         catch (Exception ex)
         {
@@ -1234,6 +1255,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             // Пока файл качался, выбрали другое сообщение — играем только последнее выбранное.
             if (NowPlaying.Instance.RequestedAudio != m.AudioKey) return;
             AudioPlayer.Instance.Play(m.AudioKey, path);
+            MarkListened(m);
             NowPlaying.Instance.StartAudio(m.AudioKey, m.IsOut ? "Вы" : (m.SenderName is { Length: > 0 } s ? s : Title),
                 m.IsVoice ? "Голосовое сообщение" : (m.FileTitle ?? "Аудио"));
         }

@@ -36,6 +36,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         _tg.MessageEdited += OnMessageEdited;
         _tg.ReactionsUpdated += OnReactionsUpdated;
         _tg.MessagesDeleted += OnMessagesDeleted;
+        _tg.MediaListened += OnMediaListened;
         _tg.HistoryRead += OnHistoryRead;
         _syncTimer.Tick += async (_, _) => await SyncRecentAsync();
         _resyncSoon.Tick += async (_, _) => { _resyncSoon.Stop(); await SyncRecentAsync(); };
@@ -806,6 +807,13 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     {
         foreach (var conv in _conversations.Values.Where(c => peerKey is null ? (c.Peer.IsUser || c.Peer.IsBasicGroup) : c.Peer.Key == peerKey))
             conv.OnMessagesDeleted(ids);
+    });
+
+    private void OnMediaListened(long? peerKey, int[] ids) => Anim.Ui(() =>
+    {
+        foreach (var conv in _conversations.Values.Where(c => peerKey is null ? (c.Peer.IsUser || c.Peer.IsBasicGroup) : c.Peer.Key == peerKey))
+            conv.OnMediaListened(ids);
+        if (_thread is { } t && (peerKey is null || t.Peer.Key == peerKey)) t.OnMediaListened(ids);
     });
 
     public void OnLocalDeleted(long peerKey)

@@ -163,7 +163,8 @@
         </DataTemplate>
 
         <DataTemplate x:Key="MediaRound" DataType="{x:Type vm:MessageViewModel}">
-            <controls:VideoNoteView Media="{Binding Item}" Title="{Binding SenderName}" Width="{Binding MediaWidth}" Height="{Binding MediaHeight}" />
+            <controls:VideoNoteView Media="{Binding Item}" Title="{Binding SenderName}" Width="{Binding MediaWidth}" Height="{Binding MediaHeight}"
+                                    IsUnlistened="{Binding IsMediaUnread}" />
         </DataTemplate>
 
         <!-- Голосовое / аудио -->
@@ -210,7 +211,23 @@
                             </ItemsControl>
                         </Border>
                     </Grid>
-                    <TextBlock Text="{Binding VoiceDurationText}" FontSize="11" Foreground="{StaticResource MetaBrush}" />
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding VoiceDurationText}" FontSize="11" Foreground="{StaticResource MetaBrush}" />
+                        <!-- Не прослушано (у своих — собеседником): маленькая закрашенная точка, как в Telegram -->
+                        <Ellipse Width="6" Height="6" Margin="5,1,0,0" VerticalAlignment="Center"
+                                 Visibility="{Binding IsMediaUnread, Converter={StaticResource BoolToVis}}">
+                            <Ellipse.Style>
+                                <Style TargetType="Ellipse">
+                                    <Setter Property="Fill" Value="{StaticResource AccentBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsOut}" Value="True">
+                                            <Setter Property="Fill" Value="{StaticResource MetaBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Ellipse.Style>
+                        </Ellipse>
+                    </StackPanel>
                 </StackPanel>
             </DockPanel>
         </DataTemplate>
@@ -1170,8 +1187,6 @@
                                     </StackPanel>
                                 </Border>
                             </Button>
-                            <Button DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE723;" FontSize="18" Padding="10"
-                                    VerticalAlignment="Bottom" ToolTip="Прикрепить файл" Command="{Binding AttachCommand}" />
                             <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" FontSize="18" Padding="10" VerticalAlignment="Bottom"
                                     Content="&#xE92E;" ToolTip="Клавиатура бота" Command="{Binding ToggleReplyKeyboardCommand}"
                                     Visibility="{Binding HasReplyKeyboard, Converter={StaticResource BoolToVis}}" />
@@ -1189,24 +1204,48 @@
                                       Visibility="{Binding ShowMic, Converter={StaticResource BoolToVis}}"
                                       PreviewMouseLeftButtonDown="Mic_Down" PreviewMouseLeftButtonUp="Mic_Up" PreviewMouseMove="Mic_Move"
                                       LostMouseCapture="Mic_LostCapture">
-                                    <Ellipse x:Name="MicPulse" Fill="{StaticResource AccentBrush}" Opacity="0.25" RenderTransformOrigin="0.5,0.5">
+                                    <!-- Как в Telegram: при записи кнопка вырастает в синий круг, вокруг — «дышащий» ореол по громкости,
+                                         над ней — замок «вверх — без удержания» -->
+                                    <Canvas IsHitTestVisible="False">
+                                        <Border x:Name="MicLock" Canvas.Left="5" Canvas.Top="-92" Width="34" Height="62" CornerRadius="17"
+                                                Background="{StaticResource Surface2Brush}" Opacity="0">
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock Text="&#xE72E;" Style="{StaticResource Icon}" FontSize="14" HorizontalAlignment="Center"
+                                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                                <TextBlock Text="&#xE70E;" Style="{StaticResource Icon}" FontSize="11" HorizontalAlignment="Center" Margin="0,8,0,0"
+                                                           Foreground="{StaticResource TextSecondaryBrush}">
+                                                    <TextBlock.RenderTransform>
+                                                        <TranslateTransform x:Name="MicLockArrowMove" />
+                                                    </TextBlock.RenderTransform>
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </Border>
+                                    </Canvas>
+                                    <Ellipse x:Name="MicPulse" Fill="{StaticResource AccentBrush}" Opacity="0" RenderTransformOrigin="0.5,0.5">
                                         <Ellipse.RenderTransform>
                                             <ScaleTransform x:Name="MicPulseScale" ScaleX="1" ScaleY="1" />
                                         </Ellipse.RenderTransform>
                                     </Ellipse>
-                                    <Ellipse x:Name="MicCircle" Fill="Transparent" />
+                                    <Ellipse x:Name="MicCircle" Fill="Transparent" RenderTransformOrigin="0.5,0.5">
+                                        <Ellipse.RenderTransform>
+                                            <ScaleTransform x:Name="MicCircleScale" ScaleX="1" ScaleY="1" />
+                                        </Ellipse.RenderTransform>
+                                    </Ellipse>
                                     <TextBlock x:Name="MicIcon" Text="&#xE720;" Style="{StaticResource Icon}" FontSize="19" HorizontalAlignment="Center"
                                                VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
                                 </Grid>
                             </Grid>
-                            <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" FontSize="19" Padding="10" VerticalAlignment="Bottom"
-                                    Content="&#xE76E;" ToolTip="Эмодзи, стикеры, GIF" Command="{Binding TogglePickerCommand}" />
                             <Grid>
-                            <TextBox x:Name="Composer" Style="{StaticResource InputBox}" FontSize="14" Padding="14,11"
+                            <TextBox x:Name="Composer" Style="{StaticResource InputBox}" FontSize="14" Padding="44,11,44,11"
                                      Tag="Сообщение" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="170"
                                      VerticalScrollBarVisibility="Auto" SpellCheck.IsEnabled="True" Language="ru-RU"
                                      Text="{Binding Draft, UpdateSourceTrigger=PropertyChanged}"
                                      PreviewKeyDown="Composer_PreviewKeyDown" />
+                            <!-- Скрепка и эмодзи — внутри поля ввода, как в Telegram -->
+                            <Button Style="{StaticResource IconButton}" Content="&#xE723;" FontSize="17" Padding="9" Margin="3,0,0,2"
+                                    HorizontalAlignment="Left" VerticalAlignment="Bottom" ToolTip="Прикрепить файл" Command="{Binding AttachCommand}" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE76E;" FontSize="18" Padding="9" Margin="0,0,3,2"
+                                    HorizontalAlignment="Right" VerticalAlignment="Bottom" ToolTip="Эмодзи, стикеры, GIF" Command="{Binding TogglePickerCommand}" />
                             <!-- Идёт запись голосового -->
                             <Border CornerRadius="22" Background="{StaticResource Surface2Brush}" Padding="16,0,8,0"
                                     Visibility="{Binding IsRecording, Converter={StaticResource BoolToVis}}">
@@ -1228,10 +1267,28 @@
                                     <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="Отмена" Padding="12,6"
                                             Command="{Binding CancelRecordingCommand}" VerticalAlignment="Center"
                                             Visibility="{Binding IsRecordLocked, Converter={StaticResource BoolToVis}}" />
-                                    <TextBlock Text="Отпустите за пределами кнопки — отмена,  ↑ — без удержания" FontSize="12"
-                                               Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                    <!-- Как в Telegram: «‹ Уведите — отмена», стрелка плавно «зовёт» в сторону -->
+                                    <TextBlock FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" HorizontalAlignment="Center"
                                                TextTrimming="CharacterEllipsis" Margin="10,0"
-                                               Visibility="{Binding IsRecordLocked, Converter={StaticResource InvBoolToVis}}" />
+                                               Visibility="{Binding IsRecordLocked, Converter={StaticResource InvBoolToVis}}">
+                                        <TextBlock.RenderTransform>
+                                            <TranslateTransform x:Name="CancelHintMove" />
+                                        </TextBlock.RenderTransform>
+                                        <TextBlock.Triggers>
+                                            <EventTrigger RoutedEvent="Loaded">
+                                                <BeginStoryboard>
+                                                    <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                                        <DoubleAnimation Storyboard.TargetName="CancelHintMove" Storyboard.TargetProperty="X" From="0" To="-8" Duration="0:0:0.8">
+                                                            <DoubleAnimation.EasingFunction>
+                                                                <SineEase EasingMode="EaseInOut" />
+                                                            </DoubleAnimation.EasingFunction>
+                                                        </DoubleAnimation>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </EventTrigger>
+                                        </TextBlock.Triggers>
+                                        <Run Text="‹  " FontSize="16" /><Run Text="Уведите курсор — отмена" />
+                                    </TextBlock>
                                 </DockPanel>
                             </Border>
                             </Grid>

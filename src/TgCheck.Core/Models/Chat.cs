@@ -106,6 +106,8 @@ public sealed class MessageItem : MediaHolder
     public string Text { get; set; } = "";
     public bool IsOut { get; init; }
     public DateTime? EditDateUtc { get; set; }
+    /// <summary>Голосовое/кружок ещё не прослушано (у своих — собеседником). Меняется, когда послушают.</summary>
+    public bool MediaUnread { get; set; }
     public int? ReplyToId { get; init; }
     /// <summary>Корень ветки (комментарии к посту), если сообщение — ответ внутри ветки.</summary>
     public int? ThreadTopId { get; init; }

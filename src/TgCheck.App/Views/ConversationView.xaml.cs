@@ -65,6 +65,11 @@ public partial class ConversationView : UserControl
         Unloaded += (_, _) => { Detach(); VideoPlayer.Stop(); _videoTimer.Stop(); };
         Loaded += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.Input, () => Composer.Focus());
         _videoTimer.Tick += (_, _) => UpdateVideoTime();
+        // Кружок начали слушать — отмечаем прослушанным (точка пропадает и у собеседника).
+        AddHandler(Controls.VideoNoteView.SoundStartedEvent, new RoutedEventHandler((_, e) =>
+        {
+            if (e.OriginalSource is FrameworkElement { DataContext: MessageViewModel m }) _vm?.MarkListened(m);
+        }));
         Anim.SetShow(JumpButton, false);
         JumpButton.Visibility = Visibility.Collapsed;
     }
@@ -342,11 +347,41 @@ public partial class ConversationView : UserControl
         MicCircle.Fill = recording ? (Brush)FindResource("AccentBrush") : Brushes.Transparent;
         MicIcon.Foreground = recording ? Brushes.White : (Brush)FindResource("TextSecondaryBrush");
         MicIcon.Text = _vm.IsRecordLocked ? "" : "";
-        var scale = recording ? 1.15 + Math.Min(_vm.RecordLevel * 1.6, 0.7) : 1;
-        MicPulse.Opacity = recording ? 0.3 : 0;
-        MicPulseScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(scale, TimeSpan.FromMilliseconds(100)));
-        MicPulseScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(scale, TimeSpan.FromMilliseconds(100)));
+        // Начало/конец записи — кнопка плавно вырастает в большой круг (и обратно).
+        if (recording != _micBig)
+        {
+            _micBig = recording;
+            var grow = new DoubleAnimation(recording ? 1.75 : 1, TimeSpan.FromMilliseconds(recording ? 260 : 160))
+            {
+                EasingFunction = recording ? new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.4 } : new CubicEase(),
+            };
+            MicCircleScale.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
+            MicCircleScale.BeginAnimation(ScaleTransform.ScaleYProperty, grow);
+            MicPulse.BeginAnimation(OpacityProperty, new DoubleAnimation(recording ? 0.22 : 0, TimeSpan.FromMilliseconds(200)));
+            if (recording)
+            {
+                var bob = new DoubleAnimation(0, -5, TimeSpan.FromMilliseconds(700)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase() };
+                MicLockArrowMove.BeginAnimation(TranslateTransform.YProperty, bob);
+            }
+            else MicLockArrowMove.BeginAnimation(TranslateTransform.YProperty, null);
+        }
+        // Замок — пока запись удерживается; закрепили — прячем.
+        var showLock = recording && !_vm.IsRecordLocked;
+        if (showLock != _micLockShown)
+        {
+            _micLockShown = showLock;
+            MicLock.BeginAnimation(OpacityProperty, new DoubleAnimation(showLock ? 1 : 0, TimeSpan.FromMilliseconds(180)));
+        }
+        // Ореол «дышит» по громкости голоса, плавно (сглаживание — чтобы не дёргался на каждом замере).
+        var target = recording ? 1.9 + Math.Min(_vm.RecordLevel * 2.4, 1.1) : 1;
+        _micLevel += (target - _micLevel) * 0.5;
+        var pulse = new DoubleAnimation(recording ? _micLevel : 1, TimeSpan.FromMilliseconds(120));
+        MicPulseScale.BeginAnimation(ScaleTransform.ScaleXProperty, pulse);
+        MicPulseScale.BeginAnimation(ScaleTransform.ScaleYProperty, pulse);
     }
+
+    private bool _micBig, _micLockShown;
+    private double _micLevel = 1;
 
     // ---- окно отправки вложений: Enter в подписи — отправить, Ctrl+V — добавить ещё
     private void Caption_PreviewKeyDown(object sender, KeyEventArgs e)
