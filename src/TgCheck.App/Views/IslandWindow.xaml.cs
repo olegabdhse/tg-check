@@ -334,13 +334,17 @@ public partial class IslandWindow : Window
             _mini ??= CreateMini();
             _mini.ShowChat(conv, Top + ActualHeight - 14);
         });
-        _quick.Closed += (_, _) => _quick = null;
+        _quick.Closed += (_, _) =>
+        {
+            _quick = null;
+            if (_mini is not { IsVisible: true }) _shell.MiniChat = null; // чат больше не «открыт» — снова считаем непрочитанные
+        };
         _quick.Show();
     }
 
     private MiniChatWindow CreateMini()
     {
-        var mini = new MiniChatWindow(back: peer =>
+        var mini = new MiniChatWindow(recentChats: _shell.IslandChats, switchTo: OpenFullMini, back: peer =>
         {
             // Сначала убираем мини-окно и островок, чат готовим, пока окно ещё свёрнуто,
             // и только потом показываем уже готовое приложение — без промежуточной перерисовки.

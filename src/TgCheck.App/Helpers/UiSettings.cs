@@ -17,7 +17,7 @@ public static class UiSettings
         public bool HideIsland { get; set; }
         public bool NotificationsOff { get; set; }
         public bool SoundOff { get; set; }
-        public bool NotifyArchived { get; set; }
+        public bool ArchiveNotificationsOff { get; set; }
         public bool HideStories { get; set; }
         public string? IslandEdge { get; set; }
         public List<long>? RecentSearch { get; set; }
@@ -70,8 +70,8 @@ public static class UiSettings
     /// <summary>Полоса историй над списком чатов.</summary>
     public static bool ShowStories { get => !_data.HideStories; set { _data.HideStories = !value; Save(); } }
 
-    /// <summary>Уведомлять и о чатах из архива (по умолчанию — нет, как в Telegram).</summary>
-    public static bool NotifyArchived { get => _data.NotifyArchived; set { _data.NotifyArchived = value; Save(); } }
+    /// <summary>Уведомлять и о чатах из архива (по умолчанию — да: в Telegram архив на уведомления не влияет, молчат только чаты без звука).</summary>
+    public static bool NotifyArchived { get => !_data.ArchiveNotificationsOff; set { _data.ArchiveNotificationsOff = !value; Save(); } }
 
     private static Data Load()
     {

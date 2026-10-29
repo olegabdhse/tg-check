@@ -22,9 +22,14 @@ public partial class MiniChatWindow : Window
     private ConversationView? _current;
     private ConversationViewModel? Current => _current?.DataContext as ConversationViewModel;
 
-    public MiniChatWindow(Action<PeerRef> back)
+    private readonly Func<IReadOnlyList<ChatItemViewModel>>? _recentChats;
+    private readonly Action<ChatItemViewModel>? _switchTo;
+
+    public MiniChatWindow(Action<PeerRef> back, Func<IReadOnlyList<ChatItemViewModel>>? recentChats = null, Action<ChatItemViewModel>? switchTo = null)
     {
         _back = back;
+        _recentChats = recentChats;
+        _switchTo = switchTo;
         InitializeComponent();
         SourceInitialized += (_, _) => Helpers.WindowEffects.ApplyRoundedCorners(this, Color.FromRgb(0x2A, 0x38, 0x46));
         PreviewKeyDown += (_, e) =>
@@ -42,6 +47,7 @@ public partial class MiniChatWindow : Window
         _closing = false;
         var switching = IsVisible && Current is not null && Current != conv;
         ShowView(conv);
+        RefreshSwitcher(conv);
         if (switching)
         {
             Activate();
@@ -117,6 +123,20 @@ public partial class MiniChatWindow : Window
         if (_current?.TypeIntoComposer(e.Text) == true) e.Handled = true;
     }
 
+    // Панель последних чатов в шапке: текущий отмечен рамкой.
+    private void RefreshSwitcher(ConversationViewModel current)
+    {
+        if (_recentChats is null) return;
+        var chats = _recentChats().ToList();
+        if (chats.All(c => c.Key != current.Peer.Key) && current.Owner.FindChat(current.Peer.Key) is { } open) chats.Insert(0, open);
+        ChatSwitcher.ItemsSource = chats.Take(5).Select(c => new MiniChatItem(c, c.Key == current.Peer.Key)).ToList();
+    }
+
+    private void Switch_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: MiniChatItem { IsCurrent: false } item }) _switchTo?.Invoke(item.Chat);
+    }
+
     private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ButtonState != MouseButtonState.Pressed) return;
@@ -131,4 +151,10 @@ public partial class MiniChatWindow : Window
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => CloseAnimated();
+}
+
+/// <summary>Чат в панели переключения мини-окна; текущий — с рамкой.</summary>
+public sealed record MiniChatItem(ChatItemViewModel Chat, bool IsCurrent)
+{
+    public System.Windows.Media.Brush? Ring => IsCurrent ? (System.Windows.Media.Brush)Application.Current.FindResource("AccentBrush") : null;
 }

@@ -87,7 +87,9 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     public int AllUnread => Chats.Count(c => !c.IsArchived && c.HasUnread && !c.IsMuted);
     public int PersonalUnread => Chats.Count(c => c.IsPersonal && c.HasUnread && !c.IsMuted);
     public bool HasArchive => ArchiveCount > 0;
-    public bool IsListEmpty => !IsLoading && ChatsView.IsEmpty && GlobalResults.Count == 0;
+    public bool IsListEmpty => !IsLoading && (IsSearching ? SearchResults.Count == 0 : ChatsView.IsEmpty) && GlobalResults.Count == 0;
+    /// <summary>Панель «Люди и каналы» видна — меняется один раз после загрузки результатов (без мигания при пересборке).</summary>
+    [ObservableProperty] private bool _hasGlobalResults;
 
     /// <summary>Изменилось число непрочитанных (для значка на боковой панели).</summary>
     public event Action? UnreadChanged;
@@ -97,19 +99,33 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     partial void OnIsLoadingChanged(bool value) => OnPropertyChanged(nameof(IsListEmpty));
 
     // Фильтр списка — когда перестали печатать (а не на каждую букву: пересортировка ~1300 чатов подвешивала ввод).
-    private System.Windows.Threading.DispatcherTimer? _searchRefresh;
+    // Поиск по своим чатам — в отдельном маленьком списке совпадений: большой список (~1300 чатов) при этом
+    // не перестраивается, поэтому результат виден сразу, а после очистки поиска полный список уже на месте.
+    public ObservableCollection<ChatItemViewModel> SearchResults { get; } = [];
+    public bool IsSearching => !string.IsNullOrWhiteSpace(Search);
+    /// <summary>Что показывает список: совпадения поиска или все чаты.</summary>
+    public object ListSource => IsSearching ? SearchResults : ChatsView;
 
     partial void OnSearchChanged(string value)
     {
         OnPropertyChanged(nameof(ShowRecentSearch));
-        if (_searchRefresh is null)
+        var q = value.Trim();
+        var nick = q.TrimStart('@');
+        var matches = q.Length == 0 ? [] : Chats
+            .Where(c => !(c.Last is null && c.AddedUtc is not null))
+            .Where(c => c.Title.Contains(q, StringComparison.CurrentCultureIgnoreCase) ||
+                        (nick.Length > 0 && c.Peer.Username?.Contains(nick, StringComparison.OrdinalIgnoreCase) == true))
+            .OrderByDescending(c => c.IsPinned && !c.IsArchived).ThenByDescending(c => c.SortDate)
+            .Take(100)
+            .ToList();
+        if (!SearchResults.SequenceEqual(matches))
         {
-            _searchRefresh = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
-            _searchRefresh.Tick += (_, _) => { _searchRefresh.Stop(); RefreshView(); };
+            SearchResults.Clear();
+            foreach (var c in matches) SearchResults.Add(c);
         }
-        _searchRefresh.Stop();
-        if (string.IsNullOrWhiteSpace(value)) RefreshView(); // очистили поиск — список сразу полный
-        else _searchRefresh.Start();
+        OnPropertyChanged(nameof(IsSearching));
+        OnPropertyChanged(nameof(ListSource));
+        OnPropertyChanged(nameof(IsListEmpty));
         _ = SearchGlobalAsync(value);
     }
 
@@ -183,6 +199,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     }
 
     public ConversationViewModel? FindConversation(long key) => _conversations.GetValueOrDefault(key);
+    public ChatItemViewModel? FindChat(long key) => _byKey.GetValueOrDefault(key);
 
     // Открытая ветка комментариев (одна): получает свои новые сообщения отдельно от чата обсуждения.
     private ConversationViewModel? _thread;
@@ -219,8 +236,8 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         if (Confirm is not null) { CancelConfirm(); return true; }
         if (Conversation?.HandleEscape() == true) return true;
         if (LeaveThread()) return true;
+        if (Search.Length > 0) { Search = ""; return true; } // Esc в поиске — очистить поиск, чат не закрывать
         if (Conversation is not null) { Conversation = null; SelectedChat = null; return true; }
-        if (Search.Length > 0) { Search = ""; return true; }
         if (ShowArchive) { ShowArchive = false; return true; }
         return false;
     }
@@ -234,13 +251,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     private bool Filter(object o)
     {
         if (o is not ChatItemViewModel c) return false;
-        if (Search.Trim() is { Length: > 0 } q)
-        {
-            // Поиск по своим чатам (включая архив): по имени и по нику, с @ и без.
-            var nick = q.TrimStart('@');
-            return c.Title.Contains(q, StringComparison.CurrentCultureIgnoreCase) ||
-                   (nick.Length > 0 && c.Peer.Username?.Contains(nick, StringComparison.OrdinalIgnoreCase) == true);
-        }
+        if (c.Last is null && c.AddedUtc is not null) return false; // открыт, но переписка не начата — в списке не показываем
         if (ShowArchive) return c.IsArchived;
         // «Личные» — все личные переписки, включая архивные; «Все» — основная папка.
         return Tab == ChatTab.Personal ? c.IsPersonal : !c.IsArchived;
@@ -506,7 +517,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         _searchCts?.Cancel();
         var cts = _searchCts = new CancellationTokenSource();
         var q = query.Trim();
-        if (q.Length < 2) { GlobalResults.Clear(); OnPropertyChanged(nameof(IsListEmpty)); return; }
+        if (q.Length < 2) { GlobalResults.Clear(); HasGlobalResults = false; OnPropertyChanged(nameof(IsListEmpty)); return; }
         try
         {
             await Task.Delay(350, cts.Token);
@@ -525,12 +536,13 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
             if (cts.IsCancellationRequested) return;
 
             GlobalResults.Clear(); // прежние результаты висят, пока не пришли новые — без мигания
-            foreach (var p in found.DistinctBy(p => p.Key).Where(p => !_byKey.TryGetValue(p.Key, out var c) || !ChatsView.Contains(c)))
+            foreach (var p in found.DistinctBy(p => p.Key).Where(p => !_byKey.TryGetValue(p.Key, out var c) || !SearchResults.Contains(c)))
             {
                 var vm = new PeerResultViewModel(p);
                 vm.EnsureAvatar(_tg.Media);
                 GlobalResults.Add(vm);
             }
+            HasGlobalResults = GlobalResults.Count > 0;
         }
         catch (TaskCanceledException) { }
         catch (Exception ex) { TgErrors.Describe(ex); }

@@ -183,7 +183,7 @@
                 </Grid>
 
                 <!-- Чаты -->
-                <ListBox x:Name="ChatList" Grid.Row="3" ItemsSource="{Binding ChatsView}" SelectedItem="{Binding SelectedChat}"
+                <ListBox x:Name="ChatList" Grid.Row="3" ItemsSource="{Binding ListSource}" SelectedItem="{Binding SelectedChat}"
                          Background="Transparent" BorderThickness="0" Padding="0,0,0,6"
                          ItemContainerStyle="{StaticResource ChatListItem}"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -373,7 +373,7 @@
                 <Border Grid.Row="4" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="0,8,0,8"
                         MaxHeight="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=Grid}, Converter={StaticResource Mul}, ConverterParameter=0.55}"
                         Visibility="Collapsed" helpers:Anim.Mode="SlideUp"
-                        helpers:Anim.Show="{Binding GlobalResults.Count, Converter={x:Static views:ChatsView.NonZero}}">
+                        helpers:Anim.Show="{Binding HasGlobalResults}">
                     <!-- Не выше половины панели (иначе в невысоком окне список обрезается и не листается) -->
                     <DockPanel>
                         <TextBlock DockPanel.Dock="Top" Text="Люди и каналы" Style="{StaticResource Caption}" Margin="18,0,0,6" />
