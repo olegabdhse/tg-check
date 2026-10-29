@@ -767,15 +767,11 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             if (!cancel) _owner.ShowToast("Удерживайте кнопку, чтобы записать голосовое");
             return;
         }
-        try
-        {
-            var reply = ReplyTo?.Id ?? SendTopId;
-            ReplyTo = null;
-            var sent = await _tg.SendVoiceAsync(Peer, voice, reply);
-            OnMessageReceived(sent);
-            _owner.OnMessageReceived(sent, fromConversation: true);
-        }
-        catch (Exception ex) { _owner.ShowToast(TgErrors.Describe(ex), true); }
+        var reply = ReplyTo?.Id ?? SendTopId;
+        ReplyTo = null;
+        var up = new UploadViewModel($"Голосовое сообщение · {Fmt.Duration(voice.DurationSeconds)}", "");
+        await RunUploadAsync(up, async () =>
+            await _tg.SendVoiceAsync(Peer, voice, reply, new Progress<double>(p => up.Progress = p), up.Cts.Token));
     }
 
     public string AttachmentsTitle
@@ -844,25 +840,51 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
 
     private async Task SendAttachmentsAsync(string caption)
     {
-        IsSending = true;
+        // Окно вложений закрывается сразу, а загрузка идёт элементом в ленте — с прогрессом и отменой.
         var files = Attachments.ToList();
+        var reply = ReplyTo?.Id ?? SendTopId;
+        var asFiles = SendAsFiles;
+        Attachments.Clear();
+        OnPropertyChanged(nameof(HasAttachments));
+        OnPropertyChanged(nameof(AttachmentsTitle));
+        SendCommand.NotifyCanExecuteChanged();
+        Draft = "";
+        ReplyTo = null;
+
+        var title = files.Count == 1 ? files[0].Name : $"{Fmt.N(files.Count)} {Fmt.Plural(files.Count, "файл", "файла", "файлов")}";
+        var up = new UploadViewModel(title, files[0].Icon, files.FirstOrDefault(f => f.Thumb is not null)?.Thumb);
+        var fractions = new double[files.Count];
+        await RunUploadAsync(up, async () =>
+        {
+            await _tg.SendFilesAsync(Peer, files.Select(f => f.Path).ToList(), caption.Length > 0 ? caption : null, reply, asFiles,
+                new Progress<(int Index, double Fraction)>(p =>
+                {
+                    fractions[p.Index] = p.Fraction;
+                    up.Progress = fractions.Average();
+                }), up.Cts.Token);
+            return null; // сами сообщения приходят обновлением от сервера
+        });
+    }
+
+    // Отправка с загрузкой: в ленте сразу появляется пузырь «Отправка… N%» с крестиком; по готовности — настоящее сообщение.
+    private async Task RunUploadAsync(UploadViewModel up, Func<Task<MessageItem?>> send)
+    {
+        Items.Add(up);
+        ScrollToBottomRequested?.Invoke(true);
         try
         {
-            await _tg.SendFilesAsync(Peer, files.Select(f => f.Path).ToList(), caption.Length > 0 ? caption : null, ReplyTo?.Id ?? SendTopId,
-                SendAsFiles, new Progress<(int Index, double Fraction)>(p => files[p.Index].Progress = p.Fraction));
-            Attachments.Clear();
-            OnPropertyChanged(nameof(HasAttachments));
-            Draft = "";
-            ReplyTo = null;
-            ScrollToBottomRequested?.Invoke(true);
+            var sent = await send();
+            Items.Remove(up);
+            if (sent is not null)
+            {
+                OnMessageReceived(sent);
+                _owner.OnMessageReceived(sent, fromConversation: true);
+            }
         }
         catch (Exception ex)
         {
-            _owner.ShowToast(TgErrors.Describe(ex), true);
-        }
-        finally
-        {
-            IsSending = false;
+            Items.Remove(up);
+            if (!up.Cts.IsCancellationRequested) _owner.ShowToast(TgErrors.Describe(ex), true); // отменили сами — без ошибки
         }
     }
 

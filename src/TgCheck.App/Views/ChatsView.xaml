@@ -78,10 +78,13 @@
 
                 <!-- Поиск -->
                 <Grid Margin="12,12,12,8">
-                    <TextBox x:Name="SearchBox" Style="{StaticResource SearchBox}" GotKeyboardFocus="SearchBox_GotFocus" LostKeyboardFocus="SearchBox_LostFocus" Padding="34,9,12,9" Tag="Поиск: чаты, люди, @ник, ссылка или ID"
+                    <TextBox x:Name="SearchBox" Style="{StaticResource SearchBox}" GotKeyboardFocus="SearchBox_GotFocus" LostKeyboardFocus="SearchBox_LostFocus" Padding="34,9,34,9" Tag="Поиск: чаты, люди, @ник, ссылка или ID"
                              Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}" />
                     <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" FontSize="13" Margin="13,0,0,0" IsHitTestVisible="False"
                                HorizontalAlignment="Left" Foreground="{StaticResource TextSecondaryBrush}" />
+                    <!-- Идёт глобальный поиск — маленький индикатор внутри поля, справа -->
+                    <views:Spinner Width="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0" IsHitTestVisible="False"
+                                   Visibility="{Binding ShowSearchSpinner, Converter={StaticResource BoolToVis}}" />
                 </Grid>
 
                 <!-- Истории -->
@@ -389,8 +392,6 @@
                     </DockPanel>
                 </Border>
 
-                <views:Spinner Grid.Row="3" Width="16" Height="16" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,4,16,0"
-                               Visibility="{Binding IsSearchingGlobal, Converter={StaticResource BoolToVis}}" />
             </Grid>
         </Border>
 

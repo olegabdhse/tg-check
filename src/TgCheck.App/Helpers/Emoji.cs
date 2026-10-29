@@ -54,6 +54,24 @@ public static class EmojiImages
         _telegram = set;
         foreach (var (emoji, entry) in Cache.ToList())
             if (entry is not null) TryUpgrade(emoji, entry);
+        Prefetch(set);
+    }
+
+    // Весь набор — заранее, в фоне и понемногу (4 за раз): видимые эмодзи грузятся вперёд, а остальные к моменту,
+    // когда понадобятся, уже лежат на диске — панель эмодзи открывается сразу целиком, а не по одному.
+    private static bool _prefetching;
+
+    private static void Prefetch(IReadOnlyDictionary<string, Core.Models.StickerItem> set)
+    {
+        if (_prefetching || Controls.AppServices.Media is not { } media) return;
+        _prefetching = true;
+        var stickers = set.Values.ToList();
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(3000); // не мешать запуску
+            await Parallel.ForEachAsync(stickers, new ParallelOptions { MaxDegreeOfParallelism = 4 },
+                async (s, _) => { try { await media.GetEmojiImageAsync(s, Px); } catch { } });
+        });
     }
 
     private static void TryUpgrade(string emoji, Entry entry)

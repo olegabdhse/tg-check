@@ -810,8 +810,38 @@
             </DataTemplate.Triggers>
         </DataTemplate>
 
+        <!-- Отправляется: свой пузырь с прогрессом загрузки и крестиком отмены (как в Telegram) -->
+        <DataTemplate x:Key="UploadTpl" DataType="{x:Type vm:UploadViewModel}">
+            <Border HorizontalAlignment="Right" Margin="60,3,0,3" Padding="8,8,14,8" CornerRadius="14" Background="{StaticResource OutBubble}"
+                    MaxWidth="360">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Left" Width="46" Height="46" Margin="0,0,10,0">
+                        <Border CornerRadius="23" Background="#33FFFFFF" ClipToBounds="True">
+                            <Image Source="{Binding Preview}" Stretch="UniformToFill" Visibility="{Binding HasPreview, Converter={StaticResource BoolToVis}}" />
+                        </Border>
+                        <views:Spinner Width="46" Height="46" />
+                        <Button Style="{StaticResource BareButton}" Command="{Binding CancelCommand}" ToolTip="Отменить отправку" Cursor="Hand">
+                            <Border Width="30" Height="30" CornerRadius="15" Background="#66000000">
+                                <TextBlock Text="&#xE711;" Style="{StaticResource Icon}" FontSize="12" Foreground="White"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                        </Button>
+                    </Grid>
+                    <StackPanel VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding Icon}" Style="{StaticResource Icon}" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"
+                                       Visibility="{Binding HasPreview, Converter={StaticResource InvBoolToVis}}" />
+                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="240" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding ProgressText}" FontSize="12" Foreground="{StaticResource MetaBrush}" Margin="0,3,0,0" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+        </DataTemplate>
+
         <views:MessageTemplateSelector x:Key="MessageSelector"
-                                       Date="{StaticResource DateTpl}" Service="{StaticResource ServiceTpl}" Bubble="{StaticResource BubbleTpl}" />
+                                       Date="{StaticResource DateTpl}" Service="{StaticResource ServiceTpl}" Bubble="{StaticResource BubbleTpl}"
+                                       Upload="{StaticResource UploadTpl}" />
 
     </UserControl.Resources>
 

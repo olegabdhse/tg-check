@@ -412,10 +412,17 @@ public sealed partial class TelegramService
     public async Task<byte[]?> GetPhotoBytesAsync(MediaHolder media) => await Media.GetFullPhotoAsync(media);
 
     /// <summary>Отправить записанное голосовое (Ogg/Opus с волной).</summary>
-    public async Task<MessageItem> SendVoiceAsync(PeerRef peer, Media.VoiceRecording voice, int? replyToId = null)
+    public async Task<MessageItem> SendVoiceAsync(PeerRef peer, Media.VoiceRecording voice, int? replyToId = null,
+        IProgress<double>? progress = null, CancellationToken ct = default)
     {
         EnsureNotIgnored(peer);
-        var file = await _client.UploadFileAsync(voice.Path);
+        // Отмена — исключением из обратного вызова загрузки (своей отмены у библиотеки нет).
+        var file = await _client.UploadFileAsync(voice.Path, (done, total) =>
+        {
+            ct.ThrowIfCancellationRequested();
+            progress?.Report(total > 0 ? (double)done / total : 0);
+        });
+        ct.ThrowIfCancellationRequested();
         var media = new InputMediaUploadedDocument
         {
             file = file,
@@ -445,7 +452,7 @@ public sealed partial class TelegramService
     /// подпись прикрепляется к первому сообщению.
     /// </summary>
     public async Task SendFilesAsync(PeerRef peer, IReadOnlyList<string> paths, string? caption, int? replyToId,
-        bool asFiles, IProgress<(int Index, double Fraction)>? progress = null)
+        bool asFiles, IProgress<(int Index, double Fraction)>? progress = null, CancellationToken ct = default)
     {
         EnsureNotIgnored(peer);
         var input = peer.Info.ToInputPeer();
@@ -454,7 +461,11 @@ public sealed partial class TelegramService
         {
             var index = i;
             var path = paths[i];
-            var file = await _client.UploadFileAsync(path, (done, total) => progress?.Report((index, total > 0 ? (double)done / total : 0)));
+            var file = await _client.UploadFileAsync(path, (done, total) =>
+            {
+                ct.ThrowIfCancellationRequested();
+                progress?.Report((index, total > 0 ? (double)done / total : 0));
+            });
             var ext = Path.GetExtension(path);
             if (!asFiles && PhotoExt.Contains(ext) && new FileInfo(path).Length < 10 * 1024 * 1024)
             {
@@ -475,6 +486,7 @@ public sealed partial class TelegramService
             }
         }
 
+        ct.ThrowIfCancellationRequested();
         var first = true;
         foreach (var chunk in medias.Chunk(10))
         {

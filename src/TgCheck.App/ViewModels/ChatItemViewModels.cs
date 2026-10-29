@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using TgCheck.App.Helpers;
 using TgCheck.Core.Media;
 using TgCheck.Core.Models;
@@ -573,4 +574,25 @@ public sealed partial class ForumTopicViewModel : ObservableObject
     public string UnreadText => Unread > 999 ? $"{Unread / 1000}K" : Unread.ToString();
     public bool IsPinned => Topic.IsPinned;
     public bool IsClosed => Topic.IsClosed;
+}
+
+/// <summary>
+/// Отправляется (идёт загрузка файла): сразу в ленте — с прогрессом и крестиком отмены, как в Telegram.
+/// Когда сервер принял сообщение, элемент заменяется настоящим сообщением.
+/// </summary>
+public sealed partial class UploadViewModel(string title, string icon, ImageSource? preview = null) : ObservableObject
+{
+    public string Title { get; } = title;
+    /// <summary>Значок типа (голосовое, фото, файл) — если нет превью.</summary>
+    public string Icon { get; } = icon;
+    public ImageSource? Preview { get; } = preview;
+    public bool HasPreview => Preview is not null;
+
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ProgressText))] private double _progress;
+    public string ProgressText => Progress > 0 ? $"Отправка… {Progress:P0}" : "Отправка…";
+
+    public CancellationTokenSource Cts { get; } = new();
+
+    [RelayCommand]
+    private void Cancel() => Cts.Cancel();
 }

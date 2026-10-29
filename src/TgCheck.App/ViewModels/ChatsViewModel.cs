@@ -71,7 +71,9 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _showArchive;
     [ObservableProperty] private string _search = "";
     [ObservableProperty] private bool _isLoading;
-    [ObservableProperty] private bool _isSearchingGlobal;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowSearchSpinner))] private bool _isSearchingGlobal;
+    /// <summary>Индикатор глобального поиска — только пока курсор в поле поиска.</summary>
+    public bool ShowSearchSpinner => IsSearchingGlobal && IsSearchFocused;
     [ObservableProperty] private string? _error;
     [ObservableProperty] private ChatItemViewModel? _selectedChat;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasConversation))] private ConversationViewModel? _conversation;
@@ -148,7 +150,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
 
     /// <summary>Чаты, открытые из поиска — показываются при фокусе на пустом поле поиска.</summary>
     public ObservableCollection<ChatItemViewModel> RecentSearch { get; } = [];
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowRecentSearch))] private bool _isSearchFocused;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowRecentSearch), nameof(ShowSearchSpinner))] private bool _isSearchFocused;
     public bool ShowRecentSearch => IsSearchFocused && string.IsNullOrWhiteSpace(Search) && RecentSearch.Count > 0;
 
     private void LoadRecentSearch()
