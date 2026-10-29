@@ -1123,7 +1123,7 @@
                                         <Button Style="{StaticResource BareButton}" Width="115" Height="90" Margin="0,0,3,3"
                                                 Command="{Binding Tag.SendStickerCommand, ElementName=PickerPanel}" CommandParameter="{Binding}">
                                             <Border CornerRadius="8" ClipToBounds="True" Background="#22FFFFFF">
-                                                <controls:StickerView Media="{Binding}" Animate="False" Stretch="UniformToFill" />
+                                                <controls:StickerView Media="{Binding}" Animate="False" Stretch="UniformToFill" Width="115" Height="90" />
                                             </Border>
                                         </Button>
                                     </DataTemplate>

@@ -78,7 +78,7 @@ public sealed class GifView : Grid
         if (_fileRequested || Media is not { } media || AppServices.Media is not { } service) return;
         _fileRequested = true;
         var version = _version;
-        var path = await service.GetMediaFileAsync(media, priority: false);
+        var path = await service.GetMediaFileAsync(media, priority: true);
         if (version != _version || path is null) { _fileRequested = false; return; }
         _player.Source = new Uri(path);
         _hasSource = true;

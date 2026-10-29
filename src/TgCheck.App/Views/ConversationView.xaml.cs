@@ -351,7 +351,7 @@ public partial class ConversationView : UserControl
         if (recording != _micBig)
         {
             _micBig = recording;
-            var grow = new DoubleAnimation(recording ? 1.75 : 1, TimeSpan.FromMilliseconds(recording ? 260 : 160))
+            var grow = new DoubleAnimation(recording ? 1.3 : 1, TimeSpan.FromMilliseconds(recording ? 220 : 140))
             {
                 EasingFunction = recording ? new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.4 } : new CubicEase(),
             };
@@ -373,9 +373,9 @@ public partial class ConversationView : UserControl
             MicLock.BeginAnimation(OpacityProperty, new DoubleAnimation(showLock ? 1 : 0, TimeSpan.FromMilliseconds(180)));
         }
         // Ореол «дышит» по громкости голоса, плавно (сглаживание — чтобы не дёргался на каждом замере).
-        var target = recording ? 1.9 + Math.Min(_vm.RecordLevel * 2.4, 1.1) : 1;
-        _micLevel += (target - _micLevel) * 0.5;
-        var pulse = new DoubleAnimation(recording ? _micLevel : 1, TimeSpan.FromMilliseconds(120));
+        var target = recording ? 1.42 + Math.Min(_vm.RecordLevel * 1.8, 0.28) : 1; // в пределах окна: кнопка у самого края
+        _micLevel += (target - _micLevel) * 0.35;
+        var pulse = new DoubleAnimation(recording ? _micLevel : 1, TimeSpan.FromMilliseconds(60));
         MicPulseScale.BeginAnimation(ScaleTransform.ScaleXProperty, pulse);
         MicPulseScale.BeginAnimation(ScaleTransform.ScaleYProperty, pulse);
     }

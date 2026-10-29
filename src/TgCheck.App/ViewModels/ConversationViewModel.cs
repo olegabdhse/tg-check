@@ -697,6 +697,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     // увели курсор с кнопки и отпустили — отмена, потянули вверх — запись «закрепляется» без удержания.
 
     private VoiceRecorder? _recorder;
+    private Task _recorderStart = Task.CompletedTask;
     private System.Windows.Threading.DispatcherTimer? _recordTimer;
 
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowMic))] private bool _isRecording;
@@ -711,21 +712,25 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     public void StartRecording()
     {
         if (IsRecording || !CanWrite) return;
-        try
+        AudioPlayer.Instance.Stop();
+        var recorder = _recorder = new VoiceRecorder();
+        // Запись видна сразу, а микрофон открывается в фоне: открытие устройства занимает 0,2–0,5 с,
+        // и раньше всё это время окно стояло, а анимация начиналась с опозданием.
+        _recorderStart = Task.Run(recorder.Start);
+        _recorderStart.ContinueWith(t =>
         {
-            AudioPlayer.Instance.Stop();
-            _recorder = new VoiceRecorder();
-            _recorder.Start();
-        }
-        catch (Exception ex)
-        {
+            if (!ReferenceEquals(_recorder, recorder)) return;
             _recorder = null;
-            _owner.ShowToast("Микрофон недоступен: " + TgErrors.Describe(ex), true);
-            return;
-        }
+            _recordTimer?.Stop();
+            IsRecording = false;
+            IsRecordLocked = false;
+            RecordLevel = 0;
+            RecordTime = "0:00,0";
+            _owner.ShowToast("Микрофон недоступен: " + TgErrors.Describe(t.Exception!.GetBaseException()), true);
+        }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.FromCurrentSynchronizationContext());
         IsRecordLocked = false;
         IsRecording = true;
-        _recordTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+        _recordTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) }; // уровень — 20 раз в секунду, анимация плавная
         _recordTimer.Tick += (_, _) =>
         {
             if (_recorder is null) return;
@@ -754,6 +759,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         IsRecording = false;
         IsRecordLocked = false;
         RecordLevel = 0;
+        try { await _recorderStart; } catch { return; } // микрофон ещё открывался — дождаться (или он не открылся)
         var voice = await Task.Run(() => recorder.Stop(cancel));
         RecordTime = "0:00,0";
         if (voice is null)

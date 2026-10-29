@@ -28,7 +28,7 @@ public static class EmojiImages
 
     private static readonly Dictionary<string, Entry?> Cache = [];
     private static IReadOnlyDictionary<string, Core.Models.StickerItem>? _telegram;
-    private static readonly SemaphoreSlim Downloads = new(6, 6);
+    private static readonly SemaphoreSlim Downloads = new(16, 16);
 
     /// <summary>Картинка эмодзи (вызывать из потока интерфейса).</summary>
     public static ImageSource? Get(string emoji)
@@ -70,7 +70,7 @@ public static class EmojiImages
         try
         {
             // Первый кадр эмодзи Telegram (с кэшем на диске) → пиксели нужного размера, вне потока интерфейса.
-            var bytes = await media.GetMessagePreviewAsync(sticker);
+            var bytes = await media.GetEmojiImageAsync(sticker, Px);
             if (bytes is null) return;
             var pixels = await Task.Run(() =>
             {

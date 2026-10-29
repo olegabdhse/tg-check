@@ -194,7 +194,8 @@
                          VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                          VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLengthUnit="Page" VirtualizingPanel.CacheLength="0.5,1"
                          helpers:SmoothScroll.IsEnabled="True">
-                    <ListBox.ItemTemplate>
+                    <!-- Во время поиска в одном списке: сначала свои чаты, затем люди и каналы из глобального поиска -->
+                    <ListBox.Resources>
                         <DataTemplate DataType="{x:Type vm:ChatItemViewModel}">
                             <Grid Height="48" Loaded="ChatItem_Changed" DataContextChanged="ChatItem_DataContextChanged">
                                 <Grid.ContextMenu>
@@ -324,7 +325,21 @@
                                 </Grid>
                             </Grid>
                         </DataTemplate>
-                    </ListBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:PeerResultViewModel}">
+                            <Grid Height="48" Background="Transparent" Cursor="Hand" Loaded="ChatItem_Changed" DataContextChanged="ChatItem_DataContextChanged">
+                                <Grid.InputBindings>
+                                    <MouseBinding MouseAction="LeftClick" Command="{Binding DataContext.OpenGlobalCommand, ElementName=Root}" CommandParameter="{Binding}" />
+                                </Grid.InputBindings>
+                                <DockPanel>
+                                    <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource Avatar48}" />
+                                    <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock helpers:RichText.Text="{Binding Title}" helpers:RichText.EmojiSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Caption}" FontWeight="Normal" Margin="0,3,0,0" />
+                                    </StackPanel>
+                                </DockPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.Resources>
                 </ListBox>
 
                 <StackPanel Grid.Row="3" VerticalAlignment="Center" HorizontalAlignment="Center"
@@ -374,40 +389,7 @@
                     </DockPanel>
                 </Border>
 
-                <!-- Глобальный поиск -->
-                <Border Grid.Row="4" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="0,8,0,8"
-                        MaxHeight="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=Grid}, Converter={StaticResource Mul}, ConverterParameter=0.55}"
-                        Visibility="Collapsed" helpers:Anim.Mode="SlideUp"
-                        helpers:Anim.Show="{Binding HasGlobalResults}">
-                    <!-- Не выше половины панели (иначе в невысоком окне список обрезается и не листается) -->
-                    <DockPanel>
-                        <TextBlock DockPanel.Dock="Top" Text="Люди и каналы" Style="{StaticResource Caption}" Margin="18,0,0,6" />
-                        <ScrollViewer VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True">
-                            <ItemsControl ItemsSource="{Binding GlobalResults}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate DataType="{x:Type vm:PeerResultViewModel}">
-                                        <Button Style="{StaticResource GhostButton}" HorizontalContentAlignment="Stretch" Padding="12,6"
-                                                Margin="6,0" Foreground="{StaticResource TextBrush}"
-                                                Command="{Binding DataContext.OpenGlobalCommand, ElementName=Root}" CommandParameter="{Binding}">
-                                            <DockPanel>
-                                                <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource Avatar48}" Width="40" Height="40">
-                                                    <ContentPresenter.LayoutTransform>
-                                                        <ScaleTransform ScaleX="0.83" ScaleY="0.83" />
-                                                    </ContentPresenter.LayoutTransform>
-                                                </ContentPresenter>
-                                                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                                                    <TextBlock helpers:RichText.Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                                    <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Caption}" FontWeight="Normal" />
-                                                </StackPanel>
-                                            </DockPanel>
-                                        </Button>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </ScrollViewer>
-                    </DockPanel>
-                </Border>
-                <views:Spinner Grid.Row="4" Width="16" Height="16" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,10,16,0"
+                <views:Spinner Grid.Row="3" Width="16" Height="16" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,4,16,0"
                                Visibility="{Binding IsSearchingGlobal, Converter={StaticResource BoolToVis}}" />
             </Grid>
         </Border>

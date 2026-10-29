@@ -18,7 +18,7 @@ public sealed class MediaService
 {
     private readonly Func<Client> _client;
     private readonly string _cacheDir;
-    private readonly SemaphoreSlim _downloads = new(4, 4);
+    private readonly SemaphoreSlim _downloads = new(8, 8); // превью фото/GIF/документов: 4 было мало для экрана картинок
     // Аватарки маленькие и нужны сразу (первый вход — десятки строк) — своя, более широкая очередь, не за картинками сообщений.
     private readonly SemaphoreSlim _avatarDownloads = new(8, 8);
     // Загрузчики запускаются в пуле потоков: даже чтение с диска не должно идти в UI-потоке (в группах это десятки файлов разом).
@@ -152,6 +152,33 @@ public sealed class MediaService
         finally { _downloads.Release(); }
     }
 
+    // Эмодзи — маленькие и нужны сразу десятками: своя широкая очередь и отрисовка сразу в нужном размере.
+    private readonly SemaphoreSlim _emojiDownloads = new(12, 12);
+
+    /// <summary>Картинка эмодзи Telegram (PNG нужного размера) с кэшем на диске.</summary>
+    public Task<byte[]?> GetEmojiImageAsync(MediaHolder emoji, int px)
+    {
+        if (emoji.Document is not { } doc) return Task.FromResult<byte[]?>(null);
+        var key = $"emo_{doc.id}_{px}";
+        return _inflight.GetOrAdd(key, _ => Task.Run(async () =>
+        {
+            var path = Path.Combine(_cacheDir, key + ".png");
+            try
+            {
+                if (File.Exists(path)) return await File.ReadAllBytesAsync(path);
+                var (bytes, mime) = await DownloadDocumentAsync(doc, _emojiDownloads);
+                if (bytes is null) return null;
+                using var image = mime == "application/x-tgsticker" || IsGzip(bytes) ? RenderLottie(bytes, px) : SKImage.FromEncodedData(bytes);
+                if (image is null) return null;
+                using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+                var png = data.ToArray();
+                await File.WriteAllBytesAsync(path, png);
+                return png;
+            }
+            catch (Exception ex) { Logging.Write($"emoji {doc.id}: {ex.Message}"); return null; }
+        }));
+    }
+
     private static SKImage? RenderLottie(byte[] tgs, int size)
     {
         string json;
@@ -172,12 +199,13 @@ public sealed class MediaService
     }
 
     // Исходные файлы документов тоже кэшируются: узоры и модели повторяются у многих подарков.
-    private async Task<(byte[]? Bytes, string? Mime)> DownloadDocumentAsync(Document doc)
+    private async Task<(byte[]? Bytes, string? Mime)> DownloadDocumentAsync(Document doc, SemaphoreSlim? gate = null)
     {
         var path = Path.Combine(_cacheDir, $"doc_{doc.id}.bin");
         if (File.Exists(path)) return (await File.ReadAllBytesAsync(path), doc.mime_type);
 
-        await _downloads.WaitAsync();
+        gate ??= _downloads;
+        await gate.WaitAsync();
         try
         {
             if (File.Exists(path)) return (await File.ReadAllBytesAsync(path), doc.mime_type);
@@ -190,7 +218,7 @@ public sealed class MediaService
             File.Move(tmp, path, overwrite: true);
             return (bytes, mime ?? doc.mime_type);
         }
-        finally { _downloads.Release(); }
+        finally { gate.Release(); }
     }
 
     private static bool IsGzip(byte[] b) => b.Length > 2 && b[0] == 0x1F && b[1] == 0x8B;

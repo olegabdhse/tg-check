@@ -107,7 +107,18 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     public ObservableCollection<ChatItemViewModel> SearchResults { get; } = [];
     public bool IsSearching => !string.IsNullOrWhiteSpace(Search);
     /// <summary>Что показывает список: совпадения поиска или все чаты.</summary>
-    public object ListSource => IsSearching ? SearchResults : ChatsView;
+    public object ListSource => IsSearching ? SearchAll : ChatsView;
+
+    /// <summary>Поиск одним списком: свои чаты (по названию и найденные по нику), затем люди и каналы, которых у вас ещё нет.</summary>
+    public ObservableCollection<object> SearchAll { get; } = [];
+
+    private void RebuildSearchAll()
+    {
+        var all = SearchResults.Cast<object>().Concat(GlobalResults).ToList();
+        if (SearchAll.SequenceEqual(all)) return;
+        SearchAll.Clear();
+        foreach (var item in all) SearchAll.Add(item);
+    }
 
     partial void OnSearchChanged(string value)
     {
@@ -126,6 +137,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
             SearchResults.Clear();
             foreach (var c in matches) SearchResults.Add(c);
         }
+        RebuildSearchAll();
         OnPropertyChanged(nameof(IsSearching));
         OnPropertyChanged(nameof(ListSource));
         OnPropertyChanged(nameof(IsListEmpty));
@@ -603,7 +615,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         _searchCts?.Cancel();
         var cts = _searchCts = new CancellationTokenSource();
         var q = query.Trim();
-        if (q.Length < 2) { GlobalResults.Clear(); HasGlobalResults = false; OnPropertyChanged(nameof(IsListEmpty)); return; }
+        if (q.Length < 2) { GlobalResults.Clear(); HasGlobalResults = false; RebuildSearchAll(); OnPropertyChanged(nameof(IsListEmpty)); return; }
         try
         {
             await Task.Delay(350, cts.Token);
@@ -622,13 +634,20 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
             if (cts.IsCancellationRequested) return;
 
             GlobalResults.Clear(); // прежние результаты висят, пока не пришли новые — без мигания
-            foreach (var p in found.DistinctBy(p => p.Key).Where(p => !_byKey.TryGetValue(p.Key, out var c) || !SearchResults.Contains(c)))
+            foreach (var p in found.DistinctBy(p => p.Key))
             {
+                // Чат с ним уже есть — это «свой» результат: в верхнюю часть списка, к остальным своим чатам.
+                if (_byKey.TryGetValue(p.Key, out var mine))
+                {
+                    if (!SearchResults.Contains(mine) && !(mine.Last is null && mine.AddedUtc is not null)) SearchResults.Add(mine);
+                    continue;
+                }
                 var vm = new PeerResultViewModel(p);
                 vm.EnsureAvatar(_tg.Media);
                 GlobalResults.Add(vm);
             }
             HasGlobalResults = GlobalResults.Count > 0;
+            RebuildSearchAll();
         }
         catch (TaskCanceledException) { }
         catch (Exception ex) { TgErrors.Describe(ex); }
