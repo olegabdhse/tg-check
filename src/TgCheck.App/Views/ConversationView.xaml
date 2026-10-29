@@ -330,14 +330,13 @@
             <ItemsControl ItemsSource="{Binding Album}" Margin="-6,0,-6,4" Width="363" HorizontalAlignment="Left">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
-                        <WrapPanel />
+                        <!-- Как в Telegram: плитки по пропорциям снимков, ровные ряды -->
+                        <controls:AlbumPanel Spacing="3" />
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type vm:MessageViewModel}">
-                        <Button Style="{StaticResource BareButton}" Margin="0,0,3,3"
-                                Width="{Binding DataContext.AlbumCellWidth, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                Height="{Binding DataContext.AlbumCellHeight, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                        <Button Style="{StaticResource BareButton}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                                 Command="{Binding DataContext.OpenMediaCommand, ElementName=Root}" CommandParameter="{Binding}">
                             <Grid helpers:RoundClip.Radius="6">
                                 <Border Background="#22FFFFFF" />
@@ -929,7 +928,7 @@
                 </ScrollViewer>
 
                 <!-- Верх ленты: панель плеера (голосовые, аудио, кружки) и закреплённые -->
-                <StackPanel VerticalAlignment="Top">
+                <StackPanel x:Name="FeedTop" VerticalAlignment="Top">
                     <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1"
                             DataContext="{x:Static vm:NowPlaying.Instance}" Visibility="Collapsed"
                             helpers:Anim.Mode="SlideDown" helpers:Anim.Show="{Binding IsActive}">
