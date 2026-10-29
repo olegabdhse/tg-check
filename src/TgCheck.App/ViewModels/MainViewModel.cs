@@ -41,7 +41,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ShellViewModel? early = null;
         if (_tg.UserId != 0)
         {
-            early = new ShellViewModel(_tg, _env, ShowLogin) { ConnectionStatus = "Соединение…" };
+            early = new ShellViewModel(_tg, _env, ShowLogin, ChangeProxyAsync) { ConnectionStatus = "Соединение…" };
             Helpers.Anim.InstantUntil = DateTime.UtcNow.AddSeconds(1.5);
             CurrentPage = early;
             _ = early.Chats.ShowCachedAsync();
@@ -74,6 +74,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ShowLogin();
     }
 
+    /// <summary>Свой прокси (null — без прокси): сохраняем и переподключаемся; чаты сразу снова из кэша.</summary>
+    private Task ChangeProxyAsync(string? proxy)
+    {
+        if (_env is null) return Task.CompletedTask;
+        AppEnv.SaveUserProxy(_env.DataDirectory, proxy);
+        if (CurrentPage is ShellViewModel shell) shell.Dispose();
+        return InitializeAsync();
+    }
+
     private void ShowLogin()
     {
         if (_tg is null) return;
@@ -86,7 +95,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void ShowProfile(ShellViewModel? existing)
     {
         if (_tg is null || _env is null) return;
-        var shell = existing ?? new ShellViewModel(_tg, _env, ShowLogin);
+        var shell = existing ?? new ShellViewModel(_tg, _env, ShowLogin, ChangeProxyAsync);
         shell.ConnectionStatus = null;
         _tg.MarkSessionGood();
         if (!ReferenceEquals(CurrentPage, shell)) CurrentPage = shell;
