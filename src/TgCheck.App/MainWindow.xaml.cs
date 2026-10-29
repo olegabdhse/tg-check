@@ -27,10 +27,13 @@ public partial class MainWindow : Window
         // Иконку окна берём из exe (см. ApplyExeIcon): PNG-иконку WPF панель задач не показывает.
         StateChanged += OnStateChanged;
         IsVisibleChanged += (_, _) => UpdateOnScreen();
+        Activated += (_, _) => UpdateOnScreen();
+        Deactivated += (_, _) => UpdateOnScreen();
         // Кнопка на панели задач появляется при показе окна и берёт иконку exe через оболочку (у нас — пустой значок);
         // повторная установка иконки после показа заставляет панель её обновить.
-        ContentRendered += (_, _) => WindowEffects.ApplyExeIcon(this);
-        IsVisibleChanged += (_, e) => { if (e.NewValue is true) Dispatcher.BeginInvoke(DispatcherPriority.Background, () => WindowEffects.ApplyExeIcon(this)); };
+        ContentRendered += (_, _) => WindowEffects.RefreshExeIconWhenIdle(this);
+        IsVisibleChanged += (_, e) => { if (e.NewValue is true) WindowEffects.RefreshExeIconWhenIdle(this); };
+        StateChanged += (_, _) => WindowEffects.RefreshExeIconWhenIdle(this);
         DataContextChanged += (_, e) =>
         {
             if (e.OldValue is MainViewModel old) old.PropertyChanged -= OnMainChanged;
@@ -144,11 +147,12 @@ public partial class MainWindow : Window
         else _island?.HideIsland();
     }
 
-    // Чат главного окна «читается» только пока окно видно.
+    // Чат главного окна «читается» только пока окно на экране и в фокусе (как в Telegram Desktop):
+    // окно за другими программами — сообщения остаются непрочитанными.
     private void UpdateOnScreen()
     {
         if (DataContext is MainViewModel { CurrentPage: ShellViewModel shell })
-            shell.MainOnScreen = IsVisible && WindowState != WindowState.Minimized;
+            shell.MainOnScreen = IsVisible && WindowState != WindowState.Minimized && IsActive;
     }
 
     // Островок с последними чатами — когда окно свёрнуто или закрыто в трей.

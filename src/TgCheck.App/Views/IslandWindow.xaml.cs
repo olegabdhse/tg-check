@@ -405,12 +405,19 @@ public partial class IslandWindow : Window
     {
         var mini = new MiniChatWindow(back: peer =>
         {
-            // Сначала убираем мини-окно и островок, чат готовим, пока окно ещё свёрнуто,
-            // и только потом показываем уже готовое приложение — без промежуточной перерисовки.
+            // Мини-окно убираем, островок плавно гаснет; приложение показываем после анимации, сразу
+            // (свёрнутое окно WPF не рисует: чат, открытый в нём заранее, появлялся через ~1 с чёрным окном),
+            // а чат переключаем уже в развёрнутом окне — это быстро.
             _mini?.HideNow();
             HideIsland();
-            _shell.OpenChat(peer);
-            Dispatcher.BeginInvoke(DispatcherPriority.Background, _restoreMain);
+            var later = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+            later.Tick += (_, _) =>
+            {
+                later.Stop();
+                _restoreMain();
+                Dispatcher.BeginInvoke(DispatcherPriority.Normal, () => _shell.OpenChat(peer));
+            };
+            later.Start();
         });
         mini.IsVisibleChanged += (_, e) => { if (e.NewValue is false) _shell.MiniChat = null; };
         mini.Closed += (_, _) => _mini = null;

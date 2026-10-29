@@ -92,7 +92,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     /// <summary>Чат сейчас открыт на экране (в главном окне или в мини-окне / быстром ответе).</summary>
     public bool IsOnScreen(long peerKey) =>
-        (MainOnScreen && Chats.Conversation?.Peer.Key == peerKey) || MiniChat?.Peer.Key == peerKey;
+        (MainOnScreen && CurrentPage == Chats && Chats.Conversation?.Peer.Key == peerKey) || MiniChat?.Peer.Key == peerKey;
+
+    // Вернулись из профиля к чатам — открытый чат снова на экране.
+    partial void OnCurrentPageChanged(object value)
+    {
+        if (value == Chats) Chats.Conversation?.MarkRead();
+    }
 
     /// <summary>Островок должен обновить список чатов.</summary>
     public event Action? IslandChanged;

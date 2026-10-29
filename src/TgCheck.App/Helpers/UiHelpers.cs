@@ -155,19 +155,27 @@ public static class WindowEffects
     private static System.Drawing.Icon? _exeIcon;
 
     /// <summary>
-    /// Иконка окна прямо из exe (многоразмерный .ico). Иконку, собранную WPF из PNG, панель задач Windows 11
-    /// не берёт и показывает пустой значок окна.
+    /// Иконка окна прямо из exe. Панель задач спрашивает иконку у окна при показе/разворачивании, и если поток
+    /// в этот момент занят отрисовкой, ставит пустой значок окна и сама его не обновляет. Поэтому иконку
+    /// переустанавливаем после показа — каждый раз новым дескриптором (тот же самый Windows пропускает как «без изменений»).
     /// </summary>
     public static void ApplyExeIcon(Window window)
     {
         var hwnd = new WindowInteropHelper(window).Handle;
         if (hwnd == IntPtr.Zero || Environment.ProcessPath is not { } exe) return;
-        try { _exeIcon ??= System.Drawing.Icon.ExtractAssociatedIcon(exe); } catch { }
-        if (_exeIcon is null) return;
+        System.Drawing.Icon? icon = null;
+        try { icon = System.Drawing.Icon.ExtractAssociatedIcon(exe); } catch { }
+        if (icon is null) return;
         const int WM_SETICON = 0x80;
-        SendMessage(hwnd, WM_SETICON, (IntPtr)1, _exeIcon.Handle); // большая — панель задач, Alt+Tab
-        SendMessage(hwnd, WM_SETICON, (IntPtr)0, _exeIcon.Handle);
+        SendMessage(hwnd, WM_SETICON, (IntPtr)1, icon.Handle); // большая — панель задач, Alt+Tab
+        SendMessage(hwnd, WM_SETICON, (IntPtr)0, icon.Handle);
+        _exeIcon?.Dispose();
+        _exeIcon = icon;
     }
+
+    /// <summary>Переустановить иконку, когда окно уже показано и поток свободен.</summary>
+    public static void RefreshExeIconWhenIdle(Window window) =>
+        window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, () => ApplyExeIcon(window));
 
     /// <summary>Тёмный заголовок окна Windows 10/11 в цвет фона приложения.</summary>
     public static void ApplyDarkTitleBar(Window window, Color caption)
