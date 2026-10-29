@@ -118,6 +118,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
                 if (t.Last?.From is { } from && !t.Last.IsOut) vm.SenderName = from.DisplayTitle;
                 Topics.Add(vm);
             }
+            SyncForumUnread();
             _loadedOnce = true;
         }
         catch (Exception ex)
@@ -143,12 +144,16 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     // Открытые темы держим готовыми — переключение между ними без перезагрузки.
     private readonly Dictionary<int, ConversationViewModel> _topicThreads = [];
 
+    // Пометка группы в списке чатов — сумма непрочитанных по темам.
+    private void SyncForumUnread() => _owner.SetForumUnread(Peer.Key, Topics.Sum(t => t.Unread));
+
     [RelayCommand]
     private void OpenTopic(ForumTopicViewModel? topic)
     {
         if (topic is null) return;
         topic.Unread = 0;
         foreach (var t in Topics) t.IsActive = t == topic;
+        SyncForumUnread();
         if (!_topicThreads.TryGetValue(topic.Topic.Id, out var thread))
             _topicThreads[topic.Topic.Id] = thread = new ConversationViewModel(_tg, _owner, Peer, topic.Topic.Id, this, null, topic.Title, topic.Topic.IsGeneral);
         _owner.OpenThread(thread);
@@ -163,6 +168,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         topic.Last = m;
         topic.SenderName = m.IsOut ? "Вы" : m.From?.DisplayTitle;
         if (!m.IsOut) topic.Unread++;
+        SyncForumUnread();
         if (topic.Topic.IsPinned) return;
         var index = Topics.IndexOf(topic);
         var target = Topics.TakeWhile(t => t.Topic.IsPinned).Count();

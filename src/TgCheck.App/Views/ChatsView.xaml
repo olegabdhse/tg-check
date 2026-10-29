@@ -78,7 +78,7 @@
 
                 <!-- Поиск -->
                 <Grid Margin="12,12,12,8">
-                    <TextBox x:Name="SearchBox" Style="{StaticResource SearchBox}" Padding="34,9,12,9" Tag="Поиск: чаты, люди, @ник, ссылка или ID"
+                    <TextBox x:Name="SearchBox" Style="{StaticResource SearchBox}" GotKeyboardFocus="SearchBox_GotFocus" LostKeyboardFocus="SearchBox_LostFocus" Padding="34,9,12,9" Tag="Поиск: чаты, люди, @ник, ссылка или ID"
                              Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}" />
                     <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" FontSize="13" Margin="13,0,0,0" IsHitTestVisible="False"
                                HorizontalAlignment="Left" Foreground="{StaticResource TextSecondaryBrush}" />
@@ -335,6 +335,39 @@
                     <Button Content="Повторить" Style="{StaticResource SecondaryButton}" Margin="0,12,0,0" HorizontalAlignment="Center"
                             Command="{Binding LoadCommand}" />
                 </StackPanel>
+
+                <!-- История поиска: при фокусе на пустом поиске (как в Telegram) -->
+                <Border Grid.Row="3" Background="{StaticResource SurfaceBrush}" Visibility="Collapsed"
+                        helpers:Anim.Mode="Fade" helpers:Anim.Show="{Binding ShowRecentSearch}">
+                    <DockPanel>
+                        <DockPanel DockPanel.Dock="Top" Margin="18,4,10,4">
+                            <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="Очистить" Padding="10,4" FontSize="12"
+                                    Focusable="False" Command="{Binding ClearRecentSearchCommand}" />
+                            <TextBlock Text="Недавние" Style="{StaticResource Caption}" VerticalAlignment="Center" />
+                        </DockPanel>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True">
+                            <ItemsControl ItemsSource="{Binding RecentSearch}" Focusable="False">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type vm:ChatItemViewModel}">
+                                        <Button Style="{StaticResource GhostButton}" HorizontalContentAlignment="Stretch" Padding="12,6" Margin="6,0"
+                                                Focusable="False" Foreground="{StaticResource TextBrush}"
+                                                Command="{Binding DataContext.OpenRecentSearchCommand, ElementName=Root}" CommandParameter="{Binding}">
+                                            <DockPanel>
+                                                <controls:AvatarView DockPanel.Dock="Left" Width="40" Height="40" Margin="0,0,12,0" Source="{Binding Avatar}"
+                                                                     Fill="{Binding AvatarBrush}" Initials="{Binding Initials}" />
+                                                <StackPanel VerticalAlignment="Center">
+                                                    <TextBlock helpers:RichText.Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding Peer.Username, StringFormat=@{0}}" Style="{StaticResource Caption}"
+                                                               Visibility="{Binding Peer.Username, Converter={StaticResource NullToVis}}" />
+                                                </StackPanel>
+                                            </DockPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
 
                 <!-- Глобальный поиск -->
                 <Border Grid.Row="4" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="0,8,0,8"

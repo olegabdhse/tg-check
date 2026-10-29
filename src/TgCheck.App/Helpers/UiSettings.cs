@@ -20,6 +20,7 @@ public static class UiSettings
         public bool NotifyArchived { get; set; }
         public bool HideStories { get; set; }
         public string? IslandEdge { get; set; }
+        public List<long>? RecentSearch { get; set; }
         public double? IslandAlong { get; set; }
     }
 
@@ -57,6 +58,13 @@ public static class UiSettings
     {
         get => (_data.IslandEdge ?? "Top", _data.IslandAlong ?? 0.5);
         set { _data.IslandEdge = value.Edge; _data.IslandAlong = value.Along; Save(); }
+    }
+
+    /// <summary>История поиска: чаты, открытые из поиска (новые первыми).</summary>
+    public static IReadOnlyList<long> RecentSearch
+    {
+        get => _data.RecentSearch ?? [];
+        set { _data.RecentSearch = [.. value]; Save(); }
     }
 
     /// <summary>Полоса историй над списком чатов.</summary>

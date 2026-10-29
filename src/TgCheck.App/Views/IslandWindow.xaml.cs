@@ -276,22 +276,35 @@ public partial class IslandWindow : Window
         Dispatcher.BeginInvoke(DispatcherPriority.Background, _restoreMain);
     }
 
-    // Двойной клик по чату — полное мини-окно.
-    private void Chat_MouseDown(object sender, MouseButtonEventArgs e)
+    // Двойной клик определяем сами: первый клик открывает быстрый ответ и забирает фокус,
+    // после чего система уже не считает второй клик двойным.
+    private static readonly TimeSpan DoubleClickTime = TimeSpan.FromMilliseconds(450);
+    private DateTime _lastClickAt;
+    private ChatItemViewModel? _lastClicked;
+
+    private void OpenFullMini(ChatItemViewModel chat)
     {
-        if (e.ClickCount != 2 || sender is not FrameworkElement { DataContext: ChatItemViewModel chat }) return;
-        e.Handled = true;
-        _press.Stop();
         _quick?.Close();
         var conv = _shell.OpenMiniChat(chat.Peer);
         _mini ??= CreateMini();
         _mini.ShowChat(conv, Top + ActualHeight - 14);
     }
 
-    // Один клик — быстрый ответ: последние сообщения и поле ввода рядом с островком.
+    // Один клик — быстрый ответ рядом с островком; второй клик подряд — полное мини-окно.
+    // Если мини-окно уже открыто — клик просто переключает в нём чат.
     private void Chat_Click(object sender, RoutedEventArgs e)
     {
         if (_dragged || sender is not FrameworkElement { DataContext: ChatItemViewModel chat } button) return;
+        var now = DateTime.UtcNow;
+        var isDouble = ReferenceEquals(chat, _lastClicked) && now - _lastClickAt < DoubleClickTime;
+        _lastClicked = chat;
+        _lastClickAt = now;
+        if (isDouble || _mini is { IsVisible: true })
+        {
+            _lastClicked = null;
+            OpenFullMini(chat);
+            return;
+        }
         _quick?.Close();
         var conv = _shell.OpenMiniChat(chat.Peer);
         var anchor = new Rect(button.PointToScreen(new Point(0, 0)), button.PointToScreen(new Point(button.ActualWidth, button.ActualHeight)));

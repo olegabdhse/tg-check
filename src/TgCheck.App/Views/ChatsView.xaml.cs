@@ -92,6 +92,16 @@ public partial class ChatsView : UserControl
         }
     }
 
+    private void SearchBox_GotFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e)
+    {
+        if (_vm is not null) _vm.IsSearchFocused = true;
+    }
+
+    private void SearchBox_LostFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e)
+    {
+        if (_vm is not null) _vm.IsSearchFocused = false;
+    }
+
     /// <summary>Печать вне полей ввода: в открытый чат (поле сообщения) или, если чат не открыт, в поиск.</summary>
     public bool RouteTyping(string text)
     {

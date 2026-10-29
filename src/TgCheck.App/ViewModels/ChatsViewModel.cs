@@ -98,13 +98,60 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
 
     partial void OnSearchChanged(string value)
     {
+        OnPropertyChanged(nameof(ShowRecentSearch));
         RefreshView();
         _ = SearchGlobalAsync(value);
+    }
+
+    // ===================================================================== История поиска (как в Telegram)
+
+    /// <summary>Чаты, открытые из поиска — показываются при фокусе на пустом поле поиска.</summary>
+    public ObservableCollection<ChatItemViewModel> RecentSearch { get; } = [];
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowRecentSearch))] private bool _isSearchFocused;
+    public bool ShowRecentSearch => IsSearchFocused && string.IsNullOrWhiteSpace(Search) && RecentSearch.Count > 0;
+
+    private void LoadRecentSearch()
+    {
+        RecentSearch.Clear();
+        foreach (var key in UiSettings.RecentSearch)
+            if (_byKey.TryGetValue(key, out var chat))
+            {
+                chat.EnsureAvatar(_tg.Media);
+                RecentSearch.Add(chat);
+            }
+        OnPropertyChanged(nameof(ShowRecentSearch));
+    }
+
+    private void AddRecentSearch(ChatItemViewModel chat)
+    {
+        RecentSearch.Remove(chat);
+        RecentSearch.Insert(0, chat);
+        while (RecentSearch.Count > 15) RecentSearch.RemoveAt(RecentSearch.Count - 1);
+        UiSettings.RecentSearch = RecentSearch.Select(c => c.Key).ToList();
+        OnPropertyChanged(nameof(ShowRecentSearch));
+    }
+
+    [RelayCommand]
+    private void OpenRecentSearch(ChatItemViewModel? chat)
+    {
+        if (chat is null) return;
+        AddRecentSearch(chat); // поднять наверх истории
+        IsSearchFocused = false;
+        OpenChat(chat.Peer);
+    }
+
+    [RelayCommand]
+    private void ClearRecentSearch()
+    {
+        RecentSearch.Clear();
+        UiSettings.RecentSearch = [];
+        OnPropertyChanged(nameof(ShowRecentSearch));
     }
 
     partial void OnSelectedChatChanged(ChatItemViewModel? value)
     {
         if (value is null) return;
+        if (Search.Trim().Length > 0) AddRecentSearch(value); // открыт из результатов поиска
         var conv = GetConversation(value.Peer, value.ReadOutboxMaxId);
         if (Conversation == conv) return;
         Conversation = conv;
@@ -233,6 +280,8 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
             RefreshView();
             _ = LoadStoriesAsync();
             _syncTimer.Start();
+            _ = RefreshForumUnreadAsync(onlyMarked: false);
+            LoadRecentSearch();
             _ = RefreshPresenceAsync();
 
             Merge(await _tg.GetDialogsAsync(archived: true), true, removeMissing: true);
@@ -251,6 +300,36 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         }
     }
 
+    // Группы с темами: общий счётчик сервера расходится с темами (у тем 0, у группы «7»),
+    // поэтому, как в официальных клиентах, пометку считаем по темам, когда они известны.
+    private readonly Dictionary<long, int> _forumUnread = [];
+
+    /// <summary>
+    /// Пересчитать пометки групп с темами по их темам (сервер в общем счётчике отдаёт число тем, а не сообщений).
+    /// onlyMarked — только те, где сервер сейчас показывает пометку (для минутной сверки).
+    /// </summary>
+    private async Task RefreshForumUnreadAsync(bool onlyMarked)
+    {
+        var forums = Chats.Where(c => c.Peer.IsForum && (!onlyMarked || c.Unread > 0)).Take(20).ToList();
+        foreach (var chat in forums)
+        {
+            try
+            {
+                var topics = await _tg.GetForumTopicsAsync(chat.Peer);
+                SetForumUnread(chat.Key, topics.Sum(t => t.UnreadCount));
+            }
+            catch (Exception ex) { Logging.Write("forum unread: " + ex.Message); }
+        }
+    }
+
+    public void SetForumUnread(long peerKey, int count)
+    {
+        _forumUnread[peerKey] = count;
+        if (!_byKey.TryGetValue(peerKey, out var chat) || chat.Unread == count) return;
+        chat.Unread = count;
+        NotifyArchive();
+    }
+
     // Раз в минуту сверяем верх списка с сервером: в больших группах Telegram присылает не все обновления,
     // и без сверки счётчики непрочитанных и последние сообщения расходятся с официальным клиентом.
     private readonly System.Windows.Threading.DispatcherTimer _syncTimer = new() { Interval = TimeSpan.FromSeconds(60) };
@@ -258,7 +337,8 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     private async Task SyncRecentAsync()
     {
         try { Merge(await _tg.GetRecentDialogsAsync(), false, removeMissing: false); NotifyArchive(); }
-        catch (Exception ex) { Logging.Write("sync dialogs: " + ex.Message); }
+        catch (Exception ex) { Logging.Write("sync dialogs: " + ex.Message); return; }
+        await RefreshForumUnreadAsync(onlyMarked: true);
     }
 
     // Обновляем существующие строки, добавляем новые, убираем пропавшие — без мерцания списка.
@@ -326,6 +406,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
             if (_byKey.TryGetValue(d.Peer.Key, out var existing))
             {
                 existing.Update(d);
+                if (_forumUnread.TryGetValue(d.Peer.Key, out var forumUnread)) existing.Unread = forumUnread;
                 existing.Order = order++;
                 touched.Add(existing);
                 continue;
@@ -472,6 +553,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         if (r is null) return;
         Search = "";
         OpenChat(r.Peer);
+        if (_byKey.TryGetValue(r.Peer.Key, out var opened)) AddRecentSearch(opened);
     }
 
     /// <summary>Закрепить / открепить чат (как в Telegram: закреплённые — сверху, в своём порядке).</summary>
@@ -581,7 +663,11 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         if (chat.Last is null || m.Id >= chat.Last.Id) chat.Last = m;
         chat.TypingText = null;
         var isOpen = Conversation?.Peer.Key == m.PeerKey || Shell.MiniChat?.Peer.Key == m.PeerKey;
-        if (!m.IsOut && !isOpen && m.ServiceText is null) chat.Unread++;
+        if (!m.IsOut && !isOpen && m.ServiceText is null)
+        {
+            chat.Unread++;
+            if (_forumUnread.TryGetValue(m.PeerKey, out var fu)) _forumUnread[m.PeerKey] = fu + 1;
+        }
         if (!fromConversation && _conversations.TryGetValue(m.PeerKey, out var conv)) conv.OnMessageReceived(m);
         Reposition(chat);
         NotifyArchive();
