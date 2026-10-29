@@ -103,8 +103,7 @@
                                     <Border Background="{StaticResource AccentBrush}" CornerRadius="8" MinWidth="16" Height="16" Padding="4,0"
                                             HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-3,-4,0" BorderThickness="1.5" BorderBrush="#0B1016"
                                             Visibility="{Binding Unread, Converter={StaticResource NullToVis}}">
-                                        <TextBlock Text="{Binding UnreadText}" FontSize="9" FontWeight="Bold" Foreground="White"
-                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        <controls:BadgeText Text="{Binding UnreadText}" FontSize="9" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     </Border>
                                 </Grid>
                             </Button>

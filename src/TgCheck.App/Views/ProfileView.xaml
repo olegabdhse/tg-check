@@ -450,7 +450,10 @@
                     </DockPanel>
 
                     <!-- Фильтры и сортировка -->
-                    <WrapPanel Grid.Row="1" Margin="0,0,14,10">
+                    <!-- Узкое окно: фильтры не переносятся на вторую строку, а листаются вбок (колесом или перетаскиванием полосы) -->
+                    <ScrollViewer Grid.Row="1" Margin="0,0,14,10" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled"
+                                  helpers:SmoothScroll.HorizontalWheel="True">
+                    <StackPanel Orientation="Horizontal">
                         <RadioButton Style="{StaticResource ChipRadio}" GroupName="filter"
                                      IsChecked="{Binding Filter, Converter={StaticResource EnumToBool}, ConverterParameter=All}">
                             <TextBlock><Run Text="Все" /> <Run Text="{Binding CountAll, Mode=OneWay}" /></TextBlock>
@@ -480,7 +483,8 @@
                                      IsChecked="{Binding Sort, Converter={StaticResource EnumToBool}, ConverterParameter=Oldest}" />
                         <RadioButton Style="{StaticResource ChipRadio}" GroupName="sort" Content="Ценные"
                                      IsChecked="{Binding Sort, Converter={StaticResource EnumToBool}, ConverterParameter=Valuable}" />
-                    </WrapPanel>
+                    </StackPanel>
+                    </ScrollViewer>
 
                     <!-- Панель продажи -->
                     <Border Grid.Row="2" Margin="0,0,14,14" CornerRadius="14" Padding="16,12">

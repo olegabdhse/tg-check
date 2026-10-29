@@ -161,11 +161,24 @@ public enum MediaLayout { None, PhotoVideo, Gif, Sticker, Round, Voice, Poll, Fi
 
 /// <summary>Кнопка под сообщением бота/канала.</summary>
 /// <summary>Быстрая реакция в меню сообщения.</summary>
-public sealed record QuickReactionItem(MessageViewModel Message, string Emoji);
+public sealed record QuickReactionItem(MessageViewModel Message, string Emoji)
+{
+    public ReactionDef? Def { get; } = ReactionCatalog.Find(Emoji);
+    /// <summary>Анимация «выбора» из каталога Telegram (играет в панели реакций), иначе — просто эмодзи.</summary>
+    public MediaHolder? Animation => Def?.Icon ?? Def?.Select;
+    public bool HasAnimation => Animation is not null;
+}
 
 /// <summary>Плашка реакции под сообщением.</summary>
-public sealed class ReactionViewModel(MessageViewModel message, ReactionInfo info)
+public sealed class ReactionViewModel(MessageViewModel message, ReactionInfo info, bool justChosen = false)
 {
+    /// <summary>Только что поставлена мной — один раз проигрывается эффект, как в Telegram.</summary>
+    public bool JustChosen { get; } = justChosen;
+    public ReactionDef? Def { get; } = info.CustomEmojiId == 0 ? ReactionCatalog.Find(info.Emoji) : null;
+    public MediaHolder? Icon => Def?.Icon;
+    public MediaHolder? Effect => Def?.Effect ?? Def?.Activate;
+    public bool HasIcon => Icon is not null;
+    public bool ShowEmojiText => !IsCustom && !HasIcon;
     public MessageViewModel Message { get; } = message;
     public ReactionInfo Info { get; } = info;
     public string? Emoji => Info.CustomEmojiId == 0 ? Info.Emoji : null;
@@ -359,14 +372,26 @@ public sealed partial class MessageViewModel : ObservableObject
     private ObservableCollection<ReactionViewModel>? _reactions;
     public ObservableCollection<ReactionViewModel> Reactions => _reactions ??= new(Item.Reactions.Select(r => new ReactionViewModel(this, r)));
     public bool HasReactions => Reactions.Count > 0;
-    public IReadOnlyList<QuickReactionItem> QuickReactionItems => _quick ??= TelegramService.QuickReactions.Take(8).Select(e => new QuickReactionItem(this, e)).ToList();
-    private IReadOnlyList<QuickReactionItem>? _quick;
+    /// <summary>Первые реакции для панели в меню (порядок как в Telegram), остальные — по стрелке «ещё».</summary>
+    public IReadOnlyList<QuickReactionItem> QuickReactionItems => AllReactionItems.Take(7).ToList();
+    public IReadOnlyList<QuickReactionItem> MoreReactionItems => AllReactionItems.Skip(7).ToList();
+    // Только реакции, разрешённые в этом чате (каналы и группы часто ограничивают набор).
+    private IReadOnlyList<QuickReactionItem> AllReactionItems =>
+        ReactionCatalog.ChoicesFor(Chat.Key).Select(e => new QuickReactionItem(this, e)).ToList();
     public IReadOnlyList<ReactionInfo> ReactionInfos => Reactions.Select(r => r.Info).ToList();
 
-    public void SetReactions(IReadOnlyList<ReactionInfo> reactions)
+    public void SetReactions(IReadOnlyList<ReactionInfo> reactions, string? justChosenKey = null)
     {
-        Reactions.Clear();
-        foreach (var r in reactions) Reactions.Add(new ReactionViewModel(this, r));
+        // По месту: неизменившиеся плашки не пересоздаются (иначе ответ сервера обрывает анимацию постановки).
+        for (var i = 0; i < reactions.Count; i++)
+        {
+            var r = reactions[i];
+            if (i < Reactions.Count && Reactions[i].Info == r) continue;
+            var vm = new ReactionViewModel(this, r, r.Chosen && r.Key == justChosenKey);
+            if (i < Reactions.Count) Reactions[i] = vm;
+            else Reactions.Add(vm);
+        }
+        while (Reactions.Count > reactions.Count) Reactions.RemoveAt(Reactions.Count - 1);
         OnPropertyChanged(nameof(HasReactions));
     }
     public string CommentsText => Item.Comments is not { } n || n == 0 ? "Оставить комментарий"

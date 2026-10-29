@@ -167,6 +167,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
                 ScrollToBottomRequested?.Invoke(false);
                 _ = LoadPinnedAsync();
                 _ = LoadBotMenuAsync();
+                _ = LoadAllowedReactionsAsync();
             }
             _loadedOnce = true;
             MarkRead();
@@ -852,7 +853,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             if (index >= 0) after[index] = after[index] with { Count = after[index].Count + 1, Chosen = true };
             else after.Add(picked with { Count = 1, Chosen = true });
         }
-        m.SetReactions(after);
+        m.SetReactions(after, mineAlready ? null : picked.Key);
         try
         {
             await _tg.SetReactionsAsync(Peer, m.Id, mineAlready ? [] : [picked]);
@@ -863,6 +864,9 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             _owner.ShowToast(TgErrors.Describe(ex), true);
         }
     }
+
+    private async Task LoadAllowedReactionsAsync() =>
+        ReactionCatalog.SetAllowed(Peer.Key, await _tg.GetAllowedReactionsAsync(Peer));
 
     public void OnReactions(int messageId, IReadOnlyList<ReactionInfo> reactions)
     {

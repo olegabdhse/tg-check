@@ -39,6 +39,38 @@ public sealed partial class TelegramService
         return result.OrderByDescending(p => p.Peer.IsSelf).ThenByDescending(p => p.HasUnread).ToList();
     }
 
+    /// <summary>Лайк истории (реакция ❤) или снять его.</summary>
+    public async Task LikeStoryAsync(PeerRef peer, int storyId, bool like) =>
+        await _client.Stories_SendReaction(peer.Info.ToInputPeer(), storyId,
+            like ? new ReactionEmoji { emoticon = "❤" } : null);
+
+    /// <summary>Ответ на историю — сообщение автору в личный чат с цитатой истории.</summary>
+    public async Task<MessageItem> ReplyToStoryAsync(PeerRef peer, int storyId, string text)
+    {
+        EnsureNotIgnored(peer);
+        var reply = new InputReplyToStory { peer = peer.Info.ToInputPeer(), story_id = storyId };
+        var updates = await _client.Messages_SendMessage(peer.Info.ToInputPeer(), text, WTelegram.Helpers.RandomLong(), reply_to: reply);
+        var sent = updates.UpdateList.OfType<UpdateNewMessage>().Select(u => u.message).FirstOrDefault();
+        return sent is not null ? MapMessage(sent) : new MessageItem { Id = 0, PeerKey = peer.Key, Text = text, IsOut = true, DateUtc = DateTime.UtcNow };
+    }
+
+    /// <summary>Кто посмотрел мою историю: просмотры и реакции (новые первыми).</summary>
+    public async Task<(int Views, int Reactions, IReadOnlyList<StoryViewer> Viewers)> GetStoryViewersAsync(int storyId)
+    {
+        var res = await _client.Stories_GetStoryViewsList(InputPeer.Self, storyId, "", 100);
+        foreach (var (k, v) in res.users) _users[k] = v;
+        foreach (var (k, v) in res.chats) _chats[k] = v;
+        var viewers = res.views.Select(v => v switch
+            {
+                StoryView sv when !IsIgnored(sv.user_id) && _users.GetValueOrDefault(sv.user_id) is { } u =>
+                    new StoryViewer(PeerOf(u), sv.date, (sv.reaction as ReactionEmoji)?.emoticon ?? (sv.reaction is null ? null : "❤")),
+                _ => null,
+            })
+            .OfType<StoryViewer>()
+            .ToList();
+        return (res.views_count, res.reactions_count, viewers);
+    }
+
     /// <summary>Истории в профиле (закреплённые), для своего профиля — по желанию архив. Новые первыми.</summary>
     public async Task<IReadOnlyList<StoryInfo>> GetProfileStoriesAsync(PeerRef peer, bool archive = false)
     {
@@ -61,10 +93,12 @@ public sealed partial class TelegramService
 
     private static StoryInfo? MapStory(StoryItem s) => s.media switch
     {
-        MessageMediaPhoto { photo: Photo p } => new StoryInfo { Id = s.id, DateUtc = s.date, Caption = s.caption, Photo = p },
+        MessageMediaPhoto { photo: Photo p } => new StoryInfo { Id = s.id, DateUtc = s.date, Caption = s.caption, Photo = p,
+            ViewsCount = s.views?.views_count ?? 0, ReactionsCount = s.views?.reactions_count ?? 0, Liked = s.sent_reaction is not null },
         MessageMediaDocument { document: Document d } => new StoryInfo
         {
             Id = s.id, DateUtc = s.date, Caption = s.caption, Document = d,
+            ViewsCount = s.views?.views_count ?? 0, ReactionsCount = s.views?.reactions_count ?? 0, Liked = s.sent_reaction is not null,
             DurationSeconds = d.attributes?.OfType<DocumentAttributeVideo>().FirstOrDefault()?.duration ?? 0,
         },
         _ => null,
@@ -150,6 +184,21 @@ public sealed partial class TelegramService
         return MapMessage(msg);
     }
 
+    // ===================================================================== Закрепление и уведомления чата
+
+    /// <summary>Закрепить чат в списке или открепить.</summary>
+    public async Task SetPinnedAsync(PeerRef peer, bool pinned) =>
+        await _client.Messages_ToggleDialogPin(new InputDialogPeer { peer = peer.Info.ToInputPeer() }, pinned);
+
+    /// <summary>Выключить уведомления чата (навсегда) или включить снова.</summary>
+    public async Task SetMutedAsync(PeerRef peer, bool muted) =>
+        await _client.Account_UpdateNotifySettings(new InputNotifyPeer { peer = peer.Info.ToInputPeer() },
+            new InputPeerNotifySettings
+            {
+                flags = InputPeerNotifySettings.Flags.has_mute_until,
+                mute_until = muted ? DateTime.UtcNow.AddYears(30) : DateTime.UnixEpoch,
+            });
+
     // ===================================================================== Реакции
 
     internal static IReadOnlyList<ReactionInfo> MapReactions(MessageReactions? reactions)
@@ -176,6 +225,64 @@ public sealed partial class TelegramService
         // Сервер присылает UpdateMessageReactions — его разберёт общий обработчик обновлений.
         foreach (var u in updates.UpdateList) if (u is UpdateMessageReactions r && PeerOf(r.peer) is { } rp)
             ReactionsUpdated?.Invoke(rp.Key, r.msg_id, MapReactions(r.reactions));
+    }
+
+    private Task<IReadOnlyList<ReactionDef>>? _reactionDefs;
+
+    /// <summary>
+    /// Каталог реакций Telegram с их анимациями (как в официальных клиентах): иконка, анимация выбора,
+    /// анимация постановки и эффект. Загружается один раз.
+    /// </summary>
+    public Task<IReadOnlyList<ReactionDef>> GetReactionDefsAsync() => _reactionDefs ??= LoadReactionDefsAsync();
+
+    private async Task<IReadOnlyList<ReactionDef>> LoadReactionDefsAsync()
+    {
+        try
+        {
+            if (await _client.Messages_GetAvailableReactions(0) is not Messages_AvailableReactions all) return [];
+            static StickerItem? S(Document? d) => d is null ? null : ToSticker(d);
+            return all.reactions
+                .Where(r => !r.flags.HasFlag(AvailableReaction.Flags.inactive))
+                .Select(r => new ReactionDef(r.reaction, r.title, r.flags.HasFlag(AvailableReaction.Flags.premium),
+                    S(r.center_icon as Document) ?? S(r.static_icon as Document),
+                    S(r.select_animation as Document), S(r.activate_animation as Document), S(r.effect_animation as Document)))
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Logging.Write("reactions: " + ex.Message);
+            _reactionDefs = null; // попробуем ещё раз позже
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Какие реакции разрешены в чате: null — любые (личные чаты и «все реакции»), пустой список — реакции выключены,
+    /// иначе — только эти эмодзи (админы каналов и групп часто ограничивают набор; чужие дают REACTION_INVALID).
+    /// </summary>
+    public async Task<IReadOnlyList<string>?> GetAllowedReactionsAsync(PeerRef peer)
+    {
+        if (peer.IsUser) return null;
+        try
+        {
+            ChatReactions? reactions = peer.Info switch
+            {
+                Channel channel => (await _client.Channels_GetFullChannel(channel)).full_chat.AvailableReactions,
+                TL.Chat chat => (await _client.Messages_GetFullChat(chat.id)).full_chat.AvailableReactions,
+                _ => null,
+            };
+            return reactions switch
+            {
+                ChatReactionsAll => null,
+                ChatReactionsSome some => some.reactions.OfType<ReactionEmoji>().Select(r => r.emoticon).ToList(),
+                _ => [],
+            };
+        }
+        catch (Exception ex)
+        {
+            Logging.Write("allowed reactions: " + ex.Message);
+            return null;
+        }
     }
 
     /// <summary>Быстрые реакции (как стандартный набор Telegram).</summary>

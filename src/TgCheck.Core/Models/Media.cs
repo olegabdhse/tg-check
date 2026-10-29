@@ -95,6 +95,10 @@ public sealed class StoryInfo : MediaHolder
     public DateTime DateUtc { get; init; }
     public string? Caption { get; init; }
     public bool IsVideo => Document is not null;
+    public int ViewsCount { get; init; }
+    public int ReactionsCount { get; init; }
+    /// <summary>Мой лайк (реакция) на эту историю.</summary>
+    public bool Liked { get; set; }
 }
 
 /// <summary>Истории одного пользователя/канала.</summary>
@@ -132,3 +136,9 @@ public sealed record ReactionInfo(string? Emoji, long CustomEmojiId, int Count, 
 {
     public string Key => CustomEmojiId != 0 ? "c" + CustomEmojiId : IsPaid ? "paid" : Emoji ?? "";
 }
+
+/// <summary>Кто посмотрел мою историю (и какую реакцию поставил).</summary>
+public sealed record StoryViewer(PeerRef Peer, DateTime DateUtc, string? Reaction);
+
+/// <summary>Реакция из каталога Telegram с её анимациями.</summary>
+public sealed record ReactionDef(string Emoji, string Title, bool IsPremium, StickerItem? Icon, StickerItem? Select, StickerItem? Activate, StickerItem? Effect);

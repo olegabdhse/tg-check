@@ -23,9 +23,12 @@ public sealed partial class StoriesViewModel : ObservableObject
     private readonly Action<PeerRef> _openProfile;
     private int _peerIndex;
     private CancellationTokenSource? _timerCts;
+    private readonly Action<string, bool>? _toast;
 
-    public StoriesViewModel(TelegramService tg, IReadOnlyList<StoryPeerViewModel> peers, int startPeer, Action close, Action<PeerRef> openProfile)
+    public StoriesViewModel(TelegramService tg, IReadOnlyList<StoryPeerViewModel> peers, int startPeer, Action close, Action<PeerRef> openProfile,
+        Action<string, bool>? toast = null)
     {
+        _toast = toast;
         _openProfile = openProfile;
         _tg = tg;
         _peers = peers;
@@ -48,8 +51,91 @@ public sealed partial class StoriesViewModel : ObservableObject
 
     partial void OnStoryChanged(StoryInfo? value)
     {
+        Liked = value?.Liked == true;
+        ReplyText = "";
+        IsViewersOpen = false;
+        Viewers.Clear();
+        OnPropertyChanged(nameof(IsOwn));
+        OnPropertyChanged(nameof(CanReply));
+        OnPropertyChanged(nameof(CanLike));
+        OnPropertyChanged(nameof(ViewsText));
         OnPropertyChanged(nameof(TimeText));
         OnPropertyChanged(nameof(HasCaption));
+    }
+
+    // ===================================================================== Лайк, ответ, просмотры (как в Telegram)
+
+    [ObservableProperty] private bool _liked;
+    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(SendReplyCommand))] private string _replyText = "";
+    [ObservableProperty] private bool _isViewersOpen;
+    public ObservableCollection<StoryViewerViewModel> Viewers { get; } = [];
+
+    /// <summary>Своя история: вместо ответа — «кто посмотрел».</summary>
+    public bool IsOwn => Current?.Peer.IsSelf == true;
+    /// <summary>Ответить можно на историю пользователя (не канала) — ответ уходит в личный чат.</summary>
+    public bool CanReply => Current is { Peer: { IsUser: true, IsSelf: false } };
+    public bool CanLike => Current is not null && !IsOwn;
+    public string ViewsText => Story is null ? "" : Story.ReactionsCount > 0
+        ? $"{Fmt.N(Story.ViewsCount)} просмотров · ❤ {Fmt.N(Story.ReactionsCount)}"
+        : $"{Fmt.N(Story.ViewsCount)} {Fmt.Plural(Story.ViewsCount, "просмотр", "просмотра", "просмотров")}";
+
+    [RelayCommand]
+    private async Task ToggleLike()
+    {
+        if (Story is not { } story || Current is null || IsOwn) return;
+        var like = !story.Liked;
+        story.Liked = like;
+        Liked = like;
+        try { await _tg.LikeStoryAsync(Current.Peer, story.Id, like); }
+        catch (Exception ex)
+        {
+            story.Liked = !like;
+            if (Story == story) Liked = !like;
+            _toast?.Invoke(TgErrors.Describe(ex), true);
+        }
+    }
+
+    private bool CanSendReply() => CanReply && !string.IsNullOrWhiteSpace(ReplyText);
+
+    [RelayCommand(CanExecute = nameof(CanSendReply))]
+    private async Task SendReply()
+    {
+        if (Story is not { } story || Current is null) return;
+        var text = ReplyText.Trim();
+        ReplyText = "";
+        IsPaused = false;
+        try
+        {
+            await _tg.ReplyToStoryAsync(Current.Peer, story.Id, text);
+            _toast?.Invoke("Ответ отправлен", false);
+        }
+        catch (Exception ex)
+        {
+            ReplyText = text;
+            _toast?.Invoke(TgErrors.Describe(ex), true);
+        }
+    }
+
+    /// <summary>Своя история: открыть список просмотревших (история ставится на паузу).</summary>
+    [RelayCommand]
+    private async Task ToggleViewers()
+    {
+        if (!IsOwn || Story is not { } story) return;
+        IsViewersOpen = !IsViewersOpen;
+        IsPaused = IsViewersOpen;
+        if (!IsViewersOpen || Viewers.Count > 0) return;
+        try
+        {
+            var (_, _, viewers) = await _tg.GetStoryViewersAsync(story.Id);
+            if (Story != story) return;
+            foreach (var v in viewers)
+            {
+                var item = new StoryViewerViewModel(v);
+                item.EnsureAvatar(_tg.Media);
+                Viewers.Add(item);
+            }
+        }
+        catch (Exception ex) { _toast?.Invoke(TgErrors.Describe(ex), true); }
     }
 
     /// <summary>View сообщает прогресс видео (0..1), когда видео играет.</summary>
@@ -163,4 +249,11 @@ public sealed partial class StoriesViewModel : ObservableObject
             : d.TotalHours < 24 ? $"{(int)d.TotalHours} ч назад"
             : Fmt.DateShort(utc);
     }
+}
+
+/// <summary>Строка «кто посмотрел» своей истории.</summary>
+public sealed class StoryViewerViewModel(StoryViewer viewer) : PeerAvatarViewModel(viewer.Peer)
+{
+    public string? Reaction => viewer.Reaction;
+    public string TimeText => Fmt.ChatTime(viewer.DateUtc);
 }

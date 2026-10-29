@@ -227,6 +227,15 @@ public partial class ConversationView : UserControl
         }
     }
 
+    // Кружок у пузыря — открыть меню сообщения с панелью реакций (как в Telegram Desktop).
+    private void ReactButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Parent: Grid wrap } || wrap.Children.OfType<Border>().FirstOrDefault() is not { ContextMenu: { } menu } bubble) return;
+        menu.PlacementTarget = bubble;
+        menu.DataContext = bubble.DataContext;
+        menu.IsOpen = true;
+    }
+
     // Реакция выбрана в меню — закрываем меню (кнопка внутри меню сама его не закрывает).
     private void Reaction_Click(object sender, RoutedEventArgs e)
     {

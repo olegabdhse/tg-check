@@ -57,6 +57,12 @@ public sealed class StickerView : Image
         set => SetValue(AnimateProperty, value);
     }
 
+    /// <summary>Проиграть анимацию один раз и скрыться (эффект при постановке реакции).</summary>
+    public bool PlayOnce { get; set; }
+
+    /// <summary>Однократная анимация доиграла.</summary>
+    public event EventHandler? Finished;
+
     private Animation? _animation;
     private WriteableBitmap? _bitmap;
     private TimeSpan _start;
@@ -83,9 +89,11 @@ public sealed class StickerView : Image
         // Сначала статичный кадр — чтобы не было пустого места, пока грузится анимация.
         var preview = await service.GetMessagePreviewAsync(media);
         if (version != _version) return;
-        Source = Images.FromBytes(preview);
+        if (!PlayOnce) Source = Images.FromBytes(preview);
 
-        if (!Animate || media.StickerFormat != StickerFormat.Animated) return;
+        if (media.StickerFormat != StickerFormat.Animated) return;
+        // Без анимации и без превью (иконки реакций Telegram — только анимация): рисуем один первый кадр.
+        if (!Animate && Source is not null) return;
         var json = await LoadJsonAsync(media, service);
         if (version != _version || json is null) return;
         if (!Animation.TryParse(json, out var anim) || anim is null) return;
@@ -95,7 +103,8 @@ public sealed class StickerView : Image
         Source = _bitmap;
         _start = TimeSpan.Zero;
         RenderFrame(TimeSpan.Zero);
-        UpdateActive();
+        if (Animate) UpdateActive();
+        else { _animation.Dispose(); _animation = null; } // кадр нарисован — анимация больше не нужна
     }
 
     private static async Task<string?> LoadJsonAsync(MediaHolder media, Core.Media.MediaService service)
@@ -150,7 +159,15 @@ public sealed class StickerView : Image
         if (_animation is null || _bitmap is null) return;
         if (_start == TimeSpan.Zero) _start = now;
         var duration = _animation.Duration.TotalSeconds;
-        var t = duration > 0 ? (now - _start).TotalSeconds % duration : 0;
+        var elapsed = (now - _start).TotalSeconds;
+        if (PlayOnce && elapsed >= duration)
+        {
+            Active.Remove(this);
+            Visibility = Visibility.Collapsed;
+            Finished?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+        var t = duration > 0 ? elapsed % duration : 0;
         _animation.SeekFrameTime(t, null);
 
         _bitmap.Lock();

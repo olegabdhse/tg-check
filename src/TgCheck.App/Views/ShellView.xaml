@@ -76,8 +76,7 @@
                             <Border Background="{StaticResource AccentBrush}" CornerRadius="8" MinWidth="16" Height="16" Padding="4,0"
                                     HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-6,-12,0"
                                     Visibility="{Binding ChatsUnread, Converter={StaticResource NullToVis}}">
-                                <TextBlock Text="{Binding ChatsUnread}" FontSize="10" FontWeight="Bold" Foreground="White"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <controls:BadgeText Text="{Binding ChatsUnread}" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
                         </Grid>
                     </RadioButton>
@@ -265,7 +264,99 @@
                         </DockPanel>
 
                         <TextBlock helpers:RichText.Text="{Binding Story.Caption}" Foreground="White" TextWrapping="Wrap" FontSize="14"
-                                   VerticalAlignment="Bottom" Margin="18,0,18,22" TextAlignment="Center" IsHitTestVisible="False" />
+                                   VerticalAlignment="Bottom" Margin="18,0,18,74" TextAlignment="Center" IsHitTestVisible="False" />
+
+                        <!-- Низ истории: ответ и лайк (чужая) или просмотры (своя) — как в Telegram -->
+                        <DockPanel VerticalAlignment="Bottom" Margin="12,0,12,14">
+                            <Button DockPanel.Dock="Right" Width="44" Height="44" Margin="8,0,0,0" Cursor="Hand" FocusVisualStyle="{x:Null}"
+                                    Command="{Binding ToggleLikeCommand}" ToolTip="Нравится"
+                                    Visibility="{Binding CanLike, Converter={StaticResource BoolToVis}}">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Grid Background="Transparent">
+                                            <Path x:Name="Heart" Width="26" Height="23" Stretch="Uniform" Stroke="White" StrokeThickness="2" Fill="Transparent"
+                                                  Data="M12,21.4 L10.6,20.1 C5.4,15.4 2,12.3 2,8.5 C2,5.4 4.4,3 7.5,3 C9.2,3 10.9,3.8 12,5.1 C13.1,3.8 14.8,3 16.5,3 C19.6,3 22,5.4 22,8.5 C22,12.3 18.6,15.4 13.4,20.1 Z"
+                                                  RenderTransformOrigin="0.5,0.5">
+                                                <Path.RenderTransform>
+                                                    <ScaleTransform x:Name="HeartScale" />
+                                                </Path.RenderTransform>
+                                            </Path>
+                                        </Grid>
+                                        <ControlTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding Liked}" Value="True">
+                                                <Setter TargetName="Heart" Property="Fill" Value="#FF3B5C" />
+                                                <Setter TargetName="Heart" Property="Stroke" Value="#FF3B5C" />
+                                                <DataTrigger.EnterActions>
+                                                    <BeginStoryboard>
+                                                        <Storyboard>
+                                                            <DoubleAnimation Storyboard.TargetName="HeartScale" Storyboard.TargetProperty="ScaleX" From="0.6" To="1" Duration="0:0:0.35">
+                                                                <DoubleAnimation.EasingFunction><BackEase EasingMode="EaseOut" Amplitude="0.8" /></DoubleAnimation.EasingFunction>
+                                                            </DoubleAnimation>
+                                                            <DoubleAnimation Storyboard.TargetName="HeartScale" Storyboard.TargetProperty="ScaleY" From="0.6" To="1" Duration="0:0:0.35">
+                                                                <DoubleAnimation.EasingFunction><BackEase EasingMode="EaseOut" Amplitude="0.8" /></DoubleAnimation.EasingFunction>
+                                                            </DoubleAnimation>
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </DataTrigger.EnterActions>
+                                            </DataTrigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                            <!-- Своя история: просмотры -->
+                            <Button Style="{StaticResource BareButton}" HorizontalAlignment="Left" Command="{Binding ToggleViewersCommand}" Foreground="White"
+                                    Visibility="{Binding IsOwn, Converter={StaticResource BoolToVis}}">
+                                <StackPanel Orientation="Horizontal" Margin="8,6">
+                                    <TextBlock Text="&#xE7B3;" Style="{StaticResource Icon}" FontSize="15" Foreground="White" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <TextBlock Text="{Binding ViewsText}" Foreground="White" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                            <!-- Чужая история: ответ уходит автору в личный чат -->
+                            <Border CornerRadius="22" BorderBrush="#88FFFFFF" BorderThickness="1" Background="#33000000" Padding="4,0"
+                                    Visibility="{Binding CanReply, Converter={StaticResource BoolToVis}}">
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE724;" Foreground="White" Padding="8"
+                                            Command="{Binding SendReplyCommand}" ToolTip="Отправить" />
+                                    <Grid>
+                                        <TextBlock Text="Ответить…" Foreground="#AAFFFFFF" VerticalAlignment="Center" Margin="12,0" IsHitTestVisible="False"
+                                                   Visibility="{Binding ReplyText, Converter={StaticResource InvNullToVis}}" />
+                                        <TextBox x:Name="StoryReply" Text="{Binding ReplyText, UpdateSourceTrigger=PropertyChanged}" Background="Transparent"
+                                                 BorderThickness="0" Foreground="White" CaretBrush="White" FontSize="14" Padding="10,11" VerticalContentAlignment="Center"
+                                                 GotKeyboardFocus="StoryReply_GotFocus" LostKeyboardFocus="StoryReply_LostFocus" PreviewKeyDown="StoryReply_KeyDown" />
+                                    </Grid>
+                                </DockPanel>
+                            </Border>
+                        </DockPanel>
+
+                        <!-- Своя история: кто посмотрел -->
+                        <Border VerticalAlignment="Bottom" MaxHeight="360" Margin="0" CornerRadius="16,16,0,0" Background="#F2141C25"
+                                Visibility="Collapsed" helpers:Anim.Mode="SlideUp" helpers:Anim.Show="{Binding IsViewersOpen}">
+                            <DockPanel Margin="0,10,0,6">
+                                <DockPanel DockPanel.Dock="Top" Margin="16,0,8,6">
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" Foreground="White"
+                                            Command="{Binding ToggleViewersCommand}" />
+                                    <TextBlock Text="{Binding ViewsText}" Foreground="White" FontWeight="SemiBold" FontSize="15" VerticalAlignment="Center" />
+                                </DockPanel>
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True">
+                                    <ItemsControl ItemsSource="{Binding Viewers}" Focusable="False">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type vm:StoryViewerViewModel}">
+                                                <DockPanel Margin="16,6">
+                                                    <controls:AvatarView DockPanel.Dock="Left" Width="38" Height="38" Margin="0,0,12,0" Source="{Binding Avatar}"
+                                                                         Fill="{Binding AvatarBrush}" Initials="{Binding Initials}" />
+                                                    <TextBlock DockPanel.Dock="Right" helpers:RichText.Text="{Binding Reaction}" helpers:RichText.EmojiSize="20"
+                                                               VerticalAlignment="Center" />
+                                                    <StackPanel VerticalAlignment="Center">
+                                                        <TextBlock helpers:RichText.Text="{Binding Title}" Foreground="White" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{Binding TimeText}" Foreground="#AAFFFFFF" FontSize="12" />
+                                                    </StackPanel>
+                                                </DockPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </DockPanel>
+                        </Border>
                         <views:Spinner Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
                     </Grid>
                 </Grid>

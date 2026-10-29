@@ -263,6 +263,27 @@
         </Setter>
     </Style>
 
+    <!-- Прозрачная кнопка-обёртка (клик по контенту) -->
+    <Style x:Key="BareButton" TargetType="Button">
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" Background="Transparent" CornerRadius="8">
+                        <ContentPresenter />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="#14FFFFFF" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Ползунок перемотки медиа: пройденное — цветом, оставшееся — серым, кружок появляется при наведении -->
     <Style x:Key="MediaSlider" TargetType="Slider">
         <Setter Property="Cursor" Value="Hand" />

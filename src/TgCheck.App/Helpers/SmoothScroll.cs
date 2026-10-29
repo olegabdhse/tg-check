@@ -56,6 +56,26 @@ public static class SmoothScroll
         }
     }
 
+    /// <summary>Колесо мыши листает по горизонтали (ленты фильтров, чипов в узком окне).</summary>
+    public static readonly DependencyProperty HorizontalWheelProperty = DependencyProperty.RegisterAttached(
+        "HorizontalWheel", typeof(bool), typeof(SmoothScroll), new PropertyMetadata(false, (d, e) =>
+        {
+            if (d is not ScrollViewer sv) return;
+            if (e.NewValue is true) sv.PreviewMouseWheel += OnHorizontalWheel;
+            else sv.PreviewMouseWheel -= OnHorizontalWheel;
+        }));
+
+    public static bool GetHorizontalWheel(DependencyObject d) => (bool)d.GetValue(HorizontalWheelProperty);
+    public static void SetHorizontalWheel(DependencyObject d, bool value) => d.SetValue(HorizontalWheelProperty, value);
+
+    private static void OnHorizontalWheel(object sender, MouseWheelEventArgs e)
+    {
+        var sv = (ScrollViewer)sender;
+        if (sv.ScrollableWidth <= 0) return; // всё помещается — колесо листает страницу как обычно
+        sv.ScrollToHorizontalOffset(Math.Clamp(sv.HorizontalOffset - e.Delta * 0.6, 0, sv.ScrollableWidth));
+        e.Handled = true;
+    }
+
     public static ScrollViewer? FindScrollViewer(DependencyObject root)
     {
         if (root is ScrollViewer sv) return sv;

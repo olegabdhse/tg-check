@@ -148,10 +148,9 @@
                                 ToolTip="Архив" Padding="8,6" Visibility="{Binding HasArchive, Converter={StaticResource BoolToVis}}">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="&#xE7B8;" Style="{StaticResource Icon}" FontSize="15" />
-                                <Border Background="{StaticResource Surface3Brush}" CornerRadius="8" Padding="5,0" Margin="6,0,0,0"
+                                <Border Background="{StaticResource Surface3Brush}" CornerRadius="9" MinWidth="18" Height="18" Padding="5,0" Margin="6,0,0,0"
                                         Visibility="{Binding ArchiveUnread, Converter={StaticResource NullToVis}}">
-                                    <TextBlock Text="{Binding ArchiveUnread}" FontFamily="{StaticResource UiFont}" FontSize="11"
-                                               FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" />
+                                        <controls:BadgeText Text="{Binding ArchiveUnread}" FontSize="11" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                             </StackPanel>
                         </Button>
@@ -161,7 +160,7 @@
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="Все" />
                                     <Border Style="{StaticResource TabBadge}" Visibility="{Binding AllUnread, Converter={StaticResource NullToVis}}">
-                                        <TextBlock Text="{Binding AllUnread}" />
+                                        <controls:BadgeText Text="{Binding AllUnread}" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     </Border>
                                 </StackPanel>
                             </RadioButton>
@@ -170,7 +169,7 @@
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="Личные" />
                                     <Border Style="{StaticResource TabBadge}" Visibility="{Binding PersonalUnread, Converter={StaticResource NullToVis}}">
-                                        <TextBlock Text="{Binding PersonalUnread}" />
+                                        <controls:BadgeText Text="{Binding PersonalUnread}" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     </Border>
                                 </StackPanel>
                             </RadioButton>
@@ -195,6 +194,37 @@
                             <Grid Height="48" Loaded="ChatItem_Changed" DataContextChanged="ChatItem_DataContextChanged">
                                 <Grid.ContextMenu>
                                     <ContextMenu>
+                                        <MenuItem Tag="&#xE718;"
+                                                  Command="{Binding PlacementTarget.Tag.TogglePinCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                  CommandParameter="{Binding}">
+                                            <MenuItem.Style>
+                                                <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                                    <Setter Property="Header" Value="Закрепить" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsPinned}" Value="True">
+                                                            <Setter Property="Header" Value="Открепить" />
+                                                            <Setter Property="Tag" Value="&#xE77A;" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </MenuItem.Style>
+                                        </MenuItem>
+                                        <MenuItem Tag="&#xE7ED;"
+                                                  Command="{Binding PlacementTarget.Tag.ToggleMuteCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                  CommandParameter="{Binding}">
+                                            <MenuItem.Style>
+                                                <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                                    <Setter Property="Header" Value="Выключить уведомления" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsMuted}" Value="True">
+                                                            <Setter Property="Header" Value="Включить уведомления" />
+                                                            <Setter Property="Tag" Value="&#xEA8F;" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </MenuItem.Style>
+                                        </MenuItem>
+                                        <Separator />
                                         <MenuItem Header="Открыть профиль" Tag="&#xE77B;"
                                                   Command="{Binding PlacementTarget.Tag.OpenProfileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                   CommandParameter="{Binding}" />
@@ -259,8 +289,7 @@
                                                     </Style.Triggers>
                                                 </Style>
                                             </Border.Style>
-                                            <TextBlock Text="{Binding UnreadText}" FontSize="11" FontWeight="Bold" Foreground="White"
-                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            <controls:BadgeText Text="{Binding UnreadText}" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                         </Border>
                                         <TextBlock DockPanel.Dock="Right" Text="&#xE718;" Style="{StaticResource Icon}" FontSize="12"
                                                    Foreground="{StaticResource TextSecondaryBrush}" Margin="6,0,0,0">

@@ -48,9 +48,16 @@ public partial class App : Application
         base.OnExit(e);
     }
 
+    private static bool _errorShown;
+
+    // Ошибка пишется в лог целиком; окно — одно (повторяющаяся ошибка не заваливает экран окнами).
     private static void OnUnhandled(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
-        MessageBox.Show(TgErrors.Describe(e.Exception), "TG Check — ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
         e.Handled = true;
+        Logging.Write("unhandled: " + e.Exception);
+        if (_errorShown) return;
+        _errorShown = true;
+        MessageBox.Show(TgErrors.Describe(e.Exception), "TG Check — ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+        _errorShown = false;
     }
 }

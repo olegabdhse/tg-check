@@ -66,7 +66,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public void OpenStories(IReadOnlyList<StoryPeerViewModel> peers, int index)
     {
         if (index < 0) return;
-        var vm = new StoriesViewModel(_tg, peers, index, () => { StoryViewer = null; Chats.OnStoriesRead(); }, OpenProfile);
+        var vm = new StoriesViewModel(_tg, peers, index, () => { StoryViewer = null; Chats.OnStoriesRead(); }, OpenProfile, ShowToast);
         StoryViewer = vm;
         vm.Start();
     }
@@ -117,6 +117,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         Chats.UnreadChanged += () => OnPropertyChanged(nameof(ChatsUnread));
         _ = MyProfile.LoadAsync();
+        _ = ReactionCatalog.LoadAsync(_tg);
         // Обновления — сразу при старте (не дожидаясь загрузки всех чатов) и затем каждые 30 минут.
         _ = CheckUpdatesAsync();
         _updateTimer.Tick += (_, _) => { if (_update is null) _ = CheckUpdatesAsync(); };

@@ -3,7 +3,7 @@ using WTelegram;
 namespace TgCheck.Core.Services;
 
 /// <summary>Пишет предупреждения и ошибки WTelegram и приложения в файл logs\tgcheck.log.</summary>
-internal static class Logging
+public static class Logging
 {
     private const long MaxSize = 5 * 1024 * 1024;
     private static readonly object Lock = new();

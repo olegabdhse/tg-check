@@ -41,6 +41,11 @@ public partial class ShellView : UserControl
     // Видео истории: MediaElement в ручном режиме открывает файл только после Play().
     private void OnStoryChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(StoriesViewModel.IsPaused) && sender is StoriesViewModel { VideoPath: not null } paused)
+        {
+            if (paused.IsPaused) StoryVideo.Pause(); else StoryVideo.Play();
+            return;
+        }
         if (e.PropertyName != nameof(StoriesViewModel.VideoPath) || sender is not StoriesViewModel s) return;
         if (s.VideoPath is null) { StoryVideo.Stop(); _storyTimer.Stop(); return; }
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => { StoryVideo.Play(); _storyTimer.Start(); });
@@ -74,12 +79,31 @@ public partial class ShellView : UserControl
             e.Handled = true;
             return;
         }
-        if (DataContext is ShellViewModel { StoryViewer: { } stories })
+        if (DataContext is ShellViewModel { StoryViewer: { } stories } && Keyboard.FocusedElement is not TextBox)
         {
             if (e.Key == Key.Right) { stories.Next(); e.Handled = true; }
             else if (e.Key == Key.Left) { stories.PreviousCommand.Execute(null); e.Handled = true; }
         }
         base.OnPreviewKeyDown(e);
+    }
+
+    // Пока пишут ответ на историю — она стоит на паузе (как в Telegram).
+    private void StoryReply_GotFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (_vm?.StoryViewer is { } s) s.IsPaused = true;
+    }
+
+    private void StoryReply_LostFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (_vm?.StoryViewer is { IsViewersOpen: false } s) s.IsPaused = false;
+    }
+
+    private void StoryReply_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter || _vm?.StoryViewer is not { } s) return;
+        e.Handled = true;
+        if (s.SendReplyCommand.CanExecute(null)) s.SendReplyCommand.Execute(null);
+        Focus(); // убрать фокус из поля — история продолжится
     }
 
     private void StoryVideo_MediaOpened(object sender, RoutedEventArgs e)

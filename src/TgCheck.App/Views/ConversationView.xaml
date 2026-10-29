@@ -38,27 +38,6 @@
             </Setter>
         </Style>
 
-        <!-- Прозрачная кнопка-обёртка (клик по контенту) -->
-        <Style x:Key="BareButton" TargetType="Button">
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="Transparent" CornerRadius="8">
-                            <ContentPresenter />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#14FFFFFF" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <!-- Кнопка бота (инлайн под сообщением и клавиатура под полем ввода) -->
         <Style x:Key="BotButton" TargetType="Button">
             <Setter Property="Cursor" Value="Hand" />
@@ -80,6 +59,50 @@
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="#AA3A5470" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Реакция в панели выбора: анимация из каталога Telegram, при наведении — крупнее -->
+        <Style x:Key="ReactionPick" TargetType="Button">
+            <Setter Property="Width" Value="36" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="ToolTip" Value="{Binding Def.Title}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid Background="Transparent" RenderTransformOrigin="0.5,0.5">
+                            <Grid.RenderTransform>
+                                <ScaleTransform x:Name="Zoom" />
+                            </Grid.RenderTransform>
+                            <controls:StickerView Width="30" Height="30" Media="{Binding Animation}" Animate="False"
+                                                  Visibility="{Binding HasAnimation, Converter={StaticResource BoolToVis}}" />
+                            <TextBlock helpers:RichText.Text="{Binding Emoji}" helpers:RichText.EmojiSize="24" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Visibility="{Binding HasAnimation, Converter={StaticResource InvBoolToVis}}" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="Zoom" Storyboard.TargetProperty="ScaleX" To="1.25" Duration="0:0:0.12" />
+                                            <DoubleAnimation Storyboard.TargetName="Zoom" Storyboard.TargetProperty="ScaleY" To="1.25" Duration="0:0:0.12" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="Zoom" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.12" />
+                                            <DoubleAnimation Storyboard.TargetName="Zoom" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.12" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -411,6 +434,7 @@
 
                     <!-- Пузырь + инлайн-кнопки бота под ним -->
                     <StackPanel x:Name="BubbleCol" DockPanel.Dock="Left" MaxWidth="520">
+                    <Grid x:Name="BubbleWrap" HorizontalAlignment="Left">
                     <Border x:Name="Bubble" HorizontalAlignment="Left" CornerRadius="14" Padding="10,6,10,6"
                             Background="{StaticResource InBubble}" Tag="{Binding DataContext, ElementName=Root}"
                             ToolTip="{Binding FullTime}" ToolTipService.InitialShowDelay="900">
@@ -428,23 +452,60 @@
                                         </ControlTemplate>
                                     </MenuItem.Template>
                                     <MenuItem.Header>
-                                        <ItemsControl ItemsSource="{Binding QuickReactionItems}" Focusable="False">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <StackPanel Orientation="Horizontal" />
-                                                </ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Button Style="{StaticResource BareButton}" Width="34" Height="34"
-                                                            Command="{Binding PlacementTarget.Tag.ReactCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                                                            CommandParameter="{Binding}" Click="Reaction_Click">
-                                                        <TextBlock helpers:RichText.Text="{Binding Emoji}" helpers:RichText.EmojiSize="22"
-                                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                                    </Button>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
+                                        <StackPanel>
+                                            <DockPanel>
+                                                <!-- «Ещё» — раскрыть все реакции -->
+                                                <ToggleButton x:Name="MoreReactions" DockPanel.Dock="Right" Width="30" Height="34" Cursor="Hand" FocusVisualStyle="{x:Null}"
+                                                              ToolTip="Все реакции">
+                                                    <ToggleButton.Template>
+                                                        <ControlTemplate TargetType="ToggleButton">
+                                                            <Border x:Name="Bd" CornerRadius="15" Background="Transparent">
+                                                                <TextBlock x:Name="Arrow" Text="&#xE70D;" Style="{StaticResource Icon}" FontSize="12"
+                                                                           Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="Bd" Property="Background" Value="#14FFFFFF" />
+                                                                </Trigger>
+                                                                <Trigger Property="IsChecked" Value="True">
+                                                                    <Setter TargetName="Arrow" Property="Text" Value="&#xE70E;" />
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </ToggleButton.Template>
+                                                </ToggleButton>
+                                                <ItemsControl ItemsSource="{Binding QuickReactionItems}" Focusable="False">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <StackPanel Orientation="Horizontal" />
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Button Style="{StaticResource ReactionPick}"
+                                                                    Command="{Binding PlacementTarget.Tag.ReactCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                                    CommandParameter="{Binding}" Click="Reaction_Click" />
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </DockPanel>
+                                            <!-- Все остальные реакции -->
+                                            <ItemsControl ItemsSource="{Binding MoreReactionItems}" Focusable="False" Width="264" Margin="0,4,0,0"
+                                                          Visibility="{Binding IsChecked, ElementName=MoreReactions, Converter={StaticResource BoolToVis}}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Button Style="{StaticResource ReactionPick}"
+                                                                Command="{Binding PlacementTarget.Tag.ReactCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                                CommandParameter="{Binding}" Click="Reaction_Click" />
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
                                     </MenuItem.Header>
                                 </MenuItem>
                                 <Separator />
@@ -514,13 +575,21 @@
 
                             <!-- Время и галочки всегда прижаты к правому нижнему углу; в тексте под них оставлено место -->
                             <Grid>
-                                <TextBlock x:Name="Body" helpers:RichText.CustomEmoji="{Binding Item.CustomEmoji}"
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="Body" Grid.ColumnSpan="2" helpers:RichText.CustomEmoji="{Binding Item.CustomEmoji}"
                                            helpers:RichText.Text="{Binding Text}" helpers:RichText.EmojiSize="{Binding TextEmojiSize}"
                                            helpers:RichText.TrailingSpace="{Binding ActualWidth, ElementName=Meta}"
                                            TextWrapping="Wrap" FontSize="14" LineHeight="21" HorizontalAlignment="Left"
                                            Foreground="#F5F7FA" Margin="0,0,0,0" MaxWidth="{Binding TextMaxWidth}"
                                            Visibility="{Binding HasText, Converter={StaticResource BoolToVis}}" />
-                                <Border x:Name="Meta" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,2,0,-1" CornerRadius="8" Padding="8,0,0,0">
+                                <Border x:Name="Meta" Grid.ColumnSpan="2" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,2,0,-1" CornerRadius="8" Padding="8,0,0,0">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="&#xE7B3;" Style="{StaticResource Icon}" FontSize="11" Foreground="{StaticResource MetaBrush}" Margin="0,0,3,0"
                                                    Visibility="{Binding ViewsText, Converter={StaticResource NullToVis}}" />
@@ -529,25 +598,19 @@
                                         <TextBlock Text="изменено" FontSize="11" Foreground="{StaticResource MetaBrush}" Margin="0,0,5,0"
                                                    Visibility="{Binding IsEdited, Converter={StaticResource BoolToVis}}" />
                                         <TextBlock Text="{Binding TimeText}" FontSize="11" Foreground="{StaticResource MetaBrush}" />
-                                        <TextBlock FontSize="11" Margin="4,0,0,0" Foreground="#6AB3F3"
-                                                   Visibility="{Binding ShowChecks, Converter={StaticResource BoolToVis}}">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock" BasedOn="{StaticResource Icon}">
-                                                    <Setter Property="Text" Value="&#xE73E;" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsRead}" Value="True">
-                                                            <Setter Property="Text" Value="&#xE73E;&#xE73E;" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
+                                        <!-- Галочки как в Telegram: «прочитано» — вторая поверх первой со сдвигом -->
+                                        <Canvas Width="16" Height="10" Margin="4,0,0,0" VerticalAlignment="Center"
+                                                Visibility="{Binding ShowChecks, Converter={StaticResource BoolToVis}}">
+                                            <Path Data="M0.8,5.2 L3.8,8.2 L10.2,1.4" Stroke="#6AB3F3" StrokeThickness="1.5"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                                            <Path Canvas.Left="4.6" Data="M2.2,6.6 L3.8,8.2 L10.2,1.4" Stroke="#6AB3F3" StrokeThickness="1.5"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                  Visibility="{Binding IsRead, Converter={StaticResource BoolToVis}}" />
+                                        </Canvas>
                                     </StackPanel>
                                 </Border>
-                            </Grid>
-
-                            <!-- Реакции -->
-                            <ItemsControl ItemsSource="{Binding Reactions}" Focusable="False" Margin="0,5,0,1" HorizontalAlignment="Left"
+                                <!-- Реакции; если они есть — время и галочки в их ряду справа (как в Telegram) -->
+                            <ItemsControl x:Name="ReactionsRow" Grid.Row="1" ItemsSource="{Binding Reactions}" Focusable="False" Margin="0,5,0,1" HorizontalAlignment="Left"
                                           MaxWidth="{Binding TextMaxWidth}"
                                           Visibility="{Binding HasReactions, Converter={StaticResource BoolToVis}}">
                                 <ItemsControl.ItemsPanel>
@@ -557,35 +620,72 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate DataType="{x:Type vm:ReactionViewModel}">
-                                        <Button Margin="0,0,5,4" Cursor="Hand" FocusVisualStyle="{x:Null}"
+                                        <Button Margin="0,0,5,4" Cursor="Hand" FocusVisualStyle="{x:Null}" RenderTransformOrigin="0.5,0.5"
                                                 Command="{Binding DataContext.ReactCommand, ElementName=Root}" CommandParameter="{Binding}">
+                                            <Button.RenderTransform>
+                                                <ScaleTransform x:Name="Pop" />
+                                            </Button.RenderTransform>
                                             <Button.Template>
                                                 <ControlTemplate TargetType="Button">
-                                                    <Border x:Name="Pill" CornerRadius="13" Padding="7,3,9,3" Background="#33FFFFFF">
-                                                        <ContentPresenter />
-                                                    </Border>
+                                                    <Grid>
+                                                        <Border x:Name="Pill" CornerRadius="14" Height="28" Padding="5,0,10,0" Background="#24FFFFFF">
+                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                <controls:StickerView Width="20" Height="20" Media="{Binding Icon}" Animate="False" VerticalAlignment="Center"
+                                                                                      Visibility="{Binding HasIcon, Converter={StaticResource BoolToVis}}" />
+                                                                <TextBlock helpers:RichText.Text="{Binding Emoji}" helpers:RichText.EmojiSize="17" VerticalAlignment="Center"
+                                                                           Visibility="{Binding ShowEmojiText, Converter={StaticResource BoolToVis}}" />
+                                                                <controls:StickerView Width="20" Height="20" CustomEmojiId="{Binding CustomEmojiId}" VerticalAlignment="Center"
+                                                                                      Visibility="{Binding IsCustom, Converter={StaticResource BoolToVis}}" />
+                                                                <TextBlock x:Name="Count" Text="{Binding CountText}" FontSize="13" FontWeight="SemiBold" Foreground="White"
+                                                                           Margin="5,0,0,1" VerticalAlignment="Center" />
+                                                            </StackPanel>
+                                                        </Border>
+                                                        <!-- Эффект при постановке (анимация из каталога Telegram), выходит за края плашки -->
+                                                        <Canvas IsHitTestVisible="False" HorizontalAlignment="Left" VerticalAlignment="Center" Width="0" Height="0" Margin="15,0,0,0"
+                                                                Visibility="{Binding JustChosen, Converter={StaticResource BoolToVis}}">
+                                                            <controls:StickerView Width="96" Height="96" Canvas.Left="-48" Canvas.Top="-48" PlayOnce="True" Media="{Binding Effect}" />
+                                                        </Canvas>
+                                                    </Grid>
                                                     <ControlTemplate.Triggers>
                                                         <DataTrigger Binding="{Binding Chosen}" Value="True">
                                                             <Setter TargetName="Pill" Property="Background" Value="{StaticResource AccentBrush}" />
                                                         </DataTrigger>
+                                                        <MultiDataTrigger>
+                                                            <MultiDataTrigger.Conditions>
+                                                                <Condition Binding="{Binding Chosen}" Value="True" />
+                                                                <Condition Binding="{Binding Message.IsOut}" Value="True" />
+                                                            </MultiDataTrigger.Conditions>
+                                                            <Setter TargetName="Pill" Property="Background" Value="White" />
+                                                            <Setter TargetName="Count" Property="Foreground" Value="#2B5278" />
+                                                        </MultiDataTrigger>
                                                         <Trigger Property="IsMouseOver" Value="True">
-                                                            <Setter TargetName="Pill" Property="Opacity" Value="0.85" />
+                                                            <Setter TargetName="Pill" Property="Opacity" Value="0.88" />
                                                         </Trigger>
                                                     </ControlTemplate.Triggers>
                                                 </ControlTemplate>
                                             </Button.Template>
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock helpers:RichText.Text="{Binding Emoji}" helpers:RichText.EmojiSize="16" VerticalAlignment="Center"
-                                                           Visibility="{Binding IsCustom, Converter={StaticResource InvBoolToVis}}" />
-                                                <controls:StickerView Width="18" Height="18" CustomEmojiId="{Binding CustomEmojiId}" VerticalAlignment="Center"
-                                                                      Visibility="{Binding IsCustom, Converter={StaticResource BoolToVis}}" />
-                                                <TextBlock Text="{Binding CountText}" FontSize="12" FontWeight="SemiBold" Foreground="White" Margin="5,0,0,0"
-                                                           VerticalAlignment="Center" />
-                                            </StackPanel>
                                         </Button>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding JustChosen}" Value="True">
+                                                <DataTrigger.EnterActions>
+                                                    <BeginStoryboard>
+                                                        <Storyboard>
+                                                            <DoubleAnimation Storyboard.TargetName="Pop" Storyboard.TargetProperty="ScaleX" From="0.5" To="1" Duration="0:0:0.35">
+                                                                <DoubleAnimation.EasingFunction><BackEase EasingMode="EaseOut" Amplitude="0.7" /></DoubleAnimation.EasingFunction>
+                                                            </DoubleAnimation>
+                                                            <DoubleAnimation Storyboard.TargetName="Pop" Storyboard.TargetProperty="ScaleY" From="0.5" To="1" Duration="0:0:0.35">
+                                                                <DoubleAnimation.EasingFunction><BackEase EasingMode="EaseOut" Amplitude="0.7" /></DoubleAnimation.EasingFunction>
+                                                            </DoubleAnimation>
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </DataTrigger.EnterActions>
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
+                            </Grid>
+
 
                             <!-- Комментарии к посту канала -->
                             <Button Style="{StaticResource BareButton}" Margin="-10,6,-10,-6" HorizontalAlignment="Stretch"
@@ -601,6 +701,24 @@
                             </Button>
                         </StackPanel>
                     </Border>
+                    <!-- Быстрая реакция: кружок у пузыря при наведении (как в Telegram Desktop) -->
+                    <Button x:Name="ReactButton" Width="28" Height="28" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-34,2"
+                            Cursor="Hand" FocusVisualStyle="{x:Null}" Visibility="Hidden" ToolTip="Реакция" Click="ReactButton_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Grid>
+                                    <Ellipse x:Name="C" Fill="{StaticResource Surface2Brush}" Stroke="{StaticResource Surface3Brush}" StrokeThickness="1" />
+                                    <TextBlock helpers:RichText.Text="🙂" helpers:RichText.EmojiSize="16" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Grid>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="C" Property="Fill" Value="{StaticResource Surface3Brush}" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    </Grid>
 
                     <!-- Инлайн-кнопки -->
                     <ItemsControl ItemsSource="{Binding InlineRows}" Focusable="False" Margin="0,3,0,0"
@@ -635,12 +753,25 @@
             </Grid>
 
             <DataTemplate.Triggers>
+                <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="ReactButton" Property="Visibility" Value="Visible" />
+                </Trigger>
+                <!-- Есть реакции — время и галочки встают в ряд реакций справа, в тексте место под них не нужно -->
+                <DataTrigger Binding="{Binding HasReactions}" Value="True">
+                    <Setter TargetName="Meta" Property="Grid.Row" Value="1" />
+                    <Setter TargetName="Meta" Property="Grid.Column" Value="1" />
+                    <Setter TargetName="Meta" Property="Grid.ColumnSpan" Value="1" />
+                    <Setter TargetName="Meta" Property="Margin" Value="0,0,0,6" />
+                    <Setter TargetName="Body" Property="helpers:RichText.TrailingSpace" Value="0" />
+                </DataTrigger>
                 <DataTrigger Binding="{Binding IsHighlighted}" Value="True">
                     <Setter TargetName="Row" Property="Background" Value="#262AABEE" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsOut}" Value="True">
                     <Setter TargetName="BubbleCol" Property="DockPanel.Dock" Value="Right" />
-                    <Setter TargetName="Bubble" Property="HorizontalAlignment" Value="Right" />
+                    <Setter TargetName="BubbleWrap" Property="HorizontalAlignment" Value="Right" />
+                    <Setter TargetName="ReactButton" Property="HorizontalAlignment" Value="Left" />
+                    <Setter TargetName="ReactButton" Property="Margin" Value="-34,0,0,2" />
                     <Setter TargetName="Bubble" Property="Background" Value="{StaticResource OutBubble}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsFirstInGroup}" Value="True">
@@ -837,8 +968,7 @@
                                 <Border Background="{StaticResource AccentBrush}" CornerRadius="9" MinWidth="18" Height="18" Padding="5,0"
                                         HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,-10,0,0"
                                         Visibility="{Binding PendingNewCount, Converter={StaticResource NullToVis}}">
-                                    <TextBlock Text="{Binding PendingNewCount}" FontSize="11" FontWeight="Bold" Foreground="White"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <controls:BadgeText Text="{Binding PendingNewCount}" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                             </Grid>
                             <ControlTemplate.Triggers>

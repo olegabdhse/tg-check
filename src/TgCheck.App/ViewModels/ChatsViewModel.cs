@@ -460,6 +460,40 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         OpenChat(r.Peer);
     }
 
+    /// <summary>Закрепить / открепить чат (как в Telegram: закреплённые — сверху, в своём порядке).</summary>
+    [RelayCommand]
+    private async Task TogglePin(ChatItemViewModel? c)
+    {
+        if (c is null) return;
+        var pin = !c.IsPinned;
+        try
+        {
+            await _tg.SetPinnedAsync(c.Peer, pin);
+            c.IsPinned = pin;
+            // Новый закреп — первым среди закреплённых.
+            if (pin) c.Order = Chats.Where(x => x.IsPinned && x != c).Select(x => x.Order).DefaultIfEmpty(0).Min() - 1;
+            Reposition(c);
+            ShowToast(pin ? "Чат закреплён" : "Чат откреплён");
+        }
+        catch (Exception ex) { ShowToast(TgErrors.Describe(ex), true); }
+    }
+
+    /// <summary>Выключить / включить уведомления чата.</summary>
+    [RelayCommand]
+    private async Task ToggleMute(ChatItemViewModel? c)
+    {
+        if (c is null) return;
+        var mute = !c.IsMuted;
+        try
+        {
+            await _tg.SetMutedAsync(c.Peer, mute);
+            c.IsMuted = mute;
+            NotifyArchive();
+            ShowToast(mute ? "Уведомления выключены" : "Уведомления включены");
+        }
+        catch (Exception ex) { ShowToast(TgErrors.Describe(ex), true); }
+    }
+
     [RelayCommand]
     private void OpenProfile(ChatItemViewModel? c)
     {
