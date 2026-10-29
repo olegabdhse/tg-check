@@ -54,6 +54,36 @@ internal sealed class ProtectedSessionStore(string path)
         lock (_lock)
         {
             if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(BackupPath)) File.Delete(BackupPath); // осознанный выход из аккаунта — копия тоже не нужна
         }
     }
+
+    // ---- копия последней рабочей сессии (после успешного входа): страховка, если основной файл окажется пустым
+
+    private string BackupPath => path + ".good";
+
+    public bool HasBackup => File.Exists(BackupPath);
+
+    /// <summary>Запомнить текущий файл как рабочий (вызывается, когда сервер подтвердил вход).</summary>
+    public void MarkGood()
+    {
+        lock (_lock)
+        {
+            try { if (File.Exists(path)) File.Copy(path, BackupPath, overwrite: true); }
+            catch (IOException) { /* не критично */ }
+        }
+    }
+
+    /// <summary>Вернуть рабочую копию на место основного файла.</summary>
+    public bool RestoreBackup()
+    {
+        lock (_lock)
+        {
+            if (!File.Exists(BackupPath)) return false;
+            File.Copy(BackupPath, path, overwrite: true);
+            return true;
+        }
+    }
+
+    public long Size => File.Exists(path) ? new FileInfo(path).Length : 0;
 }

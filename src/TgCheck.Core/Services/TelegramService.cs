@@ -117,18 +117,52 @@ public sealed partial class TelegramService : IAsyncDisposable
         }
 
 
-        if (_client.UserId == 0) return false;
+        if (_client.UserId == 0)
+        {
+            // Файл сессии без пользователя. Если есть копия последней рабочей сессии — пробуем её.
+            Logging.Write($"session: в сохранённой сессии нет пользователя ({_session.Size} байт), копия: {_session.HasBackup}");
+            if (!_restoringBackup && _session.HasBackup)
+            {
+                _restoringBackup = true;
+                try
+                {
+                    await _clientLock.WaitAsync();
+                    try
+                    {
+                        await _client.DisposeAsync();
+                        _session.RestoreBackup();
+                        _client = CreateClient();
+                    }
+                    finally { _clientLock.Release(); }
+                    return await TryRestoreSessionAsync(onRetry);
+                }
+                finally { _restoringBackup = false; }
+            }
+            return false;
+        }
         try
         {
             var users = await _client.Users_GetUsers(InputUser.Self);
-            return users.Length > 0 && users[0] is User;
+            var ok = users.Length > 0 && users[0] is User;
+            if (ok)
+            {
+                Logging.Write($"session: вход восстановлен (user {_client.UserId})");
+                _session.MarkGood();
+            }
+            return ok;
         }
         catch (Exception ex) when (TgErrors.IsSessionDead(ex))
         {
+            Logging.Write($"session: сервер отклонил сессию ({ex.Message}) — нужен повторный вход");
             await ResetClientAsync(deleteSession: true);
             return false;
         }
     }
+
+    private bool _restoringBackup;
+
+    /// <summary>Вход подтверждён (после логина) — запомнить сессию как рабочую.</summary>
+    public void MarkSessionGood() { if (_client.UserId != 0) _session.MarkGood(); }
 
     /// <summary>Сбрасывает незавершённый вход (например, при переключении номер ↔ QR).</summary>
     public Task ResetLoginAsync() => ResetClientAsync(deleteSession: false);

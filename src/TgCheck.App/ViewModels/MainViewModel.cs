@@ -64,12 +64,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (_tg is null || _env is null) return;
         var shell = new ShellViewModel(_tg, _env, ShowLogin);
+        _tg.MarkSessionGood();
         CurrentPage = shell;
         _ = shell.StartAsync();
     }
 
     public async ValueTask DisposeAsync()
     {
+        Logging.Write("exit: программа закрывается, сессия сохраняется");
         if (CurrentPage is LoginViewModel login) login.Cancel();
         if (CurrentPage is ShellViewModel shell) shell.Dispose();
         if (_tg is not null) await _tg.DisposeAsync();
