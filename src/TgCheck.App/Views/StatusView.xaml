@@ -21,6 +21,24 @@
                         Visibility="{Binding ShowAppFolder, Converter={StaticResource BoolToVis}}" />
                 <Button Content="Повторить" Style="{StaticResource PrimaryButton}" Command="{Binding RetryCommand}" />
             </StackPanel>
+
+            <!-- Обрыв соединения: другой прокси (MTProxy / SOCKS5) или без него -->
+            <Border Margin="0,24,0,0" Padding="16" CornerRadius="10" Background="{StaticResource Surface2Brush}"
+                    Visibility="{Binding CanChangeProxy, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <TextBlock Text="Прокси" FontWeight="SemiBold" />
+                    <TextBlock Text="Вставьте ссылку на прокси (https://t.me/proxy?… или socks5://…) — подключимся через него."
+                               Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,4,0,10" />
+                    <TextBox Style="{StaticResource InputBox}" Text="{Binding ProxyText, UpdateSourceTrigger=PropertyChanged}" Tag="https://t.me/proxy?server=…" />
+                    <TextBlock Text="{Binding ProxyError}" Foreground="{StaticResource DangerBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"
+                               Visibility="{Binding ProxyError, Converter={StaticResource NullToVis}}" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                        <Button Content="Без прокси" Style="{StaticResource SecondaryButton}" Margin="0,0,10,0" Command="{Binding NoProxyCommand}"
+                                Visibility="{Binding UsesProxy, Converter={StaticResource BoolToVis}}" />
+                        <Button Content="Подключиться через прокси" Style="{StaticResource PrimaryButton}" Command="{Binding ApplyProxyCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
         </StackPanel>
     </Border>
 </UserControl>

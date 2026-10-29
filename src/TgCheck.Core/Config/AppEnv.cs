@@ -73,7 +73,11 @@ public sealed class AppEnv
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TgCheck");
         Directory.CreateDirectory(dataDir);
 
+        // Прокси, заданный в самой программе (экран обрыва соединения), важнее встроенного TG_PROXY; "none" — без прокси.
         var proxy = Get("TG_PROXY");
+        var userProxyFile = Path.Combine(dataDir, UserProxyFileName);
+        if (File.Exists(userProxyFile) && File.ReadAllText(userProxyFile).Trim() is { Length: > 0 } user)
+            proxy = user.Equals("none", StringComparison.OrdinalIgnoreCase) ? null : IsSupportedProxy(user) ? user : proxy;
         if (proxy is not null && !IsSupportedProxy(proxy))
             throw new EnvConfigException(
                 $"TG_PROXY не распознан: «{proxy}».\n\nПоддерживается MTProxy (https://t.me/proxy?server=…&port=…&secret=… или tg://proxy?…) " +
@@ -100,6 +104,15 @@ public sealed class AppEnv
             if (long.TryParse(m.Value, out var id)) set.Add(id);
         return set;
     }
+
+    private const string UserProxyFileName = "proxy.txt";
+
+    /// <summary>Запомнить прокси, выбранный в программе (null — без прокси). Действует со следующего подключения.</summary>
+    public static void SaveUserProxy(string dataDirectory, string? proxy) =>
+        File.WriteAllText(Path.Combine(dataDirectory, UserProxyFileName), string.IsNullOrWhiteSpace(proxy) ? "none" : proxy.Trim());
+
+    /// <summary>Похоже ли на ссылку прокси, которую понимает программа (MTProxy или SOCKS5).</summary>
+    public static bool IsValidProxy(string proxy) => IsSupportedProxy(proxy.Trim());
 
     internal static bool IsMtProxy(string proxy) =>
         proxy.StartsWith("tg://proxy", StringComparison.OrdinalIgnoreCase) ||
