@@ -31,23 +31,29 @@ public static class ReactionCatalog
     }
 
     // Разрешённые реакции чатов: нет записи / null — любые.
-    private static readonly Dictionary<long, IReadOnlyList<string>?> Allowed = [];
+    private static readonly Dictionary<long, IReadOnlyList<ReactionInfo>?> Allowed = [];
 
-    public static void SetAllowed(long peerKey, IReadOnlyList<string>? emojis)
+    public static void SetAllowed(long peerKey, IReadOnlyList<ReactionInfo>? reactions)
     {
-        lock (Allowed) Allowed[peerKey] = emojis;
+        lock (Allowed) Allowed[peerKey] = reactions;
     }
 
-    /// <summary>Реакции, которые можно поставить в этом чате (порядок — как в Telegram).</summary>
-    public static IReadOnlyList<string> ChoicesFor(long peerKey)
+    /// <summary>
+    /// Реакции, которые можно поставить в этом чате (порядок — как в Telegram): обычные эмодзи и собственные
+    /// (премиум) эмодзи канала, которые админ открыл для всех подписчиков.
+    /// </summary>
+    public static IReadOnlyList<ReactionInfo> ChoicesFor(long peerKey)
     {
-        IReadOnlyList<string>? allowed;
+        IReadOnlyList<ReactionInfo>? allowed;
         lock (Allowed) allowed = Allowed.GetValueOrDefault(peerKey);
-        var free = IsLoaded ? Free.Select(d => d.Emoji).ToList() : [.. TelegramService.QuickReactions];
+        var free = (IsLoaded ? Free.Select(d => d.Emoji) : TelegramService.QuickReactions)
+            .Select(e => new ReactionInfo(e, 0, 0, false)).ToList();
         if (allowed is null) return free;
-        // Сначала разрешённые из стандартного порядка, затем остальные разрешённые.
-        var set = allowed.Select(Key).ToHashSet();
-        return free.Where(e => set.Contains(Key(e))).Concat(allowed.Where(a => !free.Any(f => Key(f) == Key(a)))).ToList();
+        // Сначала разрешённые из стандартного порядка, затем остальные разрешённые (в т.ч. эмодзи канала).
+        var set = allowed.Select(a => a.CustomEmojiId != 0 ? a.Key : Key(a.Emoji ?? "")).ToHashSet();
+        var ordered = free.Where(f => set.Contains(Key(f.Emoji!))).ToList();
+        var rest = allowed.Where(a => a.CustomEmojiId != 0 || !free.Any(f => Key(f.Emoji!) == Key(a.Emoji ?? "")));
+        return [.. ordered, .. rest];
     }
 
     /// <summary>Иконки и анимации выбора качаются заранее в фоне — в меню и под сообщениями они уже готовы.</summary>

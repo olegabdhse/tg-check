@@ -184,6 +184,49 @@ public sealed partial class TelegramService
         return MapMessage(msg);
     }
 
+    // ===================================================================== Темы в группах-форумах (как в Telegram)
+
+    /// <summary>Темы форума: закреплённые первыми, затем по последнему сообщению.</summary>
+    public async Task<IReadOnlyList<ForumTopicInfo>> GetForumTopicsAsync(PeerRef forum)
+    {
+        if (forum.Info is not Channel channel) return [];
+        var res = await _client.Messages_GetForumTopics(channel, default, 0, 0, 100);
+        res.CollectUsersChats(_users, _chats);
+        var lastMessages = res.messages.Where(m => m is Message && !IsHiddenMessage(m)).ToDictionary(m => m.ID, MapMessage);
+        return res.topics.OfType<ForumTopic>()
+            .Select(t => new ForumTopicInfo
+            {
+                Id = t.id,
+                Title = t.title,
+                IconColor = t.icon_color,
+                IconEmojiId = t.flags.HasFlag(ForumTopic.Flags.has_icon_emoji_id) ? t.icon_emoji_id : 0,
+                UnreadCount = t.unread_count,
+                IsPinned = t.flags.HasFlag(ForumTopic.Flags.pinned),
+                IsClosed = t.flags.HasFlag(ForumTopic.Flags.closed),
+                Last = lastMessages.GetValueOrDefault(t.top_message),
+            })
+            .OrderByDescending(t => t.IsPinned)
+            .ThenByDescending(t => t.Last?.DateUtc ?? DateTime.MinValue)
+            .ToList();
+    }
+
+    /// <summary>Отметить тему форума прочитанной до сообщения maxId.</summary>
+    public async Task ReadTopicAsync(PeerRef forum, int topicId, int maxId)
+    {
+        try { await _client.Messages_ReadDiscussion(forum.Info.ToInputPeer(), topicId, maxId); }
+        catch (Exception ex) { Logging.Write("read topic: " + ex.Message); }
+    }
+
+    /// <summary>
+    /// Сообщения темы «Общее» (id 1): у них нет привязки к теме, поэтому берётся общая история группы
+    /// без сообщений других тем.
+    /// </summary>
+    public async Task<IReadOnlyList<MessageItem>> GetGeneralTopicAsync(PeerRef forum, int offsetId = 0, int limit = 50)
+    {
+        var history = await GetHistoryAsync(forum, offsetId, limit);
+        return history.Where(m => m.TopicId is null).ToList();
+    }
+
     // ===================================================================== Закрепление и уведомления чата
 
     /// <summary>Закрепить чат в списке или открепить.</summary>
@@ -260,7 +303,7 @@ public sealed partial class TelegramService
     /// Какие реакции разрешены в чате: null — любые (личные чаты и «все реакции»), пустой список — реакции выключены,
     /// иначе — только эти эмодзи (админы каналов и групп часто ограничивают набор; чужие дают REACTION_INVALID).
     /// </summary>
-    public async Task<IReadOnlyList<string>?> GetAllowedReactionsAsync(PeerRef peer)
+    public async Task<IReadOnlyList<ReactionInfo>?> GetAllowedReactionsAsync(PeerRef peer)
     {
         if (peer.IsUser) return null;
         try
@@ -274,7 +317,13 @@ public sealed partial class TelegramService
             return reactions switch
             {
                 ChatReactionsAll => null,
-                ChatReactionsSome some => some.reactions.OfType<ReactionEmoji>().Select(r => r.emoticon).ToList(),
+                // Обычные эмодзи и собственные (премиум) эмодзи канала — их могут ставить все подписчики.
+                ChatReactionsSome some => some.reactions.Select(r => r switch
+                    {
+                        ReactionEmoji e => new ReactionInfo(e.emoticon, 0, 0, false),
+                        ReactionCustomEmoji c => new ReactionInfo(null, c.document_id, 0, false),
+                        _ => null,
+                    }).OfType<ReactionInfo>().ToList(),
                 _ => [],
             };
         }

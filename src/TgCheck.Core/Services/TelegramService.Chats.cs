@@ -407,6 +407,10 @@ public sealed partial class TelegramService
                 DateUtc = s.date,
                 IsOut = s.flags.HasFlag(MessageService.Flags.out_),
                 ServiceText = ServiceText(s, from),
+                // Служебные сообщения форума: «тема создана» — сама тема, остальные — тема, где они случились.
+                TopicId = s.action is MessageActionTopicCreate ? s.id
+                    : s.reply_to is MessageReplyHeader { flags: var sf2 } sh && sf2.HasFlag(MessageReplyHeader.Flags.forum_topic)
+                        ? (sf2.HasFlag(MessageReplyHeader.Flags.has_reply_to_top_id) ? sh.reply_to_top_id : sh.reply_to_msg_id) : null,
             };
         }
 
@@ -429,6 +433,8 @@ public sealed partial class TelegramService
             EditDateUtc = msg.flags.HasFlag(Message.Flags.has_edit_date) && !msg.flags.HasFlag(Message.Flags.edit_hide) ? msg.edit_date : null,
             ReplyToId = reply is > 0 ? reply : null,
             ThreadTopId = msg.reply_to is MessageReplyHeader { flags: var rf } rh && rf.HasFlag(MessageReplyHeader.Flags.has_reply_to_top_id) ? rh.reply_to_top_id : null,
+            TopicId = msg.reply_to is MessageReplyHeader { flags: var tf } th && tf.HasFlag(MessageReplyHeader.Flags.forum_topic)
+                ? (tf.HasFlag(MessageReplyHeader.Flags.has_reply_to_top_id) ? th.reply_to_top_id : th.reply_to_msg_id) : null,
             ForwardedFrom = fwd,
             PostAuthor = msg.post_author,
             Views = msg.views,
@@ -574,7 +580,7 @@ public sealed partial class TelegramService
         int w = 0, int h = 0, string? title = null, string? emoji = null, double duration = 0, IReadOnlyList<byte>? waveform = null) => new()
     {
         Id = i.Id, PeerKey = i.PeerKey, FromKey = i.FromKey, From = i.From, DateUtc = i.DateUtc, Text = i.Text,
-        IsOut = i.IsOut, EditDateUtc = i.EditDateUtc, ReplyToId = i.ReplyToId, ThreadTopId = i.ThreadTopId, ForwardedFrom = i.ForwardedFrom,
+        IsOut = i.IsOut, EditDateUtc = i.EditDateUtc, ReplyToId = i.ReplyToId, ThreadTopId = i.ThreadTopId, TopicId = i.TopicId, ForwardedFrom = i.ForwardedFrom,
         PostAuthor = i.PostAuthor, Views = i.Views, GroupedId = i.GroupedId, CustomEmoji = i.CustomEmoji,
         InlineButtons = i.InlineButtons, ReplyKeyboard = i.ReplyKeyboard, KeyboardPlaceholder = i.KeyboardPlaceholder, Comments = i.Comments, Reactions = i.Reactions,
         Media = kind, Photo = photo, Document = doc, MediaWidth = w, MediaHeight = h,

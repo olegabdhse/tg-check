@@ -142,3 +142,19 @@ public sealed record StoryViewer(PeerRef Peer, DateTime DateUtc, string? Reactio
 
 /// <summary>Реакция из каталога Telegram с её анимациями.</summary>
 public sealed record ReactionDef(string Emoji, string Title, bool IsPremium, StickerItem? Icon, StickerItem? Select, StickerItem? Activate, StickerItem? Effect);
+
+/// <summary>Тема в группе-форуме.</summary>
+public sealed class ForumTopicInfo
+{
+    public int Id { get; init; }
+    public string Title { get; init; } = "";
+    /// <summary>Цвет значка темы (RGB), если нет эмодзи-иконки.</summary>
+    public int IconColor { get; init; }
+    /// <summary>Иконка-эмодзи темы (кастомный эмодзи), 0 — нет.</summary>
+    public long IconEmojiId { get; init; }
+    public int UnreadCount { get; init; }
+    public bool IsPinned { get; init; }
+    public bool IsClosed { get; init; }
+    public bool IsGeneral => Id == 1;
+    public MessageItem? Last { get; init; }
+}

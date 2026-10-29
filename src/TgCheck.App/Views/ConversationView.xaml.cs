@@ -81,6 +81,9 @@ public partial class ConversationView : UserControl
         _vm.PropertyChanged += OnVmPropertyChanged;
         _vm.IsAtBottom = () => IsNearBottom(Scroller.VerticalOffset);
         UpdateBack();
+        // В теме форума справа островок тем — лента не должна уходить под него.
+        Scroller.Padding = _vm.ShowTopicRail ? new Thickness(18, 6, 80, 10) : new Thickness(18, 6, 12, 10);
+        JumpButton.Margin = _vm.ShowTopicRail ? new Thickness(0, 0, 84, 14) : new Thickness(0, 0, 22, 14);
         // Первая загрузка: лента появляется уже прокрученной вниз, без мигания и прыжка сверху вниз.
         if (_vm.Items.Count == 0) HideFeed();
         _stickToBottom = true;

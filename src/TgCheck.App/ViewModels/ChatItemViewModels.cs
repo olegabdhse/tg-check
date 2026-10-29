@@ -161,12 +161,17 @@ public enum MediaLayout { None, PhotoVideo, Gif, Sticker, Round, Voice, Poll, Fi
 
 /// <summary>Кнопка под сообщением бота/канала.</summary>
 /// <summary>Быстрая реакция в меню сообщения.</summary>
-public sealed record QuickReactionItem(MessageViewModel Message, string Emoji)
+public sealed record QuickReactionItem(MessageViewModel Message, ReactionInfo Choice)
 {
-    public ReactionDef? Def { get; } = ReactionCatalog.Find(Emoji);
+    public string? Emoji => Choice.Emoji;
+    /// <summary>Собственное (премиум) эмодзи канала.</summary>
+    public long CustomEmojiId => Choice.CustomEmojiId;
+    public bool IsCustom => CustomEmojiId != 0;
+    public ReactionDef? Def { get; } = ReactionCatalog.Find(Choice.Emoji);
     /// <summary>Анимация «выбора» из каталога Telegram (играет в панели реакций), иначе — просто эмодзи.</summary>
     public MediaHolder? Animation => Def?.Icon ?? Def?.Select;
     public bool HasAnimation => Animation is not null;
+    public bool ShowEmojiText => !IsCustom && !HasAnimation;
 }
 
 /// <summary>Плашка реакции под сообщением.</summary>
@@ -179,6 +184,8 @@ public sealed class ReactionViewModel(MessageViewModel message, ReactionInfo inf
     public MediaHolder? Effect => Def?.Effect ?? Def?.Activate;
     public bool HasIcon => Icon is not null;
     public bool ShowEmojiText => !IsCustom && !HasIcon;
+    /// <summary>Платная реакция звёздами — золотая плашка, как в Telegram.</summary>
+    public bool IsPaid => Info.IsPaid;
     public MessageViewModel Message { get; } = message;
     public ReactionInfo Info { get; } = info;
     public string? Emoji => Info.CustomEmojiId == 0 ? Info.Emoji : null;
@@ -516,3 +523,38 @@ public sealed partial class MessageViewModel : ObservableObject
     }
 }
 
+
+/// <summary>Строка темы в группе-форуме (как в Telegram: значок, название, последнее сообщение, счётчик).</summary>
+public sealed partial class ForumTopicViewModel : ObservableObject
+{
+    public ForumTopicViewModel(ForumTopicInfo topic)
+    {
+        Topic = topic;
+        _last = topic.Last;
+        _unread = topic.UnreadCount;
+    }
+
+    public ForumTopicInfo Topic { get; }
+    public string Title => Topic.Title;
+    public long IconEmojiId => Topic.IconEmojiId;
+    public bool HasEmojiIcon => Topic.IconEmojiId != 0;
+    /// <summary>Значок без эмодзи: цветной кружок с первой буквой (у «Общего» — решётка).</summary>
+    public string IconLetter => Topic.IsGeneral ? "#" : Title.Length > 0 ? char.ToUpperInvariant(Title[0]).ToString() : "?";
+    public Brush IconBrush => Topic.IconColor != 0
+        ? Freeze(new SolidColorBrush(Color.FromRgb((byte)(Topic.IconColor >> 16), (byte)(Topic.IconColor >> 8), (byte)Topic.IconColor)))
+        : Freeze(new SolidColorBrush(Color.FromRgb(0x6F, 0xB9, 0xF0)));
+    private static Brush Freeze(Brush b) { b.Freeze(); return b; }
+
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(LastText), nameof(TimeText))] private MessageItem? _last;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(LastText))] private string? _senderName;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasUnread), nameof(UnreadText))] private int _unread;
+    /// <summary>Эта тема сейчас открыта (подсветка в боковом островке тем).</summary>
+    [ObservableProperty] private bool _isActive;
+
+    public string LastText => Last is null ? "" : SenderName is { Length: > 0 } s ? $"{s}: {Last.Preview}" : Last.Preview;
+    public string TimeText => Last is null ? "" : Fmt.ChatTime(Last.DateUtc);
+    public bool HasUnread => Unread > 0;
+    public string UnreadText => Unread > 999 ? $"{Unread / 1000}K" : Unread.ToString();
+    public bool IsPinned => Topic.IsPinned;
+    public bool IsClosed => Topic.IsClosed;
+}

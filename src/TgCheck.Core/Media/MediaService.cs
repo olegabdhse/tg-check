@@ -19,6 +19,7 @@ public sealed class MediaService
     private readonly Func<Client> _client;
     private readonly string _cacheDir;
     private readonly SemaphoreSlim _downloads = new(4, 4);
+    // Загрузчики запускаются в пуле потоков: даже чтение с диска не должно идти в UI-потоке (в группах это десятки файлов разом).
     private readonly ConcurrentDictionary<string, Task<byte[]?>> _inflight = new();
 
     internal MediaService(Func<Client> client, string cacheDir)
@@ -32,7 +33,7 @@ public sealed class MediaService
     public Task<byte[]?> GetGiftImageAsync(GiftItem gift, int size)
     {
         var key = gift.ImageKey(size);
-        return _inflight.GetOrAdd(key, _ => RenderCachedAsync(gift, size, key));
+        return _inflight.GetOrAdd(key, _ => Task.Run(() => RenderCachedAsync(gift, size, key)));
     }
 
     private async Task<byte[]?> RenderCachedAsync(GiftItem gift, int size, string key)
@@ -206,7 +207,7 @@ public sealed class MediaService
             _ => 0,
         };
         var key = $"ava_{peer.ID}_{photoId}";
-        return _inflight.GetOrAdd(key, _ => LoadAvatarAsync(peer, key));
+        return _inflight.GetOrAdd(key, _ => Task.Run(() => LoadAvatarAsync(peer, key)));
     }
 
     private async Task<byte[]?> LoadAvatarAsync(IPeerInfo peer, string key)
@@ -246,7 +247,7 @@ public sealed class MediaService
             _ => 0,
         };
         var key = $"ava_{peer.Info.ID}_{photoId}";
-        return _inflight.GetOrAdd(key, _ => LoadAvatarAsync(peer.Info, key));
+        return _inflight.GetOrAdd(key, _ => Task.Run(() => LoadAvatarAsync(peer.Info, key)));
     }
 
     /// <summary>
@@ -256,7 +257,7 @@ public sealed class MediaService
     {
         var key = message.Photo is { } p ? $"msgphoto_{p.id}" : message.Document is { } d ? $"msgdoc_{d.id}" : null;
         if (key is null) return Task.FromResult<byte[]?>(null);
-        return _inflight.GetOrAdd(key, _ => LoadMessagePreviewAsync(message, key));
+        return _inflight.GetOrAdd(key, _ => Task.Run(() => LoadMessagePreviewAsync(message, key)));
     }
 
     private async Task<byte[]?> LoadMessagePreviewAsync(MediaHolder message, string key)
@@ -340,7 +341,7 @@ public sealed class MediaService
     {
         if (item.Latitude is not { } lat || item.Longitude is not { } lon) return Task.FromResult<byte[]?>(null);
         var key = $"map_{lat:F5}_{lon:F5}_{w}x{h}_{zoom}".Replace(',', '.');
-        return _inflight.GetOrAdd(key, _ => LoadMapAsync(item, lat, lon, w, h, zoom, key));
+        return _inflight.GetOrAdd(key, _ => Task.Run(() => LoadMapAsync(item, lat, lon, w, h, zoom, key)));
     }
 
     private async Task<byte[]?> LoadMapAsync(MessageItem item, double lat, double lon, int w, int h, int zoom, string key)
@@ -392,7 +393,7 @@ public sealed class MediaService
     public Task<string?> GetMediaFileAsync(MediaHolder media, IProgress<double>? progress = null, bool priority = true)
     {
         if (media.Document is not { } doc) return Task.FromResult<string?>(null);
-        var task = _files.GetOrAdd(doc.id, _ => DownloadMediaFileAsync(doc, progress, priority));
+        var task = _files.GetOrAdd(doc.id, _ => Task.Run(() => DownloadMediaFileAsync(doc, progress, priority)));
         if (task.IsFaulted || (task.IsCompleted && task.Result is null)) _files.TryRemove(doc.id, out _);
         return task;
     }
@@ -406,7 +407,7 @@ public sealed class MediaService
     public Task<byte[]?> GetFullPhotoAsync(MediaHolder media, bool priority = true)
     {
         if (media.Photo is not { } photo) return Task.FromResult<byte[]?>(null);
-        var task = _fullPhotos.GetOrAdd(photo.id, _ => DownloadFullPhotoAsync(photo, priority));
+        var task = _fullPhotos.GetOrAdd(photo.id, _ => Task.Run(() => DownloadFullPhotoAsync(photo, priority)));
         if (task.IsFaulted || (task.IsCompleted && task.Result is null)) _fullPhotos.TryRemove(photo.id, out _);
         // В памяти держим немного — остальное читается с диска.
         if (_fullPhotos.Count > 12)
@@ -497,7 +498,7 @@ public sealed class MediaService
     public async Task<byte[]?> GetDocumentBytesAsync(MediaHolder media)
     {
         if (media.Document is not { } doc) return null;
-        var (bytes, _) = await DownloadDocumentAsync(doc);
+        var (bytes, _) = await Task.Run(() => DownloadDocumentAsync(doc));
         return bytes;
     }
 

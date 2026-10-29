@@ -53,34 +53,121 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     }
 
     /// <summary>Ветка комментариев к посту канала: чат обсуждения, отфильтрованный по исходному сообщению.</summary>
-    public ConversationViewModel(TelegramService tg, ChatsViewModel owner, PeerRef discussion, int topId, ConversationViewModel parent, MessageItem? post)
+    /// <summary>
+    /// Ветка: комментарии к посту канала (post — исходный пост) или тема группы-форума (title — название темы,
+    /// generalTopic — тема «Общее», у её сообщений нет привязки к теме).
+    /// </summary>
+    public ConversationViewModel(TelegramService tg, ChatsViewModel owner, PeerRef discussion, int topId, ConversationViewModel parent, MessageItem? post,
+        string? title = null, bool generalTopic = false)
         : this(tg, owner, discussion, 0)
     {
         ThreadTopId = topId;
         ThreadParent = parent;
         _threadPost = post;
+        _threadTitle = title;
+        _generalTopic = generalTopic;
     }
 
     public int? ThreadTopId { get; }
     public ConversationViewModel? ThreadParent { get; }
     public bool IsThread => ThreadTopId is not null;
     private readonly MessageItem? _threadPost;
-    public string HeaderTitle => IsThread ? "Комментарии" : Title;
+    private readonly string? _threadTitle;
+    private readonly bool _generalTopic;
+    private bool IsTopic => _threadTitle is not null;
+    public string HeaderTitle => IsThread ? _threadTitle ?? "Комментарии" : Title;
+    /// <summary>Куда отвечать по умолчанию: в ветку/тему; в «Общее» — без привязки.</summary>
+    private int? SendTopId => _generalTopic ? null : ThreadTopId;
 
-    // История: обычный чат или ответы в ветке (исходный пост — первым сообщением ветки).
+    // История: обычный чат, ответы в ветке (исходный пост — первым сообщением ветки) или тема форума.
     private async Task<IReadOnlyList<MessageItem>> FetchAsync(int offsetId)
     {
         if (ThreadTopId is not { } top) return await _tg.GetHistoryAsync(Peer, offsetId, 50);
+        if (_generalTopic) return await _tg.GetGeneralTopicAsync(Peer, offsetId, 50);
         var replies = await _tg.GetRepliesAsync(Peer, top, offsetId, 50);
         if (replies.Count < 50 && _threadPost is not null && replies.All(m => m.Id != _threadPost.Id))
             return [_threadPost, .. replies];
         return replies;
     }
 
-    /// <summary>Сообщение относится к этой ветке?</summary>
-    public bool BelongsToThread(MessageItem m) =>
-        ThreadTopId is { } top && m.PeerKey == Peer.Key &&
-        (m.ReplyToId == top || m.ThreadTopId == top || (m.ReplyToId is { } r && _byId.ContainsKey(r)));
+    /// <summary>Сообщение относится к этой ветке / теме?</summary>
+    public bool BelongsToThread(MessageItem m)
+    {
+        if (ThreadTopId is not { } top || m.PeerKey != Peer.Key) return false;
+        if (_generalTopic) return m.TopicId is null;
+        if (IsTopic) return m.TopicId == top;
+        return m.ReplyToId == top || m.ThreadTopId == top || (m.ReplyToId is { } r && _byId.ContainsKey(r));
+    }
+
+    // ===================================================================== Группа с темами (форум)
+
+    public bool IsForum => Peer.IsForum && !IsThread;
+    public ObservableCollection<ForumTopicViewModel> Topics { get; } = [];
+    [ObservableProperty] private bool _topicsLoading;
+
+    private async Task LoadTopicsAsync()
+    {
+        TopicsLoading = Topics.Count == 0;
+        try
+        {
+            var topics = await _tg.GetForumTopicsAsync(Peer);
+            Topics.Clear();
+            foreach (var t in topics)
+            {
+                var vm = new ForumTopicViewModel(t);
+                if (t.Last?.From is { } from && !t.Last.IsOut) vm.SenderName = from.DisplayTitle;
+                Topics.Add(vm);
+            }
+            _loadedOnce = true;
+        }
+        catch (Exception ex)
+        {
+            if (Topics.Count == 0) Error = TgErrors.Describe(ex);
+            else _owner.ShowToast(TgErrors.Describe(ex), true);
+        }
+        finally { TopicsLoading = false; }
+    }
+
+    /// <summary>Темы форума для бокового островка (когда открыта тема).</summary>
+    public ObservableCollection<ForumTopicViewModel>? ForumTopics => IsTopic ? ThreadParent?.Topics : null;
+    public bool ShowTopicRail => IsTopic && ThreadParent is not null;
+
+    /// <summary>Переключить тему из островка — без возврата к списку.</summary>
+    [RelayCommand]
+    private void SwitchTopic(ForumTopicViewModel? topic)
+    {
+        if (topic is null || topic.Topic.Id == ThreadTopId) return;
+        ThreadParent?.OpenTopicCommand.Execute(topic);
+    }
+
+    // Открытые темы держим готовыми — переключение между ними без перезагрузки.
+    private readonly Dictionary<int, ConversationViewModel> _topicThreads = [];
+
+    [RelayCommand]
+    private void OpenTopic(ForumTopicViewModel? topic)
+    {
+        if (topic is null) return;
+        topic.Unread = 0;
+        foreach (var t in Topics) t.IsActive = t == topic;
+        if (!_topicThreads.TryGetValue(topic.Topic.Id, out var thread))
+            _topicThreads[topic.Topic.Id] = thread = new ConversationViewModel(_tg, _owner, Peer, topic.Topic.Id, this, null, topic.Title, topic.Topic.IsGeneral);
+        _owner.OpenThread(thread);
+    }
+
+    // Новое сообщение в форуме — обновить строку темы и поднять её (под закреплёнными).
+    private void OnForumMessage(MessageItem m)
+    {
+        var topicId = m.TopicId ?? 1;
+        var topic = Topics.FirstOrDefault(t => t.Topic.Id == topicId);
+        if (topic is null) { _ = LoadTopicsAsync(); return; }
+        topic.Last = m;
+        topic.SenderName = m.IsOut ? "Вы" : m.From?.DisplayTitle;
+        if (!m.IsOut) topic.Unread++;
+        if (topic.Topic.IsPinned) return;
+        var index = Topics.IndexOf(topic);
+        var target = Topics.TakeWhile(t => t.Topic.IsPinned).Count();
+        if (index != target) Topics.Move(index, target);
+    }
 
     public ChatsViewModel Owner => _owner;
     public MediaPickerViewModel Picker => _owner.Shell.Picker;
@@ -122,7 +209,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     /// <summary>Сколько новых сообщений пришло, пока пользователь читал историю выше.</summary>
     [ObservableProperty] private int _pendingNewCount;
 
-    public bool CanWrite => IsThread || Peer.CanWrite;
+    public bool CanWrite => !IsForum && (IsThread || Peer.CanWrite);
     public bool HasComposerBar => ReplyTo is not null || Editing is not null;
     public bool HasAttachments => Attachments.Count > 0;
     public string ComposerBarTitle => Editing is not null ? "Редактирование" : $"В ответ {(ReplyTo is { IsOut: true } ? "себе" : ReplyTo?.SenderName)}";
@@ -143,6 +230,11 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     {
         if (IsLoading) return;
         Error = null;
+        if (IsForum)
+        {
+            await LoadTopicsAsync(); // форум открывается списком тем, как в Telegram
+            return;
+        }
 
         // 1) Мгновенно — из локального кэша.
         var cached = _loadedOnce || IsThread ? null : await Task.Run(() => _tg.GetCachedHistory(Peer));
@@ -183,11 +275,32 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         }
     }
 
-    private void ResetItems(IReadOnlyList<MessageItem> messages)
+    private int _resetGeneration;
+
+    // Первым кадром строятся только последние сообщения (их и видно), остальные — фоном над ними:
+    // разметка 50 тяжёлых пузырей группы за раз подвешивала окно на секунду.
+    private const int FirstScreen = 15;
+
+    private void ResetItems(IReadOnlyList<MessageItem> messages, bool staged = true)
     {
+        var generation = ++_resetGeneration;
         Items.Clear();
         _byId.Clear();
-        AppendRange(messages, animate: false);
+        var split = staged ? Math.Max(0, messages.Count - FirstScreen) : 0;
+        AppendRange(messages.Skip(split), animate: false);
+        LinkReplies();
+        if (split == 0) return;
+        var older = messages.Take(split).ToList();
+        System.Windows.Application.Current.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
+        {
+            if (generation != _resetGeneration) return; // за это время ленту уже пересобрали
+            PrependRange(older);
+            LinkReplies();
+        });
+    }
+
+    private void LinkReplies()
+    {
         foreach (var vm in _byId.Values.Distinct())
             if (vm.Item.ReplyToId is { } r && _byId.TryGetValue(r, out var t)) vm.SetReply(t.Item);
     }
@@ -342,6 +455,11 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
 
     public void OnMessageReceived(MessageItem m)
     {
+        if (IsForum)
+        {
+            OnForumMessage(m);
+            return;
+        }
         if (_byId.ContainsKey(m.Id)) return;
         if (_detached)
         {
@@ -445,7 +563,16 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
 
     public void MarkRead()
     {
-        if (IsThread) return;
+        if (IsThread)
+        {
+            // Тема форума отмечается прочитанной отдельно; ветки комментариев — нет.
+            if (IsTopic && !_generalTopic && ThreadTopId is { } topic && LastMessageId > _lastMarkedRead)
+            {
+                _lastMarkedRead = LastMessageId;
+                _ = _tg.ReadTopicAsync(Peer, topic, LastMessageId);
+            }
+            if (!_generalTopic) return;
+        }
         var max = LastMessageId;
         if (max <= _lastMarkedRead || max == 0) return;
         _lastMarkedRead = max;
@@ -502,7 +629,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             }
             else
             {
-                var reply = ReplyTo?.Id ?? ThreadTopId;
+                var reply = ReplyTo?.Id ?? SendTopId;
                 Draft = "";
                 ReplyTo = null;
                 var sent = await _tg.SendTextAsync(Peer, text, reply);
@@ -604,7 +731,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         }
         try
         {
-            var reply = ReplyTo?.Id ?? ThreadTopId;
+            var reply = ReplyTo?.Id ?? SendTopId;
             ReplyTo = null;
             var sent = await _tg.SendVoiceAsync(Peer, voice, reply);
             OnMessageReceived(sent);
@@ -683,7 +810,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         var files = Attachments.ToList();
         try
         {
-            await _tg.SendFilesAsync(Peer, files.Select(f => f.Path).ToList(), caption.Length > 0 ? caption : null, ReplyTo?.Id ?? ThreadTopId,
+            await _tg.SendFilesAsync(Peer, files.Select(f => f.Path).ToList(), caption.Length > 0 ? caption : null, ReplyTo?.Id ?? SendTopId,
                 SendAsFiles, new Progress<(int Index, double Fraction)>(p => files[p.Index].Progress = p.Fraction));
             Attachments.Clear();
             OnPropertyChanged(nameof(HasAttachments));
@@ -724,7 +851,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         IsPickerOpen = false;
         try
         {
-            var reply = ReplyTo?.Id ?? ThreadTopId;
+            var reply = ReplyTo?.Id ?? SendTopId;
             ReplyTo = null;
             var sent = await _tg.SendDocumentAsync(Peer, media, reply);
             OnMessageReceived(sent);
@@ -834,7 +961,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
                 break;
             case QuickReactionItem quick:
                 m = quick.Message;
-                picked = new ReactionInfo(quick.Emoji, 0, 0, false);
+                picked = quick.Choice;
                 break;
             default:
                 return;
@@ -1247,7 +1374,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             {
                 var around = await _tg.GetHistoryAroundAsync(Peer, id);
                 FeedResetting?.Invoke();
-                ResetItems(around);
+                ResetItems(around, staged: false); // нужное сообщение — в середине, оно должно быть сразу
                 HasMoreHistory = true;
                 _detached = true;
             }

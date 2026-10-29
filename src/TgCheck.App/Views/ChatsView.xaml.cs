@@ -28,6 +28,21 @@ public partial class ChatsView : UserControl
             if (_vm is not null) _vm.PropertyChanged += OnVmChanged;
             ApplyLayout();
         };
+        Loaded += (_, _) => PrepareSpare();
+    }
+
+    private ConversationView? _spare;
+
+    // Окно переписки тяжёлое (шаблоны, панели, оверлеи) — следующее строим заранее, когда приложение простаивает.
+    private void PrepareSpare()
+    {
+        if (_spare is not null) return;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, () =>
+        {
+            if (_spare is not null) return;
+            _spare = new ConversationView { Visibility = Visibility.Collapsed };
+            ConversationsHost.Children.Add(_spare);
+        });
     }
 
     private void OnVmChanged(object? sender, PropertyChangedEventArgs e)
@@ -86,9 +101,16 @@ public partial class ChatsView : UserControl
 
         if (!_views.TryGetValue(conv, out var target))
         {
-            target = new ConversationView { DataContext = conv, ShowBack = _vm?.IsCompact == true, IsCompactPanel = _vm?.IsCompact == true };
+            // Заготовка (создана заранее в простое) — первое открытие чата без задержки на построение окна.
+            target = _spare ?? new ConversationView();
+            var fresh = _spare is null;
+            _spare = null;
+            target.ShowBack = _vm?.IsCompact == true;
+            target.IsCompactPanel = _vm?.IsCompact == true;
+            target.DataContext = conv;
             _views[conv] = target;
-            ConversationsHost.Children.Add(target);
+            if (fresh) ConversationsHost.Children.Add(target);
+            PrepareSpare();
         }
         _recent.Remove(conv);
         _recent.Insert(0, conv);

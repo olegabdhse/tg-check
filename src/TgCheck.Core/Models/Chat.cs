@@ -66,6 +66,8 @@ public sealed class PeerRef
     public bool CanWrite { get; } = true;
     /// <summary>Обычная (не супер-) группа: id сообщений в ней глобальные, как в личке.</summary>
     public bool IsBasicGroup { get; }
+    /// <summary>Группа с темами (форум): вместо одной ленты — список тем.</summary>
+    public bool IsForum => Info is Channel { flags: var f } && f.HasFlag(Channel.Flags.forum);
 
     /// <summary>Видимое имя: невидимые символы (ZWJ, U+2060 и т.п.) не считаются.</summary>
     public string DisplayTitle => IsSelf ? "Избранное" : Names.Visible(Title) ?? (Username is { } u ? "@" + u : "Без имени");
@@ -107,6 +109,8 @@ public sealed class MessageItem : MediaHolder
     public int? ReplyToId { get; init; }
     /// <summary>Корень ветки (комментарии к посту), если сообщение — ответ внутри ветки.</summary>
     public int? ThreadTopId { get; init; }
+    /// <summary>Тема форума, к которой относится сообщение (null — тема «Общее» или не форум).</summary>
+    public int? TopicId { get; init; }
     public string? ForwardedFrom { get; init; }
     public string? PostAuthor { get; init; }
     public int Views { get; init; }
