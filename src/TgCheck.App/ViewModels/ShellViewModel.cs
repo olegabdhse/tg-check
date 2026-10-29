@@ -117,10 +117,15 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         Chats.UnreadChanged += () => OnPropertyChanged(nameof(ChatsUnread));
         _ = MyProfile.LoadAsync();
+        // Обновления — сразу при старте (не дожидаясь загрузки всех чатов) и затем каждые 30 минут.
+        _ = CheckUpdatesAsync();
+        _updateTimer.Tick += (_, _) => { if (_update is null) _ = CheckUpdatesAsync(); };
+        _updateTimer.Start();
         await Chats.EnsureLoadedAsync();
         OnPropertyChanged(nameof(ChatsUnread));
-        _ = CheckUpdatesAsync();
     }
+
+    private readonly System.Windows.Threading.DispatcherTimer _updateTimer = new() { Interval = TimeSpan.FromMinutes(30) };
 
     partial void OnSectionChanged(Section value)
     {
@@ -283,5 +288,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void HideToast() => Toast = null;
 
-    public void Dispose() => Chats.Dispose();
+    public void Dispose()
+    {
+        _updateTimer.Stop();
+        Chats.Dispose();
+    }
 }

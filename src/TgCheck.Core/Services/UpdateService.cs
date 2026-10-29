@@ -30,7 +30,11 @@ public sealed class UpdateService(string repo)
         try
         {
             using var resp = await Http.GetAsync($"https://api.github.com/repos/{repo}/releases/latest", ct);
-            if (!resp.IsSuccessStatusCode) return null;
+            if (!resp.IsSuccessStatusCode)
+            {
+                Logging.Write($"update check: GitHub ответил {(int)resp.StatusCode}");
+                return null;
+            }
             using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
             var root = doc.RootElement;
             var tag = root.GetProperty("tag_name").GetString() ?? "";
