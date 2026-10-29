@@ -52,7 +52,7 @@ public partial class IslandWindow : Window
         InitializeComponent();
         (_edge, _along) = UiSettings.IslandPlace;
         ApplyEdge();
-        SizeChanged += (_, _) => { if (!_dragging) PlaceAtEdge(); };
+        SizeChanged += (_, _) => { if (!_dragging && !_prewarming) PlaceAtEdge(); };
         _press.Tick += (_, _) => StartDrag();
         _shell.IslandChanged += OnIslandChanged;
         _shell.Incoming += OnIncoming;
@@ -227,28 +227,59 @@ public partial class IslandWindow : Window
     public void ShowIsland()
     {
         var shown = IsVisible && !_hiding;
-        var fromOpacity = IsVisible ? Opacity : 0; // показ посреди скрытия — продолжаем с текущей прозрачности, без скачка
+        var reversing = IsVisible && _hiding; // ещё гаснет после прошлого скрытия
         _hiding = false;
         Refresh();
         if (shown) return; // уже на экране — повторная анимация появления выглядит как мерцание
-        if (!IsVisible)
+
+        var duration = TimeSpan.FromMilliseconds(380);
+        if (reversing)
         {
-            BeginAnimation(OpacityProperty, null);
-            Opacity = 0;
-            Show();
+            // Не начинаем заново с маленькой капсулы — плавно разворачиваем скрытие с того места, где оно сейчас.
+            // (Иначе островок «прыгает» и будто появляется второй раз.)
+            var back = new CubicEase { EasingMode = EasingMode.EaseOut };
+            BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(160)));
+            PillScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1, duration) { EasingFunction = back });
+            PillScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1, duration) { EasingFunction = back });
+            return;
         }
+
+        BeginAnimation(OpacityProperty, null);
+        Opacity = 0;
+        Show();
         UpdateLayout();
         PlaceAtEdge();
 
         var ease = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.35 };
-        var duration = TimeSpan.FromMilliseconds(380);
-        BeginAnimation(OpacityProperty, new DoubleAnimation(fromOpacity, 1, TimeSpan.FromMilliseconds(200)));
+        BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200)));
         var grow = new DoubleAnimation(IsSide ? 0.8 : 0.55, 1, duration) { EasingFunction = ease };
-        // Мини-окно (с заготовкой ленты) строим после появления: тяжёлая работа посреди анимации даёт рывки и «двойное» появление.
+        // Мини-окно (с заготовкой ленты) строим после появления: тяжёлая работа посреди анимации даёт рывки.
         grow.Completed += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () => { if (!_hiding) _mini ??= CreateMini(); });
         PillScale.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
         PillScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(IsSide ? 0.55 : 0.8, 1, duration) { EasingFunction = ease });
     }
+
+    /// <summary>
+    /// Подготовить окно заранее (невидимо, за экраном): первое создание окна долгое, и без этого
+    /// первое появление островка запаздывало и мелькало не того размера и не на своём месте.
+    /// </summary>
+    public void Prewarm()
+    {
+        if (IsVisible) return;
+        Refresh();
+        BeginAnimation(OpacityProperty, null);
+        Opacity = 0;
+        _prewarming = true;
+        Left = -32000;
+        Top = -32000;
+        Show();
+        UpdateLayout();
+        Hide();
+        _prewarming = false;
+        Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () => _mini ??= CreateMini());
+    }
+
+    private bool _prewarming;
 
     /// <summary>Скрытие: сжимается в капсулу и гаснет.</summary>
     public void HideIsland()

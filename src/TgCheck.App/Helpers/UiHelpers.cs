@@ -149,6 +149,26 @@ public static class WindowEffects
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    private static System.Drawing.Icon? _exeIcon;
+
+    /// <summary>
+    /// Иконка окна прямо из exe (многоразмерный .ico). Иконку, собранную WPF из PNG, панель задач Windows 11
+    /// не берёт и показывает пустой значок окна.
+    /// </summary>
+    public static void ApplyExeIcon(Window window)
+    {
+        var hwnd = new WindowInteropHelper(window).Handle;
+        if (hwnd == IntPtr.Zero || Environment.ProcessPath is not { } exe) return;
+        try { _exeIcon ??= System.Drawing.Icon.ExtractAssociatedIcon(exe); } catch { }
+        if (_exeIcon is null) return;
+        const int WM_SETICON = 0x80;
+        SendMessage(hwnd, WM_SETICON, (IntPtr)1, _exeIcon.Handle); // большая — панель задач, Alt+Tab
+        SendMessage(hwnd, WM_SETICON, (IntPtr)0, _exeIcon.Handle);
+    }
+
     /// <summary>Тёмный заголовок окна Windows 10/11 в цвет фона приложения.</summary>
     public static void ApplyDarkTitleBar(Window window, Color caption)
     {

@@ -1,5 +1,6 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Windows;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using TgCheck.App.Helpers;
@@ -23,9 +24,13 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        if (Images.AppLogo is { } logo) Icon = logo;
+        // Иконку окна берём из exe (см. ApplyExeIcon): PNG-иконку WPF панель задач не показывает.
         StateChanged += OnStateChanged;
         IsVisibleChanged += (_, _) => UpdateOnScreen();
+        // Кнопка на панели задач появляется при показе окна и берёт иконку exe через оболочку (у нас — пустой значок);
+        // повторная установка иконки после показа заставляет панель её обновить.
+        ContentRendered += (_, _) => WindowEffects.ApplyExeIcon(this);
+        IsVisibleChanged += (_, e) => { if (e.NewValue is true) Dispatcher.BeginInvoke(DispatcherPriority.Background, () => WindowEffects.ApplyExeIcon(this)); };
         DataContextChanged += (_, e) =>
         {
             if (e.OldValue is MainViewModel old) old.PropertyChanged -= OnMainChanged;
@@ -47,6 +52,21 @@ public partial class MainWindow : Window
     {
         base.OnSourceInitialized(e);
         WindowEffects.ApplyDarkTitleBar(this, (Color)FindResource("BgColor"));
+        WindowEffects.ApplyExeIcon(this);
+        HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(WndProc);
+    }
+
+    // Разворачивание с панели задач: островок начинает гаснуть ещё до того, как окно развернётся и займёт
+    // поток отрисовкой (как при открытии из трея) — иначе он пропадает рывком, без анимации.
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        const int WM_SYSCOMMAND = 0x0112, SC_RESTORE = 0xF120, SC_MAXIMIZE = 0xF030;
+        if (msg == WM_SYSCOMMAND && WindowState == WindowState.Minimized)
+        {
+            var cmd = wParam.ToInt32() & 0xFFF0;
+            if (cmd is SC_RESTORE or SC_MAXIMIZE) _island?.HideIsland();
+        }
+        return IntPtr.Zero;
     }
 
     // Крестик не завершает приложение: окно прячется в трей, сообщения и уведомления продолжают приходить.
@@ -91,6 +111,10 @@ public partial class MainWindow : Window
         if (_notifyShell is not null) _notifyShell.Incoming -= OnIncoming;
         _notifyShell = shell;
         if (shell is not null) shell.Incoming += OnIncoming;
+        // Островок готовим заранее, в простое: первое создание окна занимает ~2 с, и при первом сворачивании
+        // он появлялся с задержкой, сначала не того размера и не на своём месте — «дважды».
+        if (shell is not null && UiSettings.ShowIsland)
+            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () => EnsureIsland()?.Prewarm());
     }
 
     private void OnIncoming(ChatItemViewModel chat) => Dispatcher.BeginInvoke(() =>
@@ -131,14 +155,19 @@ public partial class MainWindow : Window
     private void ShowIsland()
     {
         if (!UiSettings.ShowIsland) return;
-        if (DataContext is not MainViewModel { CurrentPage: ShellViewModel shell }) return;
+        EnsureIsland()?.ShowIsland();
+    }
+
+    private IslandWindow? EnsureIsland()
+    {
+        if (DataContext is not MainViewModel { CurrentPage: ShellViewModel shell }) return null;
         if (_island is null || _islandShell != shell)
         {
             _island?.Close();
             _island = new IslandWindow(shell, RestoreFromBackground);
             _islandShell = shell;
         }
-        _island.ShowIsland();
+        return _island;
     }
 
     public void RestoreFromBackground()
