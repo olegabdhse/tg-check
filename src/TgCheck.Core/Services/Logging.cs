@@ -13,13 +13,20 @@ public static class Logging
     {
         Directory.CreateDirectory(dir);
         _file = Path.Combine(dir, "tgcheck.log");
+        lock (Lock) { try { File.AppendAllLines(_file, Pending); } catch { } Pending.Clear(); } // записанное до инициализации
         // 0..1 — отладочный шум, 2 — info, 3+ — предупреждения/ошибки.
         Helpers.Log = (level, message) => { if (level >= 3) Write(message); };
     }
 
+    /// <summary>Замер времени от запуска процесса (для поиска медленных мест).</summary>
+    public static void Perf(string what) =>
+        Write($"[perf] {(DateTime.Now - System.Diagnostics.Process.GetCurrentProcess().StartTime).TotalMilliseconds,6:0} ms  {what}");
+
+    private static readonly List<string> Pending = []; // до Init (замеры запуска) — потом дописываются в файл
+
     public static void Write(string message)
     {
-        if (_file is null) return;
+        if (_file is null) { lock (Lock) if (Pending.Count < 200) Pending.Add($"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}"); return; }
         lock (Lock)
         {
             try

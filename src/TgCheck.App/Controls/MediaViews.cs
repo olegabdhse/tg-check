@@ -63,7 +63,10 @@ public sealed class GifView : Grid
         _player.Source = null;
         _player.Opacity = 0;
         if (Media is not { } media || AppServices.Media is not { } service) return;
-        _preview.Source = Images.FromBytes(await service.GetMessagePreviewAsync(media));
+        var bytes = await service.GetMessagePreviewAsync(media);
+        var image = bytes is null ? null : await Task.Run(() => Images.FromBytes(bytes)); // декодируем не в потоке интерфейса
+        if (version != _version) return;
+        _preview.Source = image;
         UpdatePlayback();
     }
 
@@ -188,7 +191,10 @@ public sealed class VideoNoteView : Grid
         if (Media is not { } media || AppServices.Media is not { } service) return;
         _time.Text = Fmt.Duration(media.DurationSeconds);
         _fileRequested = false;
-        _preview.Source = Images.FromBytes(await service.GetMessagePreviewAsync(media));
+        var bytes = await service.GetMessagePreviewAsync(media);
+        var image = bytes is null ? null : await Task.Run(() => Images.FromBytes(bytes)); // декодируем не в потоке интерфейса
+        if (version != _version) return;
+        _preview.Source = image;
         UpdateViewport();
     }
 

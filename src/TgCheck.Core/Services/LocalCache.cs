@@ -19,7 +19,21 @@ internal sealed class LocalCache(string dir)
             using var ms = new MemoryStream();
             using (var writer = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true))
                 writer.WriteTLObject(obj);
-            var data = ProtectedData.Protect(ms.ToArray(), Entropy, DataProtectionScope.CurrentUser);
+            SaveBytes(name, ms.ToArray());
+        }
+        catch (Exception ex)
+        {
+            Logging.Write($"cache save {name}: {ex.Message}");
+        }
+    }
+
+    /// <summary>Произвольные данные (тоже под DPAPI).</summary>
+    public void SaveBytes(string name, byte[] bytes)
+    {
+        try
+        {
+            Directory.CreateDirectory(dir);
+            var data = ProtectedData.Protect(bytes, Entropy, DataProtectionScope.CurrentUser);
             var path = Path.Combine(dir, name + ".bin");
             var tmp = path + "." + Environment.CurrentManagedThreadId + ".tmp";
             File.WriteAllBytes(tmp, data);
@@ -28,6 +42,18 @@ internal sealed class LocalCache(string dir)
         catch (Exception ex)
         {
             Logging.Write($"cache save {name}: {ex.Message}");
+        }
+    }
+
+    public byte[]? LoadBytes(string name)
+    {
+        var path = Path.Combine(dir, name + ".bin");
+        if (!File.Exists(path)) return null;
+        try { return ProtectedData.Unprotect(File.ReadAllBytes(path), Entropy, DataProtectionScope.CurrentUser); }
+        catch (Exception ex)
+        {
+            Logging.Write($"cache load {name}: {ex.Message}");
+            return null;
         }
     }
 

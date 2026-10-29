@@ -29,7 +29,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         MyProfile = new ProfileViewModel(tg, null, LogoutAsync, this);
         Controls.AppServices.Media = tg.Media;
         Controls.AppServices.Tg = tg;
-        tg.Media.TrimMediaCache();
+        _ = Task.Run(() => tg.Media.TrimMediaCache()); // обход папки кэша — не в потоке интерфейса
         if (env.UpdateRepo is { } repo) _updates = new UpdateService(repo);
         _currentPage = Chats;
     }
@@ -51,6 +51,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _isResolving;
     [ObservableProperty] private string? _toast;
     [ObservableProperty] private bool _toastIsError;
+
+    /// <summary>«Соединение…» — пока чаты показаны из кэша, а связь с Telegram ещё устанавливается.</summary>
+    [ObservableProperty] private string? _connectionStatus;
 
     [ObservableProperty] private string? _updateText;
     [ObservableProperty] private bool _isUpdating;

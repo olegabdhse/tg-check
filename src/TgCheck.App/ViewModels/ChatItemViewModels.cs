@@ -52,9 +52,17 @@ public sealed partial class ChatItemViewModel : PeerAvatarViewModel
     }
 
     /// <summary>Обновить из свежих данных (кэш → сеть) без пересоздания строки.</summary>
-    public void Update(ChatSummary s)
+    /// <summary>Обновить из данных сервера. true — изменилось то, от чего зависит место в списке.</summary>
+    public bool Update(ChatSummary s)
     {
-        if (s.Last is not null && (Last is null || s.Last.Id >= Last.Id || s.Last.EditDateUtc != Last.EditDateUtc)) Last = s.Last;
+        var moved = false;
+        // То же сообщение без правок — не подменяем: иначе строка перерисовывается впустую (а их тысячи).
+        if (s.Last is not null && (Last is null || s.Last.Id > Last.Id || (s.Last.Id == Last.Id && s.Last.EditDateUtc != Last.EditDateUtc)))
+        {
+            moved = Last?.DateUtc != s.Last.DateUtc;
+            Last = s.Last;
+        }
+        moved |= IsPinned != s.IsPinned || IsArchived != s.IsArchived;
         Unread = s.UnreadCount;
         Mentions = s.UnreadMentions;
         ReadOutboxMaxId = Math.Max(ReadOutboxMaxId, s.ReadOutboxMaxId);
@@ -62,6 +70,7 @@ public sealed partial class ChatItemViewModel : PeerAvatarViewModel
         IsMuted = s.IsMuted;
         IsArchived = s.IsArchived;
         IsMarkedUnread = s.IsMarkedUnread;
+        return moved;
     }
 
     /// <summary>Исходный порядок из Telegram (важен для закреплённых).</summary>

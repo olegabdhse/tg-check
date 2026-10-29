@@ -143,7 +143,9 @@ public sealed partial class TelegramService
     /// <summary>Диалоги основной папки или архива. Игнорируемые скрыты.</summary>
     public async Task<IReadOnlyList<ChatSummary>> GetDialogsAsync(bool archived)
     {
-        var dialogs = await _client.Messages_GetAllDialogs(archived ? 1 : 0);
+        // Целиком в фоне: библиотека листает страницы по 100 чатов и разбирает каждую там, где её ждут, —
+        // из потока интерфейса это давало подёргивания по 200–400 мс на страницу (архив — десятки страниц).
+        var dialogs = await Task.Run(() => _client.Messages_GetAllDialogs(archived ? 1 : 0));
         // Разбор и шифрованное сохранение кэша — не в потоке интерфейса (архив бывает на тысячи чатов).
         return await Task.Run(() =>
         {
@@ -175,9 +177,13 @@ public sealed partial class TelegramService
             var lastById = dialogs.Messages
                 .GroupBy(m => (PeerRef.KeyOf(m.Peer), m.ID))
                 .ToDictionary(g => g.Key, g => g.First());
+            // Папка — по самому диалогу: в ответ на запрос архива приходят и закреплённые чаты основной папки,
+            // и раньше они помечались архивными (пропадали из «Все», список перерисовывался туда-обратно).
+            var folderKnown = dialogs.Dialogs.OfType<Dialog>().Any(x => x.flags.HasFlag(Dialog.Flags.has_folder_id));
 
             foreach (var d in dialogs.Dialogs.OfType<Dialog>())
             {
+                if (folderKnown && d.folder_id != folder) continue; // диалог другой папки — его даст свой запрос
                 if (IsIgnored(d.peer) || PeerOf(d.peer) is not { } peer) continue;
                 if (peer.Info is Channel { flags: var cf } && cf.HasFlag(Channel.Flags.left)) continue;
                 // Старые группы, превращённые в супергруппы, и деактивированные — как в официальном клиенте, не показываем.
@@ -207,7 +213,7 @@ public sealed partial class TelegramService
     public async Task<IReadOnlyList<PeerRef>> SearchPeersAsync(string query)
     {
         if (query.Trim().Length < 2) return [];
-        var found = await _client.Contacts_Search(query.Trim(), 20);
+        var found = await _client.Contacts_Search(query.Trim(), 20).ConfigureAwait(false);
         found.CollectUsersChats(_users, _chats);
         return found.my_results.Concat(found.results)
             .Where(p => !IsIgnored(p))

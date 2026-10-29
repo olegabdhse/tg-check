@@ -154,6 +154,10 @@
                                 </Border>
                             </StackPanel>
                         </Button>
+                        <!-- Пока чаты показаны из кэша, а связь ещё устанавливается -->
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding Shell.ConnectionStatus}" FontSize="12" Margin="0,0,6,0"
+                                   VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}"
+                                   Visibility="{Binding Shell.ConnectionStatus, Converter={StaticResource NullToVis}}" />
                         <StackPanel Orientation="Horizontal">
                             <RadioButton Style="{StaticResource ChipRadio}" GroupName="tabs"
                                          IsChecked="{Binding Tab, Converter={StaticResource EnumToBool}, ConverterParameter=All}">
@@ -188,7 +192,8 @@
                          ItemContainerStyle="{StaticResource ChatListItem}"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
-                         VirtualizingPanel.ScrollUnit="Pixel" helpers:SmoothScroll.IsEnabled="True">
+                         VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLengthUnit="Page" VirtualizingPanel.CacheLength="0.5,1"
+                         helpers:SmoothScroll.IsEnabled="True">
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="{x:Type vm:ChatItemViewModel}">
                             <Grid Height="48" Loaded="ChatItem_Changed" DataContextChanged="ChatItem_DataContextChanged">

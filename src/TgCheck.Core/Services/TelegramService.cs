@@ -101,7 +101,9 @@ public sealed partial class TelegramService : IAsyncDisposable
         {
             try
             {
-                var connect = _client.ConnectAsync();
+                // Подключаемся из фонового потока: сетевой цикл библиотеки (чтение и разбор всех ответов сервера)
+                // продолжается там, где его запустили, — из потока интерфейса он тормозил окно на каждом крупном ответе.
+                var connect = Task.Run(() => _client.ConnectAsync());
                 if (await Task.WhenAny(connect, Task.Delay(TimeSpan.FromSeconds(20))) != connect)
                     throw new TimeoutException("Telegram не ответил за 20 секунд.");
                 await connect;
@@ -201,7 +203,7 @@ public sealed partial class TelegramService : IAsyncDisposable
 
     private async Task<LoginStep> LoginAsync(string input)
     {
-        var what = await _client.Login(input);
+        var what = await Task.Run(() => _client.Login(input)); // первое обращение подключает — сетевой цикл не в потоке интерфейса
         return what switch
         {
             null => LoginStep.Completed,
@@ -254,20 +256,12 @@ public sealed partial class TelegramService : IAsyncDisposable
         if (peer is { IsSelf: false, IsUser: false }) return await GetChatProfileAsync(peer, withAvatar);
 
         InputUserBase input = peer is { IsSelf: false, Info: User target } ? target : InputUser.Self;
-        var full = await _client.Users_GetFullUser(input);
+        var full = await _client.Users_GetFullUser(input).ConfigureAwait(false);
         full.CollectUsersChats(_users, _chats);
-        var f = full.full_user;
-        var me = full.users.TryGetValue(f.id, out var u) ? u : throw new InvalidOperationException("Не удалось получить пользователя.");
+        var me = full.users.TryGetValue(full.full_user.id, out var u) ? u : throw new InvalidOperationException("Не удалось получить пользователя.");
         var isSelf = me.id == _client.UserId;
 
         var (stars, ton) = isSelf ? await GetBalancesAsync() : (0L, (decimal?)null);
-
-        string? channelTitle = null, channelUsername = null;
-        if (f.personal_channel_id != 0 && full.chats.TryGetValue(f.personal_channel_id, out var ch))
-        {
-            channelTitle = ch.Title;
-            channelUsername = (ch as Channel)?.MainUsername;
-        }
 
         byte[]? avatar = null;
         if (withAvatar && me.photo is not null)
@@ -279,6 +273,62 @@ public sealed partial class TelegramService : IAsyncDisposable
                 avatar = ms.Length > 0 ? ms.ToArray() : null;
             }
             catch (Exception ex) { Logging.Write("avatar: " + ex.Message); }
+        }
+        if (isSelf && withAvatar) SaveSelfProfileCache(full, stars, ton, avatar);
+        return BuildUserProfile(full, me, isSelf, stars, ton, avatar);
+    }
+
+    // ---- Свой профиль из кэша: при запуске показывается сразу, до ответа сервера.
+
+    private void SaveSelfProfileCache(Users_UserFull full, long stars, decimal? ton, byte[]? avatar) => _ = Task.Run(() =>
+    {
+        _cache.Save("me_full", full);
+        using var ms = new MemoryStream();
+        using (var w = new BinaryWriter(ms))
+        {
+            w.Write(stars);
+            w.Write(ton is not null);
+            w.Write(ton ?? 0);
+            w.Write(avatar?.Length ?? 0);
+            if (avatar is not null) w.Write(avatar);
+        }
+        _cache.SaveBytes("me_extra", ms.ToArray());
+    });
+
+    /// <summary>Свой профиль из локального кэша (null — кэша нет).</summary>
+    public ProfileInfo? GetCachedSelfProfile()
+    {
+        if (_cache.Load<Users_UserFull>("me_full") is not { } full) return null;
+        full.CollectUsersChats(_users, _chats);
+        if (!full.users.TryGetValue(full.full_user.id, out var me) || me.id != _client.UserId) return null;
+        long stars = 0;
+        decimal? ton = null;
+        byte[]? avatar = null;
+        if (_cache.LoadBytes("me_extra") is { } extra)
+        {
+            try
+            {
+                using var r = new BinaryReader(new MemoryStream(extra));
+                stars = r.ReadInt64();
+                var hasTon = r.ReadBoolean();
+                var tonValue = r.ReadDecimal();
+                ton = hasTon ? tonValue : null;
+                var len = r.ReadInt32();
+                avatar = len > 0 ? r.ReadBytes(len) : null;
+            }
+            catch { /* старый/повреждённый кэш — без балансов */ }
+        }
+        return BuildUserProfile(full, me, isSelf: true, stars, ton, avatar);
+    }
+
+    private ProfileInfo BuildUserProfile(Users_UserFull full, User me, bool isSelf, long stars, decimal? ton, byte[]? avatar)
+    {
+        var f = full.full_user;
+        string? channelTitle = null, channelUsername = null;
+        if (f.personal_channel_id != 0 && full.chats.TryGetValue(f.personal_channel_id, out var ch))
+        {
+            channelTitle = ch.Title;
+            channelUsername = (ch as Channel)?.MainUsername;
         }
 
         var (presence, lastSeen) = me.status switch
@@ -369,24 +419,51 @@ public sealed partial class TelegramService : IAsyncDisposable
     {
         var isSelf = peer is null || peer.IsSelf;
         var target = isSelf ? InputPeer.Self : peer!.Info.ToInputPeer();
-        var period = await GetConvertPeriodAsync();
+        var period = await GetConvertPeriodAsync().ConfigureAwait(false); // дальше — не в потоке интерфейса (разбор сотен подарков)
         var result = new List<GiftItem>();
+        var pages = new List<Payments_SavedStarGifts>();
         var offset = "";
         do
         {
             ct.ThrowIfCancellationRequested();
             var page = await _client.Payments_GetSavedStarGifts(target, offset, 100);
-            page.CollectUsersChats(_users, _chats);
-            foreach (var sg in page.gifts)
-            {
-                if (sg.from_id is { } from && IsIgnored(from)) continue;
-                try { result.Add(Map(sg, page, period, isSelf)); }
-                catch (Exception ex) { Logging.Write("gift map: " + ex); }
-            }
+            pages.Add(page);
+            MapGiftPage(page, period, isSelf, result);
             progress?.Report((result.Count, page.count));
             offset = page.next_offset;
         } while (!string.IsNullOrEmpty(offset));
+        // Свои подарки — в кэш: при следующем запуске профиль показывается сразу целиком.
+        if (isSelf) _ = Task.Run(() =>
+        {
+            for (var i = 0; i < pages.Count; i++) _cache.Save($"me_gifts_{i}", pages[i]);
+            _cache.SaveBytes("me_gifts_count", BitConverter.GetBytes(pages.Count));
+        });
         return result;
+    }
+
+    /// <summary>Свои подарки из локального кэша (null — кэша нет).</summary>
+    public IReadOnlyList<GiftItem>? GetCachedSelfGifts()
+    {
+        if (_cache.LoadBytes("me_gifts_count") is not { Length: 4 } countBytes) return null;
+        var period = _convertPeriodSeconds > 0 ? TimeSpan.FromSeconds(_convertPeriodSeconds.Value) : DefaultConvertPeriod;
+        var result = new List<GiftItem>();
+        for (var i = 0; i < BitConverter.ToInt32(countBytes); i++)
+        {
+            if (_cache.Load<Payments_SavedStarGifts>($"me_gifts_{i}") is not { } page) return null;
+            MapGiftPage(page, period, isSelf: true, result);
+        }
+        return result;
+    }
+
+    private void MapGiftPage(Payments_SavedStarGifts page, TimeSpan period, bool isSelf, List<GiftItem> result)
+    {
+        page.CollectUsersChats(_users, _chats);
+        foreach (var sg in page.gifts)
+        {
+            if (sg.from_id is { } from && IsIgnored(from)) continue;
+            try { result.Add(Map(sg, page, period, isSelf)); }
+            catch (Exception ex) { Logging.Write("gift map: " + ex); }
+        }
     }
 
     /// <summary>

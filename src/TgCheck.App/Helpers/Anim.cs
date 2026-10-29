@@ -56,6 +56,9 @@ public static class Anim
     /// Управляет видимостью с анимацией: true — плавно показать, false — плавно скрыть и Collapsed.
     /// Используется вместо Visibility для диалогов, панелей и оверлеев.
     /// </summary>
+    /// <summary>До этого момента Show переключается мгновенно (окно только что открылось).</summary>
+    public static DateTime InstantUntil { get; set; }
+
     public static readonly DependencyProperty ShowProperty = DependencyProperty.RegisterAttached(
         "Show", typeof(bool), typeof(Anim), new PropertyMetadata(false, OnShowChanged));
 
@@ -71,6 +74,24 @@ public static class Anim
     {
         if (d is not FrameworkElement el) return;
         var show = e.NewValue is true;
+        // Первые мгновения после открытия окна (данные из кэша) и ещё не показанные элементы — без анимации:
+        // интерфейс появляется сразу готовым, а не «выезжает» частями.
+        if (!el.IsLoaded || DateTime.UtcNow < InstantUntil)
+        {
+            el.BeginAnimation(UIElement.OpacityProperty, null);
+            el.Opacity = 1;
+            if (el.RenderTransform is TransformGroup { IsFrozen: false, Children.Count: 2 } g)
+            {
+                g.Children[0].BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                g.Children[0].BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                ((ScaleTransform)g.Children[0]).ScaleX = ((ScaleTransform)g.Children[0]).ScaleY = 1;
+                g.Children[1].BeginAnimation(TranslateTransform.XProperty, null);
+                g.Children[1].BeginAnimation(TranslateTransform.YProperty, null);
+                ((TranslateTransform)g.Children[1]).X = ((TranslateTransform)g.Children[1]).Y = 0;
+            }
+            el.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            return;
+        }
         var mode = GetMode(el);
         var ms = show ? 220 : 160;
         var duration = new Duration(TimeSpan.FromMilliseconds(ms));

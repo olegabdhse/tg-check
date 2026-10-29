@@ -279,29 +279,50 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         await LoadAsync();
     }
 
+    /// <summary>
+    /// Чаты и истории из локального кэша — мгновенно, ещё до подключения к Telegram
+    /// (список и полоса историй появляются сразу и сразу целиком, без «догрузки» по частям).
+    /// </summary>
+    public async Task ShowCachedAsync()
+    {
+        if (Chats.Count > 0 || _cacheShown) return;
+        _cacheShown = true;
+        var (cachedMain, cachedArchive, cachedStories) = await Task.Run(() =>
+            (_tg.GetCachedDialogs(archived: false), _tg.GetCachedDialogs(archived: true), _tg.GetCachedStories()));
+        // Обе папки — без сортировки, одна сортировка в конце (раньше список пересобирался трижды).
+        var view = (ListCollectionView)ChatsView;
+        var sort = view.CustomSort;
+        view.CustomSort = null;
+        try
+        {
+            if (cachedMain is not null) MergeCore(cachedMain, false, removeMissing: false);
+            if (cachedArchive is not null) MergeCore(cachedArchive, true, removeMissing: false);
+        }
+        finally { view.CustomSort = sort; }
+        OnPropertyChanged(nameof(IsListEmpty));
+        NotifyArchive();
+        if (cachedStories is not null) ApplyStories(cachedStories);
+    }
+
+    private bool _cacheShown;
+
     [RelayCommand]
     private async Task LoadAsync()
     {
         Error = null;
         // 1) Мгновенно — из локального кэша.
-        if (Chats.Count == 0)
-        {
-            var (cachedMain, cachedArchive) = await Task.Run(() => (_tg.GetCachedDialogs(archived: false), _tg.GetCachedDialogs(archived: true)));
-            if (cachedMain is not null) Merge(cachedMain, false, removeMissing: false);
-            if (cachedArchive is not null) Merge(cachedArchive, true, removeMissing: false);
-            NotifyArchive();
-            RefreshView();
-        }
+        await ShowCachedAsync();
         IsLoading = Chats.Count == 0;
 
-        // 2) Сеть: основная папка быстро, затем архив (он бывает огромным).
+        // 2) Сеть: основная папка быстро, затем архив (он бывает огромным). Истории — параллельно.
         try
         {
+            var stories = LoadStoriesAsync();
             Merge(await _tg.GetDialogsAsync(archived: false), false, removeMissing: true);
             IsLoading = false;
             NotifyArchive();
-            RefreshView();
-            _ = LoadStoriesAsync();
+            OnPropertyChanged(nameof(IsListEmpty)); // полная пересборка списка не нужна: Merge сам расставил изменившиеся строки
+            _ = stories;
             _syncTimer.Start();
             _ = RefreshForumUnreadAsync(onlyMarked: false);
             LoadRecentSearch();
@@ -309,7 +330,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
 
             Merge(await _tg.GetDialogsAsync(archived: true), true, removeMissing: true);
             NotifyArchive();
-            RefreshView();
+            OnPropertyChanged(nameof(IsListEmpty));
             Shell.NotifyIslandChanged();
         }
         catch (Exception ex)
@@ -325,7 +346,8 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
 
     // Группы с темами: общий счётчик сервера расходится с темами (у тем 0, у группы «7»),
     // поэтому, как в официальных клиентах, пометку считаем по темам, когда они известны.
-    private readonly Dictionary<long, int> _forumUnread = [];
+    // Хранится между запусками: иначе при старте (из кэша и первой загрузки) у таких групп сначала видно число тем.
+    private readonly Dictionary<long, int> _forumUnread = new(UiSettings.ForumUnread);
 
     /// <summary>
     /// Пересчитать пометки групп с темами по их темам (сервер в общем счётчике отдаёт число тем, а не сообщений).
@@ -348,6 +370,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     public void SetForumUnread(long peerKey, int count)
     {
         _forumUnread[peerKey] = count;
+        if (UiSettings.ForumUnread.GetValueOrDefault(peerKey, -1) != count) UiSettings.ForumUnread = new(_forumUnread);
         if (!_byKey.TryGetValue(peerKey, out var chat) || chat.Unread == count) return;
         chat.Unread = count;
         NotifyArchive();
@@ -430,13 +453,16 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
             if (!seen.Add(d.Peer.Key)) continue;
             if (_byKey.TryGetValue(d.Peer.Key, out var existing))
             {
-                existing.Update(d);
+                var moved = existing.Update(d);
                 if (_forumUnread.TryGetValue(d.Peer.Key, out var forumUnread)) existing.Unread = forumUnread;
+                moved |= existing.IsPinned && existing.Order != order; // порядок закреплённых
                 existing.Order = order++;
-                touched.Add(existing);
+                // Переставляем только сдвинувшиеся строки: проверка места у каждой из тысяч строк стоила сотни мс.
+                if (moved) touched.Add(existing);
                 continue;
             }
             var vm = new ChatItemViewModel(d, order++);
+            if (_forumUnread.TryGetValue(d.Peer.Key, out var knownForumUnread)) vm.Unread = knownForumUnread;
             if (d.Peer.IsUser) vm.IsOnline = _tg.GetPresence(d.Peer).Presence == Presence.Online;
             _byKey[d.Peer.Key] = vm;
             Chats.Add(vm);
@@ -454,22 +480,39 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     {
         try
         {
-            var stories = await _tg.GetStoriesAsync();
+            ApplyStories(await _tg.GetStoriesAsync());
+        }
+        catch (Exception ex) { TgErrors.Describe(ex); }
+    }
+
+    // Полоса историй: тот же набор — не трогаем (иначе она перестраивается и мигает); иначе пересобираем,
+    // сохраняя уже загруженные аватарки.
+    private void ApplyStories(IReadOnlyList<StoryPeer> stories)
+    {
+        static string Sign(StoryPeer s) => $"{s.Peer.Key}:{s.HasUnread}:{s.Stories.LastOrDefault()?.Id}";
+        if (Stories.Select(v => Sign(v.Stories)).SequenceEqual(stories.Select(Sign)))
+        {
+            for (var i = 0; i < stories.Count; i++) Stories[i].Stories.MaxReadId = Math.Max(Stories[i].Stories.MaxReadId, stories[i].MaxReadId);
+        }
+        else
+        {
+            var oldAvatars = Stories.Where(v => v.Avatar is not null).ToDictionary(v => v.Peer.Key, v => v.Avatar);
             Stories.Clear();
             foreach (var s in stories)
             {
                 var vm = new StoryPeerViewModel(s);
+                if (oldAvatars.TryGetValue(s.Peer.Key, out var avatar)) vm.Avatar = avatar;
                 vm.EnsureAvatar(_tg.Media);
                 Stories.Add(vm);
-                if (_byKey.TryGetValue(s.Peer.Key, out var chat))
-                {
-                    chat.HasStories = true;
-                    chat.StoriesUnread = s.HasUnread;
-                }
             }
-            OnPropertyChanged(nameof(HasStories));
         }
-        catch (Exception ex) { TgErrors.Describe(ex); }
+        foreach (var s in stories)
+            if (_byKey.TryGetValue(s.Peer.Key, out var chat))
+            {
+                chat.HasStories = true;
+                chat.StoriesUnread = s.HasUnread;
+            }
+        OnPropertyChanged(nameof(HasStories));
     }
 
     [RelayCommand]

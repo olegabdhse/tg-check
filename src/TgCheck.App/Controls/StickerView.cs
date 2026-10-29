@@ -87,24 +87,70 @@ public sealed class StickerView : Image
         if (media is null || AppServices.Media is not { } service) return;
 
         // Сначала статичный кадр — чтобы не было пустого места, пока грузится анимация.
+        // Готовые картинки общие для всех копий (строки списка, сетки) — при прокрутке не декодируем заново.
+        var px = (int)Math.Max(64, Math.Min(256, (double.IsNaN(Width) ? 180 : Width) * 1.5));
+        if (!Animate && FrameCache.Get((media.MediaId, px)) is { } ready)
+        {
+            Source = ready;
+            return;
+        }
         var preview = await service.GetMessagePreviewAsync(media);
         if (version != _version) return;
-        if (!PlayOnce) Source = Images.FromBytes(preview);
+        // Декодирование — вне потока интерфейса и сразу в нужном размере (превью стикера ~512px, а показываем 16–180).
+        var decodeWidth = double.IsNaN(Width) ? (int?)null : Math.Max(32, (int)(Width * 2));
+        var image = preview is null ? null : await Task.Run(() => Images.FromBytes(preview, decodeWidth));
+        if (version != _version) return;
+        if (!PlayOnce) Source = image;
 
-        if (media.StickerFormat != StickerFormat.Animated) return;
+        if (media.StickerFormat != StickerFormat.Animated)
+        {
+            if (!Animate && image is not null) FrameCache.Put((media.MediaId, px), image);
+            return;
+        }
         // Без анимации и без превью (иконки реакций Telegram — только анимация): рисуем один первый кадр.
-        if (!Animate && Source is not null) return;
+        if (!Animate && image is not null)
+        {
+            FrameCache.Put((media.MediaId, px), image);
+            return;
+        }
         var json = await LoadJsonAsync(media, service);
         if (version != _version || json is null) return;
-        if (!Animation.TryParse(json, out var anim) || anim is null) return;
+        var anim = await Task.Run(() => Animation.TryParse(json, out var a) ? a : null); // разбор Lottie — тоже не в потоке интерфейса
+        if (version != _version) { anim?.Dispose(); return; }
+        if (anim is null) return;
         _animation = anim;
-        var px = (int)Math.Max(64, Math.Min(256, (double.IsNaN(Width) ? 180 : Width) * 1.5));
         _bitmap = new WriteableBitmap(px, px, 96, 96, PixelFormats.Pbgra32, null);
         Source = _bitmap;
         _start = TimeSpan.Zero;
         RenderFrame(TimeSpan.Zero);
         if (Animate) UpdateActive();
-        else { _animation.Dispose(); _animation = null; } // кадр нарисован — анимация больше не нужна
+        else
+        {
+            // Кадр нарисован — анимация больше не нужна; замороженную копию отдаём остальным копиям этого эмодзи.
+            _animation.Dispose();
+            _animation = null;
+            var frozen = _bitmap.Clone();
+            frozen.Freeze();
+            FrameCache.Put((media.MediaId, px), frozen);
+        }
+    }
+
+    /// <summary>Готовые статичные кадры стикеров/эмодзи (общие для всех контролов), не больше Capacity.</summary>
+    private static class FrameCache
+    {
+        private const int Capacity = 400;
+        private static readonly Dictionary<(long, int), ImageSource> Items = [];
+        private static readonly Queue<(long, int)> Order = new();
+
+        public static ImageSource? Get((long, int) key) => Items.GetValueOrDefault(key);
+
+        public static void Put((long, int) key, ImageSource image)
+        {
+            if (Items.ContainsKey(key)) return;
+            Items[key] = image;
+            Order.Enqueue(key);
+            while (Order.Count > Capacity) Items.Remove(Order.Dequeue());
+        }
     }
 
     private static async Task<string?> LoadJsonAsync(MediaHolder media, Core.Media.MediaService service)

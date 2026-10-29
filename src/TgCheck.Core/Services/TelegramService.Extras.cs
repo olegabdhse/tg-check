@@ -24,19 +24,37 @@ public sealed partial class TelegramService
         string? state = null;
         for (var page = 0; page < 5; page++)
         {
-            if (await _client.Stories_GetAllStories(state, next: state is not null) is not Stories_AllStories all) break;
-            foreach (var (k, v) in all.users) _users[k] = v;
-            foreach (var (k, v) in all.chats) _chats[k] = v;
-            foreach (var ps in all.peer_stories)
-            {
-                if (IsIgnored(ps.peer) || PeerOf(ps.peer) is not { } peer) continue;
-                var stories = ps.stories.OfType<StoryItem>().Select(MapStory).OfType<StoryInfo>().OrderBy(s => s.Id).ToList();
-                if (stories.Count > 0) result.Add(new StoryPeer { Peer = peer, Stories = stories, MaxReadId = ps.max_read_id });
-            }
+            if (await _client.Stories_GetAllStories(state, next: state is not null).ConfigureAwait(false) is not Stories_AllStories all) break;
+            // Первая страница — в кэш: при следующем запуске полоса историй видна сразу, вместе со списком чатов.
+            if (page == 0) _ = Task.Run(() => _cache.Save("stories", all));
+            MapAllStories(all, result);
             if (!all.flags.HasFlag(Stories_AllStories.Flags.has_more)) break;
             state = all.state;
         }
         return result.OrderByDescending(p => p.Peer.IsSelf).ThenByDescending(p => p.HasUnread).ToList();
+    }
+
+    /// <summary>Истории из локального кэша (до ответа сервера), null — кэша нет.</summary>
+    public IReadOnlyList<StoryPeer>? GetCachedStories()
+    {
+        if (_cache.Load<Stories_AllStories>("stories") is not { } all) return null;
+        var result = new List<StoryPeer>();
+        MapAllStories(all, result, onlyFresh: true);
+        return result.OrderByDescending(p => p.Peer.IsSelf).ThenByDescending(p => p.HasUnread).ToList();
+    }
+
+    private void MapAllStories(Stories_AllStories all, List<StoryPeer> result, bool onlyFresh = false)
+    {
+        foreach (var (k, v) in all.users) _users[k] = v;
+        foreach (var (k, v) in all.chats) _chats[k] = v;
+        foreach (var ps in all.peer_stories)
+        {
+            if (IsIgnored(ps.peer) || PeerOf(ps.peer) is not { } peer) continue;
+            var stories = ps.stories.OfType<StoryItem>().Select(MapStory).OfType<StoryInfo>()
+                .Where(s => !onlyFresh || s.DateUtc > DateTime.UtcNow.AddHours(-24)) // из кэша — только ещё не истёкшие
+                .OrderBy(s => s.Id).ToList();
+            if (stories.Count > 0) result.Add(new StoryPeer { Peer = peer, Stories = stories, MaxReadId = ps.max_read_id });
+        }
     }
 
     /// <summary>Лайк истории (реакция ❤) или снять его.</summary>
@@ -78,8 +96,8 @@ public sealed partial class TelegramService
         try
         {
             var res = archive
-                ? await _client.Stories_GetStoriesArchive(peer.Info.ToInputPeer(), limit: 60)
-                : await _client.Stories_GetPinnedStories(peer.Info.ToInputPeer(), limit: 60);
+                ? await _client.Stories_GetStoriesArchive(peer.Info.ToInputPeer(), limit: 60).ConfigureAwait(false)
+                : await _client.Stories_GetPinnedStories(peer.Info.ToInputPeer(), limit: 60).ConfigureAwait(false);
             foreach (var (k, v) in res.users) _users[k] = v;
             foreach (var (k, v) in res.chats) _chats[k] = v;
             return res.stories.OfType<StoryItem>().Select(MapStory).OfType<StoryInfo>().OrderByDescending(s => s.Id).ToList();
@@ -190,7 +208,7 @@ public sealed partial class TelegramService
     public async Task<IReadOnlyList<ForumTopicInfo>> GetForumTopicsAsync(PeerRef forum)
     {
         if (forum.Info is not Channel channel) return [];
-        var res = await _client.Messages_GetForumTopics(channel, default, 0, 0, 100);
+        var res = await _client.Messages_GetForumTopics(channel, default, 0, 0, 100).ConfigureAwait(false); // разбор ответа — не в потоке интерфейса
         res.CollectUsersChats(_users, _chats);
         var lastMessages = res.messages.Where(m => m is Message && !IsHiddenMessage(m)).ToDictionary(m => m.ID, MapMessage);
         return res.topics.OfType<ForumTopic>()
@@ -483,7 +501,7 @@ public sealed partial class TelegramService
         if (bot.Info is not User { IsBot: true } user) return null;
         try
         {
-            var full = await _client.Users_GetFullUser(user);
+            var full = await _client.Users_GetFullUser(user).ConfigureAwait(false);
             full.CollectUsersChats(_users, _chats);
             var hasMain = user.flags2.HasFlag(User.Flags2.bot_has_main_app);
             return full.full_user.bot_info?.menu_button switch

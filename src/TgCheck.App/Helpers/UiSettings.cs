@@ -22,6 +22,7 @@ public static class UiSettings
         public string? IslandEdge { get; set; }
         public List<long>? RecentSearch { get; set; }
         public double? IslandAlong { get; set; }
+        public Dictionary<long, int>? ForumUnread { get; set; }
     }
 
     private static Data _data = Load();
@@ -65,6 +66,13 @@ public static class UiSettings
     {
         get => _data.RecentSearch ?? [];
         set { _data.RecentSearch = [.. value]; Save(); }
+    }
+
+    /// <summary>Непрочитанные групп с темами, посчитанные по темам (сервер в общем счётчике отдаёт число тем) — чтобы при запуске сразу верно.</summary>
+    public static Dictionary<long, int> ForumUnread
+    {
+        get => _data.ForumUnread ?? [];
+        set { _data.ForumUnread = value; Save(); }
     }
 
     /// <summary>Полоса историй над списком чатов.</summary>

@@ -34,23 +34,41 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         _tg = new TelegramService(_env);
+        var proxyNote = _tg.UsesProxy ? " через прокси" : "";
+
+        // Вход сохранён — главное окно с чатами из кэша показываем сразу, а с Telegram соединяемся в фоне
+        // (как официальные клиенты: не ждём сеть, чтобы показать уже известное).
+        ShellViewModel? early = null;
+        if (_tg.UserId != 0)
+        {
+            early = new ShellViewModel(_tg, _env, ShowLogin) { ConnectionStatus = "Соединение…" };
+            Helpers.Anim.InstantUntil = DateTime.UtcNow.AddSeconds(1.5);
+            CurrentPage = early;
+            _ = early.Chats.ShowCachedAsync();
+            _ = early.MyProfile.ShowCachedAsync();
+        }
+        else CurrentPage = StatusViewModel.Busy($"Подключение к Telegram{proxyNote}…");
+
         try
         {
-            var proxyNote = _tg.UsesProxy ? " через прокси" : "";
-            CurrentPage = StatusViewModel.Busy($"Подключение к Telegram{proxyNote}…");
             if (await _tg.TryRestoreSessionAsync(attempt =>
-                    CurrentPage = StatusViewModel.Busy($"Подключение к Telegram{proxyNote}… попытка {attempt} из 4")))
+                {
+                    if (early is not null) early.ConnectionStatus = $"Соединение… (попытка {attempt} из 4)";
+                    else CurrentPage = StatusViewModel.Busy($"Подключение к Telegram{proxyNote}… попытка {attempt} из 4");
+                }))
             {
-                ShowProfile();
+                ShowProfile(early);
                 return;
             }
         }
         catch (Exception ex)
         {
+            early?.Dispose();
             CurrentPage = StatusViewModel.Error("Не удалось подключиться", TgErrors.Describe(ex), InitializeAsync);
             return;
         }
 
+        early?.Dispose();
         ShowLogin();
     }
 
@@ -60,12 +78,16 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         CurrentPage = new LoginViewModel(_tg, _env?.DefaultPhone, ShowProfile);
     }
 
-    private void ShowProfile()
+    private void ShowProfile() => ShowProfile(null);
+
+    /// <summary>Главное окно; existing — уже показанное из кэша до подключения.</summary>
+    private void ShowProfile(ShellViewModel? existing)
     {
         if (_tg is null || _env is null) return;
-        var shell = new ShellViewModel(_tg, _env, ShowLogin);
+        var shell = existing ?? new ShellViewModel(_tg, _env, ShowLogin);
+        shell.ConnectionStatus = null;
         _tg.MarkSessionGood();
-        CurrentPage = shell;
+        if (!ReferenceEquals(CurrentPage, shell)) CurrentPage = shell;
         _ = shell.StartAsync();
     }
 

@@ -188,7 +188,7 @@ public sealed partial class ProfileViewModel : ObservableObject
     public ObservableCollection<ProfileStoryViewModel> Stories { get; } = [];
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(StoriesTitle))] private bool _showStoryArchive;
     public bool HasStories => Stories.Count > 0 || IsSelfProfile;
-    public bool IsSelfProfile => Profile?.Peer.IsSelf == true;
+    public bool IsSelfProfile => Profile?.Peer?.IsSelf == true;
     public bool ShowNoStories => IsSelfProfile && Stories.Count == 0;
     public string StoriesTitle => ShowStoryArchive ? "Архив историй" : "Истории";
 
@@ -315,21 +315,40 @@ public sealed partial class ProfileViewModel : ObservableObject
 
     // ===================================================================== Загрузка
 
+    /// <summary>Свой профиль из кэша — сразу при запуске, до подключения (потом его тихо обновит LoadAsync).</summary>
+    public async Task ShowCachedAsync()
+    {
+        if (!IsSelf || Profile is not null) return;
+        var cached = await Task.Run(() => _tg.GetCachedSelfProfile());
+        if (cached is null || Profile is not null) return;
+        var avatar = cached.Avatar is { } bytes ? await Task.Run(() => Images.FromBytes(bytes, 256)) : null;
+        ApplyProfile(cached, avatar);
+        if (ShowGifts && Gifts.Count == 0 && await Task.Run(() => _tg.GetCachedSelfGifts()) is { Count: > 0 } gifts && Gifts.Count == 0)
+            SetGifts(gifts);
+    }
+
+    private void ApplyProfile(ProfileInfo profile, ImageSource? avatar)
+    {
+        Profile = profile;
+        StarsBalance = profile.StarsBalance;
+        if (avatar is not null) Avatar = avatar;
+        BuildInfoRows(profile);
+        IsLoading = false;
+        foreach (var name in new[] { nameof(IsGroupProfile), nameof(IsBotProfile), nameof(HasBotCommands), nameof(ShowGifts), nameof(MembersTitle) })
+            OnPropertyChanged(name);
+    }
+
     public async Task LoadAsync()
     {
-        IsLoading = true;
+        // Уже показан из кэша — обновляем без экрана «Загрузка…».
+        IsLoading = Profile is null;
         LoadError = null;
         LoadingText = "Загрузка профиля…";
         try
         {
             var profile = await _tg.GetProfileAsync(_peer, withAvatar: !IsCompact);
-            Profile = profile;
-            StarsBalance = profile.StarsBalance;
-            if (profile.Avatar is not null) Avatar = Images.FromBytes(profile.Avatar, 256);
-            BuildInfoRows(profile);
-            IsLoading = false;
-            foreach (var name in new[] { nameof(IsGroupProfile), nameof(IsBotProfile), nameof(HasBotCommands), nameof(ShowGifts), nameof(MembersTitle) })
-                OnPropertyChanged(name);
+            var avatar = profile.Avatar is { } bytes ? await Task.Run(() => Images.FromBytes(bytes, 256)) : null;
+            ApplyProfile(profile, avatar);
             _ = LoadMembersAsync();
             _ = LoadStoriesAsync();
             if (ShowGifts) await LoadGiftsAsync();
@@ -354,22 +373,9 @@ public sealed partial class ProfileViewModel : ObservableObject
         IsGiftsLoading = true;
         try
         {
-            var progress = new Progress<(int Loaded, int Total)>(p => LoadingText = $"Подарки: {p.Loaded} из {p.Total}");
-            var items = await _tg.GetGiftsAsync(_peer, progress);
-
-            foreach (var g in Gifts) g.PropertyChanged -= OnGiftPropertyChanged;
-            Gifts.Clear();
-            foreach (var item in items)
-            {
-                var vm = new GiftViewModel(item);
-                vm.PropertyChanged += OnGiftPropertyChanged;
-                Gifts.Add(vm);
-            }
-            OnCountsChanged();
-            RefreshView();
-
-            // Картинки грузятся в фоне, по мере готовности появляются в карточках.
-            _ = Task.WhenAll(Gifts.ToList().Select(g => g.LoadImageAsync(_tg.Media)));
+            // Уже показаны из кэша — обновляем молча, без счётчика «Подарки: N из M».
+            var progress = Gifts.Count > 0 ? null : new Progress<(int Loaded, int Total)>(p => LoadingText = $"Подарки: {p.Loaded} из {p.Total}");
+            SetGifts(await _tg.GetGiftsAsync(_peer, progress));
         }
         catch (Exception ex)
         {
@@ -380,6 +386,32 @@ public sealed partial class ProfileViewModel : ObservableObject
             IsGiftsLoading = false;
             LoadingText = null;
         }
+    }
+
+    // Пересборка сетки подарков с переносом уже загруженных картинок (обновление после кэша не мигает).
+    private void SetGifts(IReadOnlyList<GiftItem> items)
+    {
+        static (long, DateTime, long?) Key(GiftItem g) => (g.GiftId, g.DateUtc, g.FromId);
+        var old = new Dictionary<(long, DateTime, long?), GiftViewModel>();
+        foreach (var g in Gifts) old.TryAdd(Key(g.Item), g);
+        foreach (var g in Gifts) g.PropertyChanged -= OnGiftPropertyChanged;
+        Gifts.Clear();
+        foreach (var item in items)
+        {
+            var vm = new GiftViewModel(item);
+            if (old.TryGetValue(Key(item), out var prev))
+            {
+                vm.Image = prev.Image;
+                vm.SenderAvatar = prev.SenderAvatar;
+            }
+            vm.PropertyChanged += OnGiftPropertyChanged;
+            Gifts.Add(vm);
+        }
+        OnCountsChanged();
+        RefreshView();
+
+        // Картинки грузятся в фоне, по мере готовности появляются в карточках.
+        _ = Task.WhenAll(Gifts.ToList().Select(g => g.LoadImageAsync(_tg.Media)));
     }
 
     private void OnGiftPropertyChanged(object? sender, PropertyChangedEventArgs e)
