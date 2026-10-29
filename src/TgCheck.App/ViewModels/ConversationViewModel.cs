@@ -49,6 +49,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         _readOutboxMaxId = readOutboxMaxId;
         UpdateStatus();
         AudioPlayer.Instance.Ended += OnAudioEnded;
+        Items.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ShowStartBot));
         Attachments.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ShowMic));
     }
 
@@ -578,6 +579,8 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
                 _ = _tg.ReadTopicAsync(Peer, topic, LastMessageId);
             }
             if (!_generalTopic) return;
+            // «Общее»: Telegram ведёт прочтение тем отдельно — отмечаем и тему (id 1), и историю группы.
+            if (LastMessageId > _lastMarkedRead) _ = _tg.ReadTopicAsync(Peer, 1, LastMessageId);
         }
         var max = LastMessageId;
         if (max <= _lastMarkedRead || max == 0) return;
@@ -1316,6 +1319,31 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     {
         var withKeyboard = Items.OfType<MessageViewModel>().LastOrDefault(m => m.Item.ReplyKeyboard is not null && !m.IsOut);
         ReplyKeyboard = withKeyboard?.Item.ReplyKeyboard;
+    }
+
+    partial void OnIsLoadingChanged(bool value) => OnPropertyChanged(nameof(ShowStartBot));
+
+    /// <summary>Бот, с которым ещё нет переписки: вместо поля ввода — кнопка «Старт» (как в Telegram).</summary>
+    public bool ShowStartBot => Peer.Kind == PeerKind.Bot && _loadedOnce && !IsLoading && !Items.OfType<MessageViewModel>().Any();
+    [ObservableProperty] private bool _isStartingBot;
+
+    [RelayCommand]
+    private async Task StartBot()
+    {
+        if (IsStartingBot) return;
+        IsStartingBot = true;
+        try
+        {
+            await _tg.StartBotAsync(Peer);
+            _loadedOnce = false; // перечитать историю — пришёл ответ бота
+            await LoadAsync();
+        }
+        catch (Exception ex) { _owner.ShowToast(TgErrors.Describe(ex), true); }
+        finally
+        {
+            IsStartingBot = false;
+            OnPropertyChanged(nameof(ShowStartBot));
+        }
     }
 
     private async Task LoadBotMenuAsync()

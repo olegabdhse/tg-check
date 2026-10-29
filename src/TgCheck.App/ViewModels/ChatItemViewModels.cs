@@ -99,7 +99,9 @@ public sealed partial class ChatItemViewModel : PeerAvatarViewModel
     public bool IsTyping => TypingText is not null;
     public bool HasUnread => Unread > 0 || IsMarkedUnread;
     public string UnreadText => Unread > 999 ? $"{Unread / 1000}K" : Unread > 0 ? Unread.ToString(Fmt.Ru) : "";
-    public DateTime SortDate => Last?.DateUtc ?? DateTime.MinValue;
+    /// <summary>Чат открыт из поиска, но переписки ещё нет: держим его в списке (наверху, по времени открытия).</summary>
+    public DateTime? AddedUtc { get; set; }
+    public DateTime SortDate => Last?.DateUtc ?? AddedUtc ?? DateTime.MinValue;
 
     public string LastText
     {

@@ -276,11 +276,11 @@ public partial class IslandWindow : Window
         Dispatcher.BeginInvoke(DispatcherPriority.Background, _restoreMain);
     }
 
-    // Двойной клик определяем сами: первый клик открывает быстрый ответ и забирает фокус,
-    // после чего система уже не считает второй клик двойным.
-    private static readonly TimeSpan DoubleClickTime = TimeSpan.FromMilliseconds(450);
-    private DateTime _lastClickAt;
-    private ChatItemViewModel? _lastClicked;
+    // Клик / двойной клик: первый клик ждёт системное время двойного клика. Пришёл второй клик — мини-окно,
+    // не пришёл — быстрый ответ. (Если открывать быстрый ответ сразу, его окно забирает фокус и второй клик теряется.)
+    private DispatcherTimer? _clickTimer;
+    private ChatItemViewModel? _pendingChat;
+    private Rect _pendingAnchor;
 
     private void OpenFullMini(ChatItemViewModel chat)
     {
@@ -290,27 +290,45 @@ public partial class IslandWindow : Window
         _mini.ShowChat(conv, Top + ActualHeight - 14);
     }
 
-    // Один клик — быстрый ответ рядом с островком; второй клик подряд — полное мини-окно.
     // Если мини-окно уже открыто — клик просто переключает в нём чат.
     private void Chat_Click(object sender, RoutedEventArgs e)
     {
         if (_dragged || sender is not FrameworkElement { DataContext: ChatItemViewModel chat } button) return;
-        var now = DateTime.UtcNow;
-        var isDouble = ReferenceEquals(chat, _lastClicked) && now - _lastClickAt < DoubleClickTime;
-        _lastClicked = chat;
-        _lastClickAt = now;
-        if (isDouble || _mini is { IsVisible: true })
+        if (_mini is { IsVisible: true })
         {
-            _lastClicked = null;
             OpenFullMini(chat);
             return;
         }
-        _quick?.Close();
-        var conv = _shell.OpenMiniChat(chat.Peer);
+        if (_clickTimer is { IsEnabled: true } && ReferenceEquals(_pendingChat, chat))
+        {
+            _clickTimer.Stop(); // второй клик подряд — полное мини-окно
+            _pendingChat = null;
+            OpenFullMini(chat);
+            return;
+        }
+        _pendingChat = chat;
         var anchor = new Rect(button.PointToScreen(new Point(0, 0)), button.PointToScreen(new Point(button.ActualWidth, button.ActualHeight)));
         // Координаты экрана в пикселях → в единицы WPF.
         var dpi = VisualTreeHelper.GetDpi(this);
-        anchor = new Rect(anchor.X / dpi.DpiScaleX, anchor.Y / dpi.DpiScaleY, anchor.Width / dpi.DpiScaleX, anchor.Height / dpi.DpiScaleY);
+        _pendingAnchor = new Rect(anchor.X / dpi.DpiScaleX, anchor.Y / dpi.DpiScaleY, anchor.Width / dpi.DpiScaleX, anchor.Height / dpi.DpiScaleY);
+        if (_clickTimer is null)
+        {
+            _clickTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(System.Windows.Forms.SystemInformation.DoubleClickTime) };
+            _clickTimer.Tick += (_, _) =>
+            {
+                _clickTimer.Stop();
+                if (_pendingChat is { } single) OpenQuickReply(single, _pendingAnchor);
+                _pendingChat = null;
+            };
+        }
+        _clickTimer.Stop();
+        _clickTimer.Start();
+    }
+
+    private void OpenQuickReply(ChatItemViewModel chat, Rect anchor)
+    {
+        _quick?.Close();
+        var conv = _shell.OpenMiniChat(chat.Peer);
         _quick = new QuickReplyWindow(conv, anchor, _edge, openFull: () =>
         {
             _mini ??= CreateMini();

@@ -104,7 +104,7 @@ internal sealed class SetupForm : Form
         if (Installer.RunningApp().Length > 0 &&
             MessageBox.Show(this, "TG Check сейчас запущен — закрыть его и продолжить?", Text, MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK)
             return;
-        Busy("Установка…");
+        Busy("Скачиваю последнюю версию TG Check…");
         var desktop = _desktop.Checked;
         var pin = _pin.Checked;
         try

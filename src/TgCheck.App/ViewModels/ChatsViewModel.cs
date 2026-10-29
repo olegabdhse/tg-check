@@ -96,10 +96,20 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     partial void OnShowArchiveChanged(bool value) => RefreshView();
     partial void OnIsLoadingChanged(bool value) => OnPropertyChanged(nameof(IsListEmpty));
 
+    // Фильтр списка — когда перестали печатать (а не на каждую букву: пересортировка ~1300 чатов подвешивала ввод).
+    private System.Windows.Threading.DispatcherTimer? _searchRefresh;
+
     partial void OnSearchChanged(string value)
     {
         OnPropertyChanged(nameof(ShowRecentSearch));
-        RefreshView();
+        if (_searchRefresh is null)
+        {
+            _searchRefresh = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+            _searchRefresh.Tick += (_, _) => { _searchRefresh.Stop(); RefreshView(); };
+        }
+        _searchRefresh.Stop();
+        if (string.IsNullOrWhiteSpace(value)) RefreshView(); // очистили поиск — список сразу полный
+        else _searchRefresh.Start();
         _ = SearchGlobalAsync(value);
     }
 
@@ -417,7 +427,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
             Chats.Add(vm);
         }
         if (!removeMissing) return touched;
-        foreach (var gone in Chats.Where(c => c.IsArchived == archived && !seen.Contains(c.Key) && c != SelectedChat).ToList())
+        foreach (var gone in Chats.Where(c => c.IsArchived == archived && !seen.Contains(c.Key) && c != SelectedChat && c.AddedUtc is null).ToList())
         {
             Chats.Remove(gone);
             _byKey.Remove(gone.Key);
@@ -495,9 +505,8 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     {
         _searchCts?.Cancel();
         var cts = _searchCts = new CancellationTokenSource();
-        GlobalResults.Clear();
         var q = query.Trim();
-        if (q.Length < 2) { OnPropertyChanged(nameof(IsListEmpty)); return; }
+        if (q.Length < 2) { GlobalResults.Clear(); OnPropertyChanged(nameof(IsListEmpty)); return; }
         try
         {
             await Task.Delay(350, cts.Token);
@@ -515,6 +524,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
             if (q.TrimStart('@').Length >= 2) found.AddRange(await _tg.SearchPeersAsync(q.TrimStart('@')));
             if (cts.IsCancellationRequested) return;
 
+            GlobalResults.Clear(); // прежние результаты висят, пока не пришли новые — без мигания
             foreach (var p in found.DistinctBy(p => p.Key).Where(p => !_byKey.TryGetValue(p.Key, out var c) || !ChatsView.Contains(c)))
             {
                 var vm = new PeerResultViewModel(p);
@@ -602,6 +612,8 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         if (!_byKey.TryGetValue(peer.Key, out var item))
         {
             item = new ChatItemViewModel(new ChatSummary { Peer = peer }, int.MaxValue);
+            item.AddedUtc = DateTime.UtcNow;
+            item.EnsureAvatar(_tg.Media);
             _byKey[peer.Key] = item;
             Chats.Add(item);
         }

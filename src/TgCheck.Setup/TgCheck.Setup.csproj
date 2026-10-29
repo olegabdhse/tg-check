@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Установщик TG Check: .NET Framework 4.8 уже есть в Windows 10/11, поэтому установщик не тащит рантайм.
-       Внутри — готовый dist\TgCheck.exe (собирается build.ps1 перед установщиком). -->
+  <!-- Установщик TG Check: .NET Framework 4.8 уже есть в Windows 10/11, поэтому установщик крошечный.
+       Саму программу он скачивает из последнего релиза GitHub (репозиторий — UpdateRepo из Directory.Build.props). -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net48</TargetFramework>
@@ -21,7 +21,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="..\..\dist\TgCheck.exe" LogicalName="TgCheck.exe" Condition="Exists('..\..\dist\TgCheck.exe')" />
     <EmbeddedResource Include="..\TgCheck.App\obj\logo\app.png" LogicalName="logo.png" Condition="Exists('..\TgCheck.App\obj\logo\app.png')" />
     <Reference Include="Microsoft.CSharp" />
   </ItemGroup>

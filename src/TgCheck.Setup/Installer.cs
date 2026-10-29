@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Reflection;
 using Microsoft.Win32;
 
@@ -16,6 +17,18 @@ internal static class Installer
     public const string AppName = "TG Check";
     private const string ExeName = "TgCheck.exe";
     private const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\TGCheck";
+
+    /// <summary>Последний релиз программы на GitHub (репозиторий — из настроек сборки, как у автообновления).</summary>
+    private static string DownloadUrl
+    {
+        get
+        {
+            var repo = Assembly.GetExecutingAssembly().GetCustomAttributes<AssemblyMetadataAttribute>()
+                .FirstOrDefault(a => a.Key == "UpdateRepo")?.Value;
+            if (string.IsNullOrEmpty(repo)) throw new InvalidOperationException("Установщик собран без адреса репозитория (UpdateRepo).");
+            return $"https://github.com/{repo}/releases/latest/download/{ExeName}";
+        }
+    }
 
     public static string InstallDir { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", AppName);
@@ -48,26 +61,33 @@ internal static class Installer
         Directory.CreateDirectory(InstallDir);
         progress.Report(5);
 
-        // Программа (встроена в установщик при сборке).
-        using (var source = Assembly.GetExecutingAssembly().GetManifestResourceStream(ExeName)
-                            ?? throw new InvalidOperationException("Установщик собран без TgCheck.exe."))
+        // Программа — последняя версия из релизов GitHub (установщик поэтому весит килобайты).
+        var tmp = InstalledExe + ".new";
+        ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+        var request = (HttpWebRequest)WebRequest.Create(DownloadUrl);
+        request.UserAgent = "TgCheck-Setup";
+        using (var response = (HttpWebResponse)request.GetResponse())
+        using (var source = response.GetResponseStream()!)
+        using (var target = File.Create(tmp))
         {
-            var tmp = InstalledExe + ".new";
-            using (var target = File.Create(tmp))
+            var total = response.ContentLength;
+            var buffer = new byte[1 << 16];
+            long done = 0;
+            int read;
+            while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
             {
-                var buffer = new byte[1 << 20];
-                long done = 0;
-                int read;
-                while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
-                {
-                    target.Write(buffer, 0, read);
-                    done += read;
-                    progress.Report(5 + (int)(80 * done / Math.Max(1, source.Length)));
-                }
+                target.Write(buffer, 0, read);
+                done += read;
+                if (total > 0) progress.Report(5 + (int)(80 * done / total));
             }
-            if (File.Exists(InstalledExe)) File.Delete(InstalledExe);
-            File.Move(tmp, InstalledExe);
         }
+        if (new FileInfo(tmp).Length < 1024 * 1024)
+        {
+            File.Delete(tmp);
+            throw new InvalidOperationException("Не удалось скачать программу — проверьте интернет и попробуйте ещё раз.");
+        }
+        if (File.Exists(InstalledExe)) File.Delete(InstalledExe);
+        File.Move(tmp, InstalledExe);
 
         // Сам установщик — он же удаляет программу из «Приложений».
         var self = Assembly.GetExecutingAssembly().Location;

@@ -514,6 +514,14 @@ public sealed partial class TelegramService
 
     private static string UrlOf(WebViewResult r) => (r as WebViewResultUrl)?.url ?? throw new InvalidOperationException("Бот не вернул адрес мини-приложения.");
 
+    /// <summary>Кнопка «Старт» у бота, с которым ещё нет переписки (как /start в Telegram).</summary>
+    public async Task StartBotAsync(PeerRef bot)
+    {
+        if (bot.Info is not User user) return;
+        EnsureNotIgnored(bot);
+        await _client.Messages_StartBot(user, bot.Info.ToInputPeer(), WTelegram.Helpers.RandomLong(), "");
+    }
+
     /// <summary>Отправить текст кнопки клавиатуры бота (как обычное сообщение).</summary>
     public Task<MessageItem> SendKeyboardButtonAsync(PeerRef peer, BotButton button) => SendTextAsync(peer, button.Text);
 
