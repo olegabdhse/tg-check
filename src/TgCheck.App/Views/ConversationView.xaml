@@ -458,7 +458,7 @@
                                 <Setter Property="ContentTemplate">
                                     <Setter.Value>
                                         <DataTemplate>
-                                            <ContentControl Content="{Binding Media}" Style="{StaticResource MediaHost}" HorizontalAlignment="Left" Margin="0,3,0,5" />
+                                            <ContentControl DataContext="{Binding Media}" Content="{Binding}" Style="{StaticResource MediaHost}" HorizontalAlignment="Left" Margin="0,3,0,5" />
                                         </DataTemplate>
                                     </Setter.Value>
                                 </Setter>
@@ -467,7 +467,7 @@
                                 <Setter Property="ContentTemplate">
                                     <Setter.Value>
                                         <DataTemplate>
-                                            <ContentControl Content="{Binding Media}" Style="{StaticResource MediaHost}" HorizontalAlignment="Left" Margin="0,3,0,5" />
+                                            <ContentControl DataContext="{Binding Media}" Content="{Binding}" Style="{StaticResource MediaHost}" HorizontalAlignment="Left" Margin="0,3,0,5" />
                                         </DataTemplate>
                                     </Setter.Value>
                                 </Setter>
