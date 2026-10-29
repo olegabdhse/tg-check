@@ -314,7 +314,7 @@ public partial class IslandWindow : Window
     {
         if (_dragged) return;
         _mini?.HideNow();
-        HideNow();
+        HideIsland(); // гаснет плавно, как при открытии из трея
         Dispatcher.BeginInvoke(DispatcherPriority.Background, _restoreMain);
     }
 
@@ -408,7 +408,7 @@ public partial class IslandWindow : Window
             // Сначала убираем мини-окно и островок, чат готовим, пока окно ещё свёрнуто,
             // и только потом показываем уже готовое приложение — без промежуточной перерисовки.
             _mini?.HideNow();
-            HideNow();
+            HideIsland();
             _shell.OpenChat(peer);
             Dispatcher.BeginInvoke(DispatcherPriority.Background, _restoreMain);
         });

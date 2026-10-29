@@ -131,7 +131,7 @@ public partial class MainWindow : Window
 
     private void OpenChatFromNotification(PeerRef peer)
     {
-        _island?.HideNow();
+        _island?.HideIsland();
         _notifyShell?.OpenChat(peer);
         Dispatcher.BeginInvoke(DispatcherPriority.Background, RestoreFromBackground);
     }
