@@ -55,6 +55,7 @@ public partial class MainWindow : Window
         {
             e.Cancel = true;
             Hide();
+            ShowIsland();
             if (!_trayHintShown)
             {
                 _trayHintShown = true;
@@ -113,27 +114,28 @@ public partial class MainWindow : Window
     // Свернули — сверху появляется «островок» с последними чатами; развернули — он прячется.
     private void OnStateChanged(object? sender, EventArgs e)
     {
-        if (WindowState == WindowState.Minimized)
+        if (WindowState == WindowState.Minimized) ShowIsland();
+        else _island?.HideIsland();
+    }
+
+    // Островок с последними чатами — когда окно свёрнуто или закрыто в трей.
+    private void ShowIsland()
+    {
+        if (!UiSettings.ShowIsland) return;
+        if (DataContext is not MainViewModel { CurrentPage: ShellViewModel shell }) return;
+        if (_island is null || _islandShell != shell)
         {
-            if (!UiSettings.ShowIsland) return;
-            if (DataContext is not MainViewModel { CurrentPage: ShellViewModel shell }) return;
-            if (_island is null || _islandShell != shell)
-            {
-                _island?.Close();
-                _island = new IslandWindow(shell, RestoreFromBackground);
-                _islandShell = shell;
-            }
-            _island.ShowIsland();
+            _island?.Close();
+            _island = new IslandWindow(shell, RestoreFromBackground);
+            _islandShell = shell;
         }
-        else
-        {
-            _island?.HideIsland();
-        }
+        _island.ShowIsland();
     }
 
     public void RestoreFromBackground()
     {
         Show();
+        _island?.HideIsland(); // окно было закрыто в трей — его состояние не менялось, островок прячем сами
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Activate();
     }

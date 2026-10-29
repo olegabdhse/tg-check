@@ -19,6 +19,8 @@ public static class UiSettings
         public bool SoundOff { get; set; }
         public bool NotifyArchived { get; set; }
         public bool HideStories { get; set; }
+        public string? IslandEdge { get; set; }
+        public double? IslandAlong { get; set; }
     }
 
     private static Data _data = Load();
@@ -49,6 +51,13 @@ public static class UiSettings
 
     /// <summary>Звук уведомления.</summary>
     public static bool NotificationSound { get => !_data.SoundOff; set { _data.SoundOff = !value; Save(); } }
+
+    /// <summary>Сторона экрана, к которой притянут островок (Top, Bottom, Left, Right), и место вдоль неё (0..1).</summary>
+    public static (string Edge, double Along) IslandPlace
+    {
+        get => (_data.IslandEdge ?? "Top", _data.IslandAlong ?? 0.5);
+        set { _data.IslandEdge = value.Edge; _data.IslandAlong = value.Along; Save(); }
+    }
 
     /// <summary>Полоса историй над списком чатов.</summary>
     public static bool ShowStories { get => !_data.HideStories; set { _data.HideStories = !value; Save(); } }

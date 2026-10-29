@@ -11,32 +11,6 @@
         <SolidColorBrush x:Key="OutBubble" Color="#2B5278" />
         <SolidColorBrush x:Key="InBubble" Color="#182533" />
         <SolidColorBrush x:Key="ChatBg" Color="#0E1621" />
-        <SolidColorBrush x:Key="MetaBrush" Color="#7E93A6" />
-
-        <!-- Круглая кнопка -->
-        <Style x:Key="RoundButton" TargetType="Button">
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Grid>
-                            <Ellipse x:Name="C" Fill="{TemplateBinding Background}" />
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Grid>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="C" Property="Opacity" Value="0.85" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="C" Property="Fill" Value="{StaticResource Surface3Brush}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
 
         <!-- Кнопка бота (инлайн под сообщением и клавиатура под полем ввода) -->
         <Style x:Key="BotButton" TargetType="Button">
@@ -1300,7 +1274,7 @@
                 </Grid>
             </Border>
             <!-- ================================================= Островок тем справа (в открытой теме форума) -->
-            <Border Grid.Row="1" Grid.RowSpan="2" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,16,10,16" Width="58"
+            <Border Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,12,10,12" Width="58"
                     CornerRadius="29" Background="{StaticResource Surface2Brush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
                     Padding="0,8" Visibility="{Binding ShowTopicRail, Converter={StaticResource BoolToVis}}">
                 <ScrollViewer VerticalScrollBarVisibility="Hidden" helpers:SmoothScroll.IsEnabled="True">

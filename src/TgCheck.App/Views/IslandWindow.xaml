@@ -7,7 +7,7 @@
         Title="TG Check" WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize"
         SizeToContent="WidthAndHeight" FontFamily="{StaticResource UiFont}" Foreground="{StaticResource TextBrush}"
-        UseLayoutRounding="True">
+        UseLayoutRounding="True" PreviewMouseLeftButtonDown="Island_MouseDown" PreviewMouseLeftButtonUp="Island_MouseUp">
 
     <Window.Resources>
         <LinearGradientBrush x:Key="RingUnread" StartPoint="0,1" EndPoint="1,0">
@@ -26,7 +26,7 @@
             <Border.Effect>
                 <DropShadowEffect BlurRadius="22" ShadowDepth="4" Opacity="0.55" />
             </Border.Effect>
-            <StackPanel Orientation="Horizontal">
+            <StackPanel x:Name="PillStack" Orientation="{Binding IslandOrientation, RelativeSource={RelativeSource AncestorType=Window}}">
                 <!-- Значок приложения: клик — развернуть окно -->
                 <Button x:Name="AppButton" Width="42" Height="42" Cursor="Hand" ToolTip="Открыть TG Check" Click="AppButton_Click"
                         FocusVisualStyle="{x:Null}">
@@ -47,17 +47,18 @@
                         </ControlTemplate>
                     </Button.Template>
                 </Button>
-                <Border Width="1" Height="26" Background="#33FFFFFF" Margin="10,0,6,0" />
+                <Border x:Name="Divider" Width="1" Height="26" Background="#33FFFFFF" Margin="10,0,6,0" />
 
                 <ItemsControl x:Name="ChatsList">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <StackPanel Orientation="Horizontal" />
+                            <StackPanel Orientation="{Binding IslandOrientation, RelativeSource={RelativeSource AncestorType=Window}}" />
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate DataType="{x:Type vm:ChatItemViewModel}">
-                            <Button Width="46" Height="46" Margin="4,0" Cursor="Hand" FocusVisualStyle="{x:Null}" Click="Chat_Click"
+                            <Button Width="46" Height="46" Margin="4" Cursor="Hand" FocusVisualStyle="{x:Null}" Click="Chat_Click"
+                                    PreviewMouseLeftButtonDown="Chat_MouseDown"
                                     ToolTip="{Binding Title}">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">

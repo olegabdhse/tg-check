@@ -37,6 +37,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         _tg.ReactionsUpdated += OnReactionsUpdated;
         _tg.MessagesDeleted += OnMessagesDeleted;
         _tg.HistoryRead += OnHistoryRead;
+        _syncTimer.Tick += async (_, _) => await SyncRecentAsync();
         _tg.UserTyping += OnUserTyping;
         _tg.UserStatusChanged += OnUserStatus;
         _tg.PollUpdated += OnPollUpdated;
@@ -231,6 +232,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
             NotifyArchive();
             RefreshView();
             _ = LoadStoriesAsync();
+            _syncTimer.Start();
             _ = RefreshPresenceAsync();
 
             Merge(await _tg.GetDialogsAsync(archived: true), true, removeMissing: true);
@@ -247,6 +249,16 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         {
             IsLoading = false;
         }
+    }
+
+    // Раз в минуту сверяем верх списка с сервером: в больших группах Telegram присылает не все обновления,
+    // и без сверки счётчики непрочитанных и последние сообщения расходятся с официальным клиентом.
+    private readonly System.Windows.Threading.DispatcherTimer _syncTimer = new() { Interval = TimeSpan.FromSeconds(60) };
+
+    private async Task SyncRecentAsync()
+    {
+        try { Merge(await _tg.GetRecentDialogsAsync(), false, removeMissing: false); NotifyArchive(); }
+        catch (Exception ex) { Logging.Write("sync dialogs: " + ex.Message); }
     }
 
     // Обновляем существующие строки, добавляем новые, убираем пропавшие — без мерцания списка.
@@ -607,13 +619,20 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
             chat.Last = conv.Items.OfType<MessageViewModel>().LastOrDefault()?.Item;
     }
 
-    private void OnHistoryRead(long peerKey, int maxId, bool outbox) => Anim.Ui(() =>
+    private void OnHistoryRead(long peerKey, int maxId, bool outbox, int stillUnread) => Anim.Ui(() =>
     {
         if (!_byKey.TryGetValue(peerKey, out var chat)) return;
         if (outbox)
         {
             chat.ReadOutboxMaxId = Math.Max(chat.ReadOutboxMaxId, maxId);
             if (_conversations.TryGetValue(peerKey, out var conv)) conv.OnOutboxRead(maxId);
+        }
+        else if (stillUnread >= 0)
+        {
+            // Сервер сообщил точный остаток (прочитали на другом устройстве не до конца) — так и показываем.
+            chat.Unread = stillUnread;
+            if (stillUnread == 0) chat.IsMarkedUnread = false;
+            NotifyArchive();
         }
         else if (chat.Last is null || maxId >= chat.Last.Id)
         {
@@ -655,6 +674,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _presenceTimer.Stop();
+        _syncTimer.Stop();
         _tg.MessageReceived -= OnMessageReceivedEvent;
         _tg.MessageEdited -= OnMessageEdited;
         _tg.ReactionsUpdated -= OnReactionsUpdated;

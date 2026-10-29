@@ -21,10 +21,10 @@
 
         <!-- Карточка подарка -->
         <DataTemplate x:Key="GiftCard" DataType="{x:Type vm:GiftViewModel}">
-            <Button Style="{StaticResource CardButton}" Width="172" Margin="0,0,14,14"
+            <Button Style="{StaticResource CardButton}"
                     Command="{Binding DataContext.OpenGiftCommand, ElementName=Root}" CommandParameter="{Binding}">
                 <StackPanel>
-                    <Grid Height="156" Margin="8,8,8,0">
+                    <Grid Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}}" Margin="8,8,8,0">
                         <Border CornerRadius="12" Background="{StaticResource Surface2Brush}" />
                         <Border CornerRadius="12" Background="{Binding Backdrop}"
                                 Visibility="{Binding Backdrop, Converter={StaticResource NullToVis}}" />
@@ -521,7 +521,8 @@
                         <ItemsControl ItemsSource="{Binding GiftsView}" ItemTemplate="{StaticResource GiftCard}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <WrapPanel />
+                                    <!-- Колонки под ширину окна, без пустого места справа -->
+                                    <controls:AdaptiveGrid MinItemWidth="172" Spacing="14" Margin="0,0,14,0" />
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                         </ItemsControl>

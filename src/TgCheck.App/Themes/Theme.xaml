@@ -263,6 +263,33 @@
         </Setter>
     </Style>
 
+    <SolidColorBrush x:Key="MetaBrush" Color="#7E93A6" />
+
+    <!-- Круглая кнопка -->
+    <Style x:Key="RoundButton" TargetType="Button">
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid>
+                        <Ellipse x:Name="C" Fill="{TemplateBinding Background}" />
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="C" Property="Opacity" Value="0.85" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="C" Property="Fill" Value="{StaticResource Surface3Brush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Прозрачная кнопка-обёртка (клик по контенту) -->
     <Style x:Key="BareButton" TargetType="Button">
         <Setter Property="Cursor" Value="Hand" />

@@ -114,9 +114,24 @@ public static class SmoothScroll
         private bool _running;
         private TimeSpan _last;
 
+        // Внутри этой прокрутки под курсором есть свой прокручиваемый блок, и он ещё не упёрся в край?
+        private bool InnerCanScroll(MouseWheelEventArgs e)
+        {
+            var d = e.OriginalSource as DependencyObject;
+            while (d is not null && !ReferenceEquals(d, sv))
+            {
+                if (d is ScrollViewer inner && inner.ScrollableHeight > 0 &&
+                    (e.Delta > 0 ? inner.VerticalOffset > 0.5 : inner.VerticalOffset < inner.ScrollableHeight - 0.5))
+                    return true;
+                d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d);
+            }
+            return false;
+        }
+
         public void OnWheel(object sender, MouseWheelEventArgs e)
         {
             if (sv.ScrollableHeight <= 0 || Keyboard.Modifiers != ModifierKeys.None) return;
+            if (InnerCanScroll(e)) return; // колесо — тому блоку под курсором, который ещё может листаться
 
             var from = _running ? _target : sv.VerticalOffset;
             var to = Math.Clamp(from - e.Delta * WheelStep, 0, sv.ScrollableHeight);

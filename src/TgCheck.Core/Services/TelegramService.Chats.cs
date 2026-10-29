@@ -23,7 +23,8 @@ public sealed partial class TelegramService
     /// <summary>Удалены сообщения: ключ чата (null — личные/обычные группы, id глобальные) и id.</summary>
     public event Action<long?, int[]>? MessagesDeleted;
     /// <summary>Прочитано: ключ чата, max id, outbox (собеседник прочитал наши) / inbox (мы прочитали на другом устройстве).</summary>
-    public event Action<long, int, bool>? HistoryRead;
+    /// <summary>Прочитано (peerKey, до id, исходящие?, сколько осталось непрочитанных или -1).</summary>
+    public event Action<long, int, bool, int>? HistoryRead;
     /// <summary>Кто-то печатает: ключ чата, кто печатает.</summary>
     public event Action<long, PeerRef>? UserTyping;
     public event Action<long, Presence, DateTime?>? UserStatusChanged;
@@ -147,6 +148,16 @@ public sealed partial class TelegramService
             _cache.Save($"dialogs_{(archived ? 1 : 0)}", dialogs);
             return MapDialogs(dialogs, archived);
         });
+    }
+
+    /// <summary>
+    /// Верх списка чатов с сервера (последние ~60): точные счётчики непрочитанных и последние сообщения.
+    /// Нужен для сверки: в больших группах Telegram присылает не все обновления.
+    /// </summary>
+    public async Task<IReadOnlyList<ChatSummary>> GetRecentDialogsAsync(int limit = 60)
+    {
+        var dialogs = await _client.Messages_GetDialogs(default, 0, null, limit, 0, folder_id: 0);
+        return await Task.Run(() => MapDialogs(dialogs, archived: false));
     }
 
     /// <summary>Диалоги из локального кэша (мгновенно при запуске), null — кэша нет.</summary>
@@ -353,16 +364,16 @@ public sealed partial class TelegramService
                 MessagesDeleted?.Invoke(null, d.messages);
                 break;
             case UpdateReadHistoryOutbox r:
-                HistoryRead?.Invoke(PeerRef.KeyOf(r.peer), r.max_id, true);
+                HistoryRead?.Invoke(PeerRef.KeyOf(r.peer), r.max_id, true, -1);
                 break;
             case UpdateReadHistoryInbox r:
-                HistoryRead?.Invoke(PeerRef.KeyOf(r.peer), r.max_id, false);
+                HistoryRead?.Invoke(PeerRef.KeyOf(r.peer), r.max_id, false, r.still_unread_count);
                 break;
             case UpdateReadChannelOutbox r:
-                HistoryRead?.Invoke(-1_000_000_000_000 - r.channel_id, r.max_id, true);
+                HistoryRead?.Invoke(-1_000_000_000_000 - r.channel_id, r.max_id, true, -1);
                 break;
             case UpdateReadChannelInbox r:
-                HistoryRead?.Invoke(-1_000_000_000_000 - r.channel_id, r.max_id, false);
+                HistoryRead?.Invoke(-1_000_000_000_000 - r.channel_id, r.max_id, false, r.still_unread_count);
                 break;
             case UpdateUserTyping t when !IsIgnored(t.user_id) && t.action is not SendMessageCancelAction
                                           && _users.TryGetValue(t.user_id, out var tu):

@@ -338,11 +338,13 @@
 
                 <!-- Глобальный поиск -->
                 <Border Grid.Row="4" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="0,8,0,8"
+                        MaxHeight="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=Grid}, Converter={StaticResource Mul}, ConverterParameter=0.55}"
                         Visibility="Collapsed" helpers:Anim.Mode="SlideUp"
                         helpers:Anim.Show="{Binding GlobalResults.Count, Converter={x:Static views:ChatsView.NonZero}}">
-                    <StackPanel>
-                        <TextBlock Text="Люди и каналы" Style="{StaticResource Caption}" Margin="18,0,0,6" />
-                        <ScrollViewer MaxHeight="320" VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True">
+                    <!-- Не выше половины панели (иначе в невысоком окне список обрезается и не листается) -->
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="Люди и каналы" Style="{StaticResource Caption}" Margin="18,0,0,6" />
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True">
                             <ItemsControl ItemsSource="{Binding GlobalResults}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate DataType="{x:Type vm:PeerResultViewModel}">
@@ -365,7 +367,7 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                         </ScrollViewer>
-                    </StackPanel>
+                    </DockPanel>
                 </Border>
                 <views:Spinner Grid.Row="4" Width="16" Height="16" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,10,16,0"
                                Visibility="{Binding IsSearchingGlobal, Converter={StaticResource BoolToVis}}" />
