@@ -69,25 +69,31 @@ public partial class IslandWindow : Window
 
     private void OnIslandChanged() => Anim.Ui(Refresh);
 
+    // Чаты островка — одна и та же коллекция: изменения переставляют строки на месте, а не пересоздают все
+    // аватарки (иначе островок «моргал», будто обновляется целиком, и терял клик в этот момент).
+    private readonly System.Collections.ObjectModel.ObservableCollection<ChatItemViewModel> _chats = [];
+
     private void Refresh()
     {
         var chats = _shell.IslandChats();
-        // Тот же набор — ничего не перестраиваем: иначе островок «моргает» и теряет клик, пришедший в этот момент.
-        if (ChatsList.ItemsSource is IEnumerable<ChatItemViewModel> shown && shown.SequenceEqual(chats)) return;
+        if (_chats.SequenceEqual(chats)) return;
         foreach (var c in chats) c.EnsureAvatar(_shell.Chats.Media);
-        ChatsList.ItemsSource = chats;
+        for (var i = _chats.Count - 1; i >= 0; i--)
+            if (!chats.Contains(_chats[i])) _chats.RemoveAt(i);
+        for (var i = 0; i < chats.Count; i++)
+        {
+            var at = _chats.IndexOf(chats[i]);
+            if (at < 0) _chats.Insert(i, chats[i]);
+            else if (at != i) _chats.Move(at, i);
+        }
+        if (!ReferenceEquals(ChatsList.ItemsSource, _chats)) ChatsList.ItemsSource = _chats;
     }
 
-    // Новое входящее — островок слегка «подпрыгивает».
+    // Новое входящее — только обновить порядок (без «подпрыгивания»: оно выглядело как лишняя анимация обновления).
     private void OnIncoming(ChatItemViewModel chat) => Anim.Ui(() =>
     {
         if (!IsVisible || _hiding) return;
         Refresh();
-        var bounce = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(420) };
-        bounce.KeyFrames.Add(new EasingDoubleKeyFrame(1.06, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(140)), new CubicEase()));
-        bounce.KeyFrames.Add(new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(420)), new BackEase { Amplitude = 0.5 }));
-        PillScale.BeginAnimation(ScaleTransform.ScaleXProperty, bounce);
-        PillScale.BeginAnimation(ScaleTransform.ScaleYProperty, bounce);
     });
 
     // ===================================================================== Сторона экрана
@@ -176,15 +182,13 @@ public partial class IslandWindow : Window
         if (_dragged) e.Handled = true; // отпустили после перетаскивания — это не клик
     }
 
-    // Курсор в единицах WPF на экране (GetCursorPos — в пикселях).
-    private Point CursorOnScreen()
-    {
-        var p = PointToScreen(Mouse.GetPosition(this));
-        var dpi = VisualTreeHelper.GetDpi(this);
-        return new Point(p.X / dpi.DpiScaleX, p.Y / dpi.DpiScaleY);
-    }
+    private (int X, int Y) _grabPx;
 
-    private Vector _grab;
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)] private struct PointPx { public int X, Y; }
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)] private struct RectPx { public int Left, Top, Right, Bottom; }
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool GetCursorPos(out PointPx p);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr h, out RectPx r);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
 
     // Перетаскиваем сами (захват мыши окном), а не системным переносом окна: кнопка чата под пальцем
     // уже захватила мышь, и системный перенос в этом случае сразу обрывается.
@@ -195,7 +199,11 @@ public partial class IslandWindow : Window
         _dragged = true;
         _dragging = true;
         _quick?.Close();
-        _grab = CursorOnScreen() - new Point(Left, Top);
+        // Двигаем окно напрямую системой, в пикселях экрана: одно перемещение за шаг мыши, без пересчёта
+        // Left/Top через WPF (два перемещения прозрачного окна с перерисовкой — отсюда «заторможенность»).
+        GetCursorPos(out var c);
+        GetWindowRect(new System.Windows.Interop.WindowInteropHelper(this).Handle, out var r);
+        _grabPx = (c.X - r.Left, c.Y - r.Top);
         CaptureMouse();
         PreviewMouseMove += OnDragMove;
         PillScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1.06, TimeSpan.FromMilliseconds(120)));
@@ -206,9 +214,9 @@ public partial class IslandWindow : Window
     {
         if (!_dragging) return;
         if (e.LeftButton != MouseButtonState.Pressed) { EndDrag(); return; }
-        var p = CursorOnScreen() - _grab;
-        Left = p.X;
-        Top = p.Y;
+        GetCursorPos(out var c);
+        const uint SWP_NOSIZE = 0x1, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10;
+        SetWindowPos(new System.Windows.Interop.WindowInteropHelper(this).Handle, IntPtr.Zero, c.X - _grabPx.X, c.Y - _grabPx.Y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
     private void EndDrag()

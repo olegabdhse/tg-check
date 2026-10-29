@@ -146,8 +146,9 @@ public partial class ConversationView : UserControl
             {
                 var top = el.TransformToAncestor(Scroller).Transform(new Point(0, 0)).Y + Scroller.VerticalOffset;
                 var target = Math.Clamp(top - (Scroller.ViewportHeight - el.ActualHeight) / 2, 0, Scroller.ScrollableHeight);
-                // После пересборки — сразу на место; если сообщение уже рядом — плавно.
-                if (_feedHidden) SmoothScroll.JumpTo(Scroller, target);
+                // После пересборки или если сообщение далеко — сразу на место (плавная прокрутка через сотни сообщений
+                // отрисовывает их все и тормозит); если рядом — плавно.
+                if (_feedHidden || Math.Abs(target - Scroller.VerticalOffset) > Scroller.ViewportHeight * 1.5) SmoothScroll.JumpTo(Scroller, target);
                 else SmoothScroll.ScrollTo(Scroller, target);
             }
             RevealFeed();

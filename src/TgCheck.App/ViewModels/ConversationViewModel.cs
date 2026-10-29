@@ -1472,6 +1472,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         OnPropertyChanged(nameof(HasPinned));
         OnPropertyChanged(nameof(PinnedText));
         OnPropertyChanged(nameof(PinnedTitle));
+        PrefetchNextPinned();
     }
 
     /// <summary>Клик по плашке закрепа: перейти к сообщению, следующий клик — к более старому закрепу.</summary>
@@ -1482,6 +1483,20 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         var target = Pinned[Math.Min(PinnedIndex, Pinned.Count - 1)];
         PinnedIndex = (PinnedIndex + 1) % Pinned.Count;
         await JumpToMessageAsync(target.Id);
+        PrefetchNextPinned();
+    }
+
+    // Окрестность следующего закрепа — заранее, в фоне: клик по плашке переходит сразу, без ожидания сети.
+    private readonly Dictionary<int, Task<IReadOnlyList<MessageItem>>> _aroundCache = [];
+
+    private void PrefetchNextPinned()
+    {
+        if (Pinned.Count == 0) return;
+        var next = Pinned[Math.Min(PinnedIndex, Pinned.Count - 1)].Id;
+        if (_byId.ContainsKey(next) || _aroundCache.ContainsKey(next)) return;
+        var task = _tg.GetHistoryAroundAsync(Peer, next, 40);
+        _aroundCache[next] = task;
+        task.ContinueWith(_ => _aroundCache.Remove(next), CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.FromCurrentSynchronizationContext());
     }
 
     public async Task JumpToMessageAsync(int id)
@@ -1490,7 +1505,8 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         {
             try
             {
-                var around = await _tg.GetHistoryAroundAsync(Peer, id);
+                // Уже подгружено заранее (следующий закреп) — без запроса; иначе — 40 сообщений вокруг (меньше пересборка).
+                var around = _aroundCache.Remove(id, out var prefetched) ? await prefetched : await _tg.GetHistoryAroundAsync(Peer, id, 40);
                 FeedResetting?.Invoke();
                 ResetItems(around, staged: false); // нужное сообщение — в середине, оно должно быть сразу
                 HasMoreHistory = true;
