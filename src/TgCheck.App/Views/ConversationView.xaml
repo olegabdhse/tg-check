@@ -1743,8 +1743,7 @@
                 <!-- Под видео — его превью: пока грузится или если встроенный плеер не справился, место не пустое -->
                 <Image Source="{Binding ViewerMessage.Preview}" helpers:RoundClip.Radius="12" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"
                        Visibility="{Binding ViewerIsVideo, Converter={StaticResource BoolToVis}}" />
-                <MediaElement x:Name="VideoPlayer" LoadedBehavior="Manual" UnloadedBehavior="Close" Stretch="Uniform"
-                              Source="{Binding ViewerVideoPath, Converter={StaticResource ToUri}}"
+                <controls:VlcVideoView x:Name="VideoPlayer" SourcePath="{Binding ViewerVideoPath}"
                               MediaOpened="VideoPlayer_MediaOpened" MediaEnded="VideoPlayer_MediaEnded" MediaFailed="VideoPlayer_MediaFailed"
                               Visibility="{Binding ViewerIsVideo, Converter={StaticResource BoolToVis}}" />
                 <Border HorizontalAlignment="Center" VerticalAlignment="Center" Background="#CC0B1016" CornerRadius="12" Padding="18,14"

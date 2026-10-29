@@ -26,6 +26,10 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
     <PackageReference Include="QRCoder" Version="1.8.1" />
     <PackageReference Include="SkiaSharp.HarfBuzz" Version="4.154.0" />
+    <!-- Видеоплеер на движке VLC: играет любые форматы (webm, HEVC, mkv…), которых нет у встроенного плеера Windows. -->
+    <PackageReference Include="LibVLCSharp" Version="3.9.0" />
+    <!-- Нативный VLC: в вывод не копируется (ExcludeAssets) — нужные файлы пакуются в exe архивом (см. EmbedVlc). -->
+    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.21" ExcludeAssets="all" GeneratePathProperty="true" />
   </ItemGroup>
 
   <ItemGroup>
@@ -49,6 +53,23 @@
   <Target Name="EmbedEnv" BeforeTargets="BeforeBuild" DependsOnTargets="EncryptEnv" Condition="Exists('$(EnvSource)')">
     <ItemGroup>
       <EmbeddedResource Include="$(EnvBlob)" LogicalName="TgCheck.embedded.env" />
+    </ItemGroup>
+  </Target>
+
+  <!-- VLC для видео: нужная часть (~45 МБ) пакуется в zip и встраивается в exe; распаковывается один раз,
+       при первом видео (см. Helpers\VlcRuntime.cs) — запуск программы от этого не замедляется. -->
+  <PropertyGroup>
+    <VlcSource>$(PkgVideoLAN_LibVLC_Windows)\build\x64</VlcSource>
+    <VlcZip>$(MSBuildProjectDirectory)\obj\vlc-3.0.21.zip</VlcZip>
+  </PropertyGroup>
+
+  <Target Name="PackVlc" Inputs="$(MSBuildThisFileDirectory)..\..\build\pack-vlc.ps1" Outputs="$(VlcZip)">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\..\build\pack-vlc.ps1&quot; -Source &quot;$(VlcSource)&quot; -OutFile &quot;$(VlcZip)&quot;" />
+  </Target>
+
+  <Target Name="EmbedVlc" BeforeTargets="BeforeBuild" DependsOnTargets="PackVlc">
+    <ItemGroup>
+      <EmbeddedResource Include="$(VlcZip)" LogicalName="TgCheck.vlc.zip" />
     </ItemGroup>
   </Target>
 

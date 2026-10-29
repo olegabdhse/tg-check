@@ -152,6 +152,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _updateTimer.Tick += (_, _) => { if (_update is null) _ = CheckUpdatesAsync(); };
         _updateTimer.Start();
         await Chats.EnsureLoadedAsync();
+        Helpers.VlcRuntime.Prewarm(); // видеоплеер — заранее, в фоне: первое видео откроется без распаковки движка
         OnPropertyChanged(nameof(ChatsUnread));
     }
 

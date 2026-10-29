@@ -426,7 +426,7 @@ public partial class ConversationView : UserControl
             _videoTimer.Start();
         });
     }
-    private void VideoPlayer_MediaOpened(object sender, RoutedEventArgs e)
+    private void VideoPlayer_MediaOpened(object? sender, EventArgs e)
     {
         AudioPlayer.Instance.Stop();
         VideoPlayer.Play();
@@ -435,19 +435,18 @@ public partial class ConversationView : UserControl
         _videoTimer.Start();
     }
 
-    // Формат/кодек, которого нет у встроенного плеера (webm, HEVC без расширения Windows и т.п.).
-    private void VideoPlayer_MediaFailed(object sender, ExceptionRoutedEventArgs e)
+    // VLC не смог открыть файл (повреждён или не докачан) — превью и кнопка «Открыть в плеере».
+    private void VideoPlayer_MediaFailed(object? sender, string error)
     {
         _videoTimer.Stop();
         _videoPlaying = false;
-        TgCheck.Core.Services.Logging.Write($"video failed {_vm?.ViewerMessage?.Item.MimeType} {_vm?.ViewerVideoPath}: {e.ErrorException?.Message}");
+        TgCheck.Core.Services.Logging.Write($"video failed {_vm?.ViewerMessage?.Item.MimeType} {_vm?.ViewerVideoPath}: {error}");
         if (_vm is not null) _vm.ViewerVideoFailed = true;
     }
 
-    private void VideoPlayer_MediaEnded(object sender, RoutedEventArgs e)
+    private void VideoPlayer_MediaEnded(object? sender, EventArgs e)
     {
-        VideoPlayer.Position = TimeSpan.Zero;
-        if (_vm?.ViewerMessage?.IsGif == true) { VideoPlayer.Play(); return; }
+        if (_vm?.ViewerMessage?.IsGif == true) { VideoPlayer.Play(); return; } // GIF — по кругу (Play после конца начинает заново)
         VideoPlayer.Pause();
         _videoPlaying = false;
         PlayPauseButton.Content = "";
@@ -469,15 +468,15 @@ public partial class ConversationView : UserControl
 
     private void SeekSlider_MouseUp(object sender, MouseButtonEventArgs e)
     {
-        if (VideoPlayer.NaturalDuration.HasTimeSpan)
-            VideoPlayer.Position = TimeSpan.FromSeconds(SeekSlider.Value * VideoPlayer.NaturalDuration.TimeSpan.TotalSeconds);
+        if (VideoPlayer.Duration is { } duration)
+            VideoPlayer.Position = TimeSpan.FromSeconds(SeekSlider.Value * duration.TotalSeconds);
     }
 
     private void UpdateVideoTime()
     {
         if (_vm?.IsViewerOpen != true) { VideoPlayer.Stop(); _videoTimer.Stop(); return; }
-        if (!VideoPlayer.NaturalDuration.HasTimeSpan) return;
-        var total = VideoPlayer.NaturalDuration.TimeSpan.TotalSeconds;
+        if (VideoPlayer.Duration is not { } duration) return;
+        var total = duration.TotalSeconds;
         var pos = VideoPlayer.Position.TotalSeconds;
         if (!SeekSlider.IsMouseCaptureWithin) SeekSlider.Value = total > 0 ? pos / total : 0;
         VideoTime.Text = $"{Fmt.Duration(pos)} / {Fmt.Duration(total)}";
