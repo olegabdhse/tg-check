@@ -33,33 +33,7 @@
                                 Click="Back_Click" Padding="8" />
                         <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" ToolTip="Закрыть (Esc)"
                                 Click="Close_Click" Padding="8" FontSize="13" />
-                        <!-- Последние чаты — переключение прямо в мини-окне (как в панели основного окна) -->
-                        <ItemsControl x:Name="ChatSwitcher" HorizontalAlignment="Center" VerticalAlignment="Center" Focusable="False">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <StackPanel Orientation="Horizontal" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate DataType="{x:Type views:MiniChatItem}">
-                                    <Button Width="34" Height="34" Margin="3,0" Cursor="Hand" FocusVisualStyle="{x:Null}" ToolTip="{Binding Chat.Title}"
-                                            Click="Switch_Click">
-                                        <Button.Template>
-                                            <ControlTemplate TargetType="Button">
-                                                <ContentPresenter />
-                                            </ControlTemplate>
-                                        </Button.Template>
-                                        <Grid>
-                                            <controls:AvatarView Width="34" Height="34" Source="{Binding Chat.Avatar}" Fill="{Binding Chat.AvatarBrush}"
-                                                                 Initials="{Binding Chat.Initials}" Ring="{Binding Ring}" />
-                                            <Ellipse Width="9" Height="9" Fill="{StaticResource AccentBrush}" Stroke="#0B1016" StrokeThickness="1.5"
-                                                     HorizontalAlignment="Right" VerticalAlignment="Top"
-                                                     Visibility="{Binding Chat.HasUnread, Converter={StaticResource BoolToVis}}" />
-                                        </Grid>
-                                    </Button>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <Border Width="36" Height="4" CornerRadius="2" Background="#44FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </DockPanel>
                 </Border>
 

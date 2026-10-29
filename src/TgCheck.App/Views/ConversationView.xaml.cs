@@ -130,7 +130,9 @@ public partial class ConversationView : UserControl
     {
         if (!_feedHidden) return;
         _feedHidden = false;
-        Scroller.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(160)));
+        // Без анимации: при переключении с другого чата лента просто появляется уже на месте.
+        Scroller.BeginAnimation(OpacityProperty, null);
+        Scroller.Opacity = 1;
     }
 
     // Переход к сообщению (закреп, ответ): сообщение — по центру экрана.

@@ -18,6 +18,8 @@ public sealed partial class TelegramService
     /// <summary>Новое сообщение (входящее или отправленное с другого устройства).</summary>
     public event Action<MessageItem>? MessageReceived;
     public event Action<MessageItem>? MessageEdited;
+    /// <summary>Telegram сообщил, что часть обновлений пропущена (UpdatesTooLong / UpdateChannelTooLong).</summary>
+    public event Action? ResyncNeeded;
     /// <summary>Реакции под сообщением изменились (peerKey, id, реакции).</summary>
     public event Action<long, int, IReadOnlyList<ReactionInfo>>? ReactionsUpdated;
     /// <summary>Удалены сообщения: ключ чата (null — личные/обычные группы, id глобальные) и id.</summary>
@@ -334,6 +336,8 @@ public sealed partial class TelegramService
         try
         {
             updates.CollectUsersChats(_users, _chats);
+            // «Обновлений слишком много» — сервер не прислал часть сообщений; приложение сверит список с сервером.
+            if (updates is UpdatesTooLong) ResyncNeeded?.Invoke();
             foreach (var update in updates.UpdateList)
                 HandleUpdate(update);
         }
@@ -386,6 +390,9 @@ public sealed partial class TelegramService
             case UpdateChannelUserTyping t when !IsIgnored(t.from_id) && t.action is not SendMessageCancelAction
                                                  && PeerOf(t.from_id) is { } who2:
                 UserTyping?.Invoke(-1_000_000_000_000 - t.channel_id, who2);
+                break;
+            case UpdateChannelTooLong:
+                ResyncNeeded?.Invoke(); // в канале/группе пропущены сообщения — нужна сверка
                 break;
             case UpdateMessagePoll poll:
                 OnPollUpdate(poll);

@@ -570,6 +570,8 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
 
     public void MarkRead()
     {
+        // Чат в памяти, но не на экране (быстрый ответ закрыт, окно свёрнуто) — сообщения не прочитаны.
+        if (!_owner.Shell.IsOnScreen(Peer.Key)) return;
         if (IsThread)
         {
             // Тема форума отмечается прочитанной отдельно; ветки комментариев — нет.

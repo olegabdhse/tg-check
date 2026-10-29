@@ -38,6 +38,8 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         _tg.MessagesDeleted += OnMessagesDeleted;
         _tg.HistoryRead += OnHistoryRead;
         _syncTimer.Tick += async (_, _) => await SyncRecentAsync();
+        _resyncSoon.Tick += async (_, _) => { _resyncSoon.Stop(); await SyncRecentAsync(); };
+        _tg.ResyncNeeded += () => Anim.Ui(() => { _resyncSoon.Stop(); _resyncSoon.Start(); });
         _tg.UserTyping += OnUserTyping;
         _tg.UserStatusChanged += OnUserStatus;
         _tg.PollUpdated += OnPollUpdated;
@@ -351,9 +353,11 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         NotifyArchive();
     }
 
-    // Раз в минуту сверяем верх списка с сервером: в больших группах Telegram присылает не все обновления,
+    // Каждые 20 секунд сверяем верх списка с сервером: в больших группах Telegram присылает не все обновления,
     // и без сверки счётчики непрочитанных и последние сообщения расходятся с официальным клиентом.
-    private readonly System.Windows.Threading.DispatcherTimer _syncTimer = new() { Interval = TimeSpan.FromSeconds(60) };
+    private readonly System.Windows.Threading.DispatcherTimer _syncTimer = new() { Interval = TimeSpan.FromSeconds(20) };
+    // Telegram сообщил о пропущенных обновлениях — сверка через 2 с (несколько сигналов подряд — одна сверка).
+    private readonly System.Windows.Threading.DispatcherTimer _resyncSoon = new() { Interval = TimeSpan.FromSeconds(2) };
 
     private async Task SyncRecentAsync()
     {
@@ -686,7 +690,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         }
         if (chat.Last is null || m.Id >= chat.Last.Id) chat.Last = m;
         chat.TypingText = null;
-        var isOpen = Conversation?.Peer.Key == m.PeerKey || Shell.MiniChat?.Peer.Key == m.PeerKey;
+        var isOpen = Shell.IsOnScreen(m.PeerKey);
         if (!m.IsOut && !isOpen && m.ServiceText is null)
         {
             chat.Unread++;

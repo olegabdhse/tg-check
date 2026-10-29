@@ -72,6 +72,8 @@ public partial class IslandWindow : Window
     private void Refresh()
     {
         var chats = _shell.IslandChats();
+        // Тот же набор — ничего не перестраиваем: иначе островок «моргает» и теряет клик, пришедший в этот момент.
+        if (ChatsList.ItemsSource is IEnumerable<ChatItemViewModel> shown && shown.SequenceEqual(chats)) return;
         foreach (var c in chats) c.EnsureAvatar(_shell.Chats.Media);
         ChatsList.ItemsSource = chats;
     }
@@ -224,18 +226,27 @@ public partial class IslandWindow : Window
     /// <summary>Появление у своей стороны: капсула «раскрывается».</summary>
     public void ShowIsland()
     {
+        var shown = IsVisible && !_hiding;
+        var fromOpacity = IsVisible ? Opacity : 0; // показ посреди скрытия — продолжаем с текущей прозрачности, без скачка
         _hiding = false;
-        _mini ??= CreateMini(); // заранее, чтобы первый двойной клик по чату открывался без задержки
         Refresh();
-        Opacity = 0;
-        if (!IsVisible) Show();
+        if (shown) return; // уже на экране — повторная анимация появления выглядит как мерцание
+        if (!IsVisible)
+        {
+            BeginAnimation(OpacityProperty, null);
+            Opacity = 0;
+            Show();
+        }
         UpdateLayout();
         PlaceAtEdge();
 
         var ease = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.35 };
         var duration = TimeSpan.FromMilliseconds(380);
-        BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200)));
-        PillScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(IsSide ? 0.8 : 0.55, 1, duration) { EasingFunction = ease });
+        BeginAnimation(OpacityProperty, new DoubleAnimation(fromOpacity, 1, TimeSpan.FromMilliseconds(200)));
+        var grow = new DoubleAnimation(IsSide ? 0.8 : 0.55, 1, duration) { EasingFunction = ease };
+        // Мини-окно (с заготовкой ленты) строим после появления: тяжёлая работа посреди анимации даёт рывки и «двойное» появление.
+        grow.Completed += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () => { if (!_hiding) _mini ??= CreateMini(); });
+        PillScale.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
         PillScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(IsSide ? 0.55 : 0.8, 1, duration) { EasingFunction = ease });
     }
 
@@ -279,6 +290,9 @@ public partial class IslandWindow : Window
     // Клик / двойной клик: первый клик ждёт системное время двойного клика. Пришёл второй клик — мини-окно,
     // не пришёл — быстрый ответ. (Если открывать быстрый ответ сразу, его окно забирает фокус и второй клик теряется.)
     private DispatcherTimer? _clickTimer;
+    private ChatItemViewModel? _quickChat;
+    private bool _toggleOff;
+    private DateTime _quickClosedAt;
     private ChatItemViewModel? _pendingChat;
     private Rect _pendingAnchor;
 
@@ -311,13 +325,25 @@ public partial class IslandWindow : Window
         // Координаты экрана в пикселях → в единицы WPF.
         var dpi = VisualTreeHelper.GetDpi(this);
         _pendingAnchor = new Rect(anchor.X / dpi.DpiScaleX, anchor.Y / dpi.DpiScaleY, anchor.Width / dpi.DpiScaleX, anchor.Height / dpi.DpiScaleY);
+        // Быстрый ответ уже открыт (или только что закрылся от этого же клика) — сразу переключаем его на этот чат.
+        var quickOpen = _quick is { IsVisible: true } || DateTime.UtcNow - _quickClosedAt < TimeSpan.FromMilliseconds(400);
+        if (quickOpen && !ReferenceEquals(chat, _quickChat))
+        {
+            _clickTimer?.Stop();
+            _pendingChat = null;
+            OpenQuickReply(chat, _pendingAnchor);
+            return;
+        }
+        // Клик по чату открытого быстрого ответа — закрыть его (а второй клик подряд всё так же откроет мини-окно).
+        _toggleOff = quickOpen;
+        _quick?.Close();
         if (_clickTimer is null)
         {
             _clickTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(System.Windows.Forms.SystemInformation.DoubleClickTime) };
             _clickTimer.Tick += (_, _) =>
             {
                 _clickTimer.Stop();
-                if (_pendingChat is { } single) OpenQuickReply(single, _pendingAnchor);
+                if (_pendingChat is { } single && !_toggleOff) OpenQuickReply(single, _pendingAnchor);
                 _pendingChat = null;
             };
         }
@@ -328,6 +354,7 @@ public partial class IslandWindow : Window
     private void OpenQuickReply(ChatItemViewModel chat, Rect anchor)
     {
         _quick?.Close();
+        _quickChat = chat;
         var conv = _shell.OpenMiniChat(chat.Peer);
         _quick = new QuickReplyWindow(conv, anchor, _edge, openFull: () =>
         {
@@ -337,6 +364,7 @@ public partial class IslandWindow : Window
         _quick.Closed += (_, _) =>
         {
             _quick = null;
+            _quickClosedAt = DateTime.UtcNow;
             if (_mini is not { IsVisible: true }) _shell.MiniChat = null; // чат больше не «открыт» — снова считаем непрочитанные
         };
         _quick.Show();
@@ -344,7 +372,7 @@ public partial class IslandWindow : Window
 
     private MiniChatWindow CreateMini()
     {
-        var mini = new MiniChatWindow(recentChats: _shell.IslandChats, switchTo: OpenFullMini, back: peer =>
+        var mini = new MiniChatWindow(back: peer =>
         {
             // Сначала убираем мини-окно и островок, чат готовим, пока окно ещё свёрнуто,
             // и только потом показываем уже готовое приложение — без промежуточной перерисовки.

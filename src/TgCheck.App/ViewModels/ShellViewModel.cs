@@ -76,6 +76,24 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// <summary>Чат, открытый в мини-окне.</summary>
     [ObservableProperty] private ConversationViewModel? _miniChat;
 
+    private bool _mainOnScreen = true;
+
+    /// <summary>Главное окно видно (не свёрнуто и не убрано в трей). Открытый в нём чат читается только тогда.</summary>
+    public bool MainOnScreen
+    {
+        get => _mainOnScreen;
+        set
+        {
+            if (_mainOnScreen == value) return;
+            _mainOnScreen = value;
+            if (value) Chats.Conversation?.MarkRead(); // вернулись в окно — пришедшее за это время теперь видно
+        }
+    }
+
+    /// <summary>Чат сейчас открыт на экране (в главном окне или в мини-окне / быстром ответе).</summary>
+    public bool IsOnScreen(long peerKey) =>
+        (MainOnScreen && Chats.Conversation?.Peer.Key == peerKey) || MiniChat?.Peer.Key == peerKey;
+
     /// <summary>Островок должен обновить список чатов.</summary>
     public event Action? IslandChanged;
     /// <summary>Пришло входящее (островок может «подмигнуть»).</summary>

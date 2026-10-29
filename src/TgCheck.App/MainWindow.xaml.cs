@@ -25,6 +25,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         if (Images.AppLogo is { } logo) Icon = logo;
         StateChanged += OnStateChanged;
+        IsVisibleChanged += (_, _) => UpdateOnScreen();
         DataContextChanged += (_, e) =>
         {
             if (e.OldValue is MainViewModel old) old.PropertyChanged -= OnMainChanged;
@@ -114,8 +115,16 @@ public partial class MainWindow : Window
     // Свернули — сверху появляется «островок» с последними чатами; развернули — он прячется.
     private void OnStateChanged(object? sender, EventArgs e)
     {
+        UpdateOnScreen();
         if (WindowState == WindowState.Minimized) ShowIsland();
         else _island?.HideIsland();
+    }
+
+    // Чат главного окна «читается» только пока окно видно.
+    private void UpdateOnScreen()
+    {
+        if (DataContext is MainViewModel { CurrentPage: ShellViewModel shell })
+            shell.MainOnScreen = IsVisible && WindowState != WindowState.Minimized;
     }
 
     // Островок с последними чатами — когда окно свёрнуто или закрыто в трей.

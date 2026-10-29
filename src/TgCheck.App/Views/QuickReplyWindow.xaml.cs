@@ -43,7 +43,9 @@ public partial class QuickReplyWindow : Window
             Input.Focus();
         };
         SizeChanged += (_, _) => Place();
-        Deactivated += (_, _) => SafeClose();
+        // Закрываем не сразу: клик по островку, забравший фокус, иначе теряется — и переключение на другой чат не срабатывает.
+        Deactivated += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.Background, SafeClose);
+        Closed += (_, _) => _closing = true;
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { e.Handled = true; SafeClose(); } };
     }
 
