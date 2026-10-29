@@ -137,6 +137,21 @@ public static class Anim
     }
 
     /// <summary>Плавный переход контента: старое уезжает/гаснет, новое появляется со сдвигом.</summary>
+    /// <summary>Мягкое появление уже построенной страницы: проявление и подъём на несколько пикселей, сразу.</summary>
+    public static void Rise(FrameworkElement el, double fromY = 10, int ms = 170)
+    {
+        if (el.RenderTransform is not TranslateTransform tt || tt.IsFrozen)
+            el.RenderTransform = tt = new TranslateTransform();
+        var duration = new Duration(TimeSpan.FromMilliseconds(ms));
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var fade = new DoubleAnimation(0.35, 1, duration) { EasingFunction = ease };
+        CacheWhile(el, fade);
+        el.BeginAnimation(UIElement.OpacityProperty, fade);
+        tt.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(fromY, 0, duration) { EasingFunction = ease });
+        tt.BeginAnimation(TranslateTransform.XProperty, null);
+        tt.X = 0;
+    }
+
     public static void SlideIn(FrameworkElement el, double fromX, int ms = 240)
     {
         if (el.RenderTransform is not TranslateTransform tt || tt.IsFrozen)

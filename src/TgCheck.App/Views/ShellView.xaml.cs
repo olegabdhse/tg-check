@@ -70,7 +70,11 @@ public partial class ShellView : UserControl
         foreach (var el in new FrameworkElement[] { ChatsPage, MyProfilePage, PageHost })
             el.Visibility = el == target ? Visibility.Visible : Visibility.Collapsed;
         if (target != PageHost) PageHost.Content = null;
-        if (animate) Anim.SlideIn(target, target == PageHost ? 36 : -20, 220);
+        if (!animate) return;
+        // Чужой профиль — выезжает справа; свой профиль ↔ чаты (обе страницы уже готовы) — короткое мягкое проявление
+        // с лёгким подъёмом, сразу, без пустого кадра и «уезда» в сторону.
+        if (target == PageHost) Anim.SlideIn(target, 36, 220);
+        else Anim.Rise(target);
     }
 
     // Esc закрывает верхний слой: истории → оверлеи → мини-профиль → чат → чужой профиль.

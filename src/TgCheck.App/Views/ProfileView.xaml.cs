@@ -11,6 +11,14 @@ public partial class ProfileView : UserControl
 {
     public ProfileView() => InitializeComponent();
 
+    // Сетка подарков — порциями: подходим к концу — добавляем следующую.
+    private void Gifts_ScrollChanged(object sender, System.Windows.Controls.ScrollChangedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.ScrollViewer sv && DataContext is ViewModels.ProfileViewModel vm
+            && sv.VerticalOffset + sv.ViewportHeight > sv.ExtentHeight - 900)
+            vm.ShowMoreGifts();
+    }
+
     /// <summary>Visible, только если все значения true.</summary>
     public static IMultiValueConverter AllTrueToVisibility { get; } = new AllTrueConverter();
 

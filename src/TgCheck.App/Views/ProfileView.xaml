@@ -213,11 +213,15 @@
                         <!-- Имя: скрыто, если состоит только из невидимых символов -->
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,12,0,0"
                                     Visibility="{Binding NameText, Converter={StaticResource NullToVis}}">
-                            <TextBlock Text="{Binding NameText}" Style="{StaticResource H2}" TextTrimming="CharacterEllipsis"
-                                       MaxWidth="280" />
+                            <!-- Эмодзи в имени — цветные, как в Telegram; справа — эмодзи-статус (у Premium без статуса — звезда) -->
+                            <TextBlock helpers:RichText.Text="{Binding NameText}" helpers:RichText.EmojiSize="24" Style="{StaticResource H2}"
+                                       TextTrimming="CharacterEllipsis" MaxWidth="280" />
+                            <controls:StickerView Width="24" Height="24" Margin="8,2,0,0" VerticalAlignment="Center" Animate="True"
+                                                  CustomEmojiId="{Binding Profile.Peer.EmojiStatusId, TargetNullValue=0, FallbackValue=0}"
+                                                  Visibility="{Binding Profile.Peer.EmojiStatusId, Converter={StaticResource NullToVis}, FallbackValue=Collapsed}" />
                             <Path Data="{StaticResource StarGeometry}" Width="18" Height="18" Stretch="Uniform" Margin="8,2,0,0"
                                   Fill="{StaticResource GoldGradientBrush}" ToolTip="Telegram Premium" VerticalAlignment="Center"
-                                  Visibility="{Binding Profile.IsPremium, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}" />
+                                  Visibility="{Binding ShowPremiumStar, Converter={StaticResource BoolToVis}}" />
                             <Border Background="{StaticResource AccentBrush}" Width="18" Height="18" CornerRadius="9" Margin="6,2,0,0"
                                     ToolTip="Верифицирован" VerticalAlignment="Center"
                                     Visibility="{Binding Profile.IsVerified, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}">
@@ -517,8 +521,9 @@
                     </Border>
 
                     <!-- Сетка подарков -->
-                    <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" Padding="0,0,6,0" helpers:SmoothScroll.IsEnabled="True">
-                        <ItemsControl ItemsSource="{Binding GiftsView}" ItemTemplate="{StaticResource GiftCard}">
+                    <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" Padding="0,0,6,0" helpers:SmoothScroll.IsEnabled="True"
+                                  ScrollChanged="Gifts_ScrollChanged">
+                        <ItemsControl ItemsSource="{Binding ShownGifts}" ItemTemplate="{StaticResource GiftCard}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <!-- Колонки под ширину окна, без пустого места справа -->

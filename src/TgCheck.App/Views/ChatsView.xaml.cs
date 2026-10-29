@@ -23,12 +23,20 @@ public partial class ChatsView : UserControl
         InitializeComponent();
         DataContextChanged += (_, _) =>
         {
-            if (_vm is not null) _vm.PropertyChanged -= OnVmChanged;
+            if (_vm is not null) { _vm.PropertyChanged -= OnVmChanged; _vm.SearchDismissed -= DismissSearch; }
             _vm = DataContext as ChatsViewModel;
-            if (_vm is not null) _vm.PropertyChanged += OnVmChanged;
+            if (_vm is not null) { _vm.PropertyChanged += OnVmChanged; _vm.SearchDismissed += DismissSearch; }
             ApplyLayout();
         };
         Loaded += (_, _) => PrepareSpare();
+    }
+
+    // Esc в поиске: фокус — из поля в список (история поиска не всплывает снова).
+    private void DismissSearch()
+    {
+        if (!SearchBox.IsKeyboardFocusWithin) return;
+        ChatList.Focus();
+        Keyboard.ClearFocus();
     }
 
     private ConversationView? _spare;

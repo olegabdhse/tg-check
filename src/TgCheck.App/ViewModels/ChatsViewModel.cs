@@ -246,12 +246,22 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Esc: сначала слои внутри чата, затем сам чат, поиск, архив. false — нечего закрывать.</summary>
+    /// <summary>View: убрать фокус из поля поиска.</summary>
+    public event Action? SearchDismissed;
+
     public bool HandleEscape()
     {
         if (Confirm is not null) { CancelConfirm(); return true; }
         if (Conversation?.HandleEscape() == true) return true;
         if (LeaveThread()) return true;
-        if (Search.Length > 0) { Search = ""; return true; } // Esc в поиске — очистить поиск, чат не закрывать
+        // Esc в поиске — очистить и выйти из поля (иначе сразу открывалась история поиска и казалось, что поиск не закрылся); чат не закрывать
+        if (Search.Length > 0 || IsSearchFocused)
+        {
+            Search = "";
+            IsSearchFocused = false;
+            SearchDismissed?.Invoke();
+            return true;
+        }
         if (Conversation is not null) { Conversation = null; SelectedChat = null; return true; }
         if (ShowArchive) { ShowArchive = false; return true; }
         return false;

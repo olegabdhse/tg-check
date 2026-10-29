@@ -27,8 +27,8 @@ public partial class MainWindow : Window
         // Иконку окна берём из exe (см. ApplyExeIcon): PNG-иконку WPF панель задач не показывает.
         StateChanged += OnStateChanged;
         IsVisibleChanged += (_, _) => UpdateOnScreen();
-        Activated += (_, _) => UpdateOnScreen();
-        Deactivated += (_, _) => UpdateOnScreen();
+        Activated += (_, _) => { UpdateOnScreen(); if (WindowState != WindowState.Minimized) _island?.HideIsland(); };
+        Deactivated += (_, _) => { UpdateOnScreen(); ShowIslandIfAway(); };
         // Кнопка на панели задач появляется при показе окна и берёт иконку exe через оболочку (у нас — пустой значок);
         // повторная установка иконки после показа заставляет панель её обновить.
         ContentRendered += (_, _) => WindowEffects.RefreshExeIconWhenIdle(this);
@@ -154,6 +154,15 @@ public partial class MainWindow : Window
         if (DataContext is MainViewModel { CurrentPage: ShellViewModel shell })
             shell.MainOnScreen = IsVisible && WindowState != WindowState.Minimized && IsActive;
     }
+
+    // Ушли в другое приложение, не сворачивая окно, — островок тоже появляется (как при сворачивании).
+    // Если фокус ушёл в наше же окно (мини-приложение, быстрый ответ, уведомление) — не показываем.
+    private void ShowIslandIfAway() => Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+    {
+        if (IsActive || !IsVisible || WindowState == WindowState.Minimized) return;
+        if (Application.Current.Windows.OfType<Window>().Any(w => w.IsActive)) return;
+        ShowIsland();
+    });
 
     // Островок с последними чатами — когда окно свёрнуто или закрыто в трей.
     private void ShowIsland()

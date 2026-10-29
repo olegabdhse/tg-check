@@ -64,10 +64,6 @@ public sealed partial class ProfileViewModel : ObservableObject
         _peer = peer;
         _logout = logout;
         _shell = shell;
-        var view = (ListCollectionView)CollectionViewSource.GetDefaultView(Gifts);
-        view.Filter = FilterGift;
-        view.CustomSort = new GiftComparer(this);
-        GiftsView = view;
     }
 
     public ImageSource? Logo => Images.AppLogo;
@@ -92,6 +88,8 @@ public sealed partial class ProfileViewModel : ObservableObject
     public bool HasMembers => Members.Count > 0;
     public bool IsGroupProfile => Profile?.Kind == PeerKind.Group;
     public bool IsBotProfile => Profile?.Kind == PeerKind.Bot;
+    /// <summary>Звезда Premium — только если нет своего эмодзи-статуса (он показывается вместо неё).</summary>
+    public bool ShowPremiumStar => Profile is { IsPremium: true } p && p.Peer?.EmojiStatusId is null;
     /// <summary>Чей профиль открыт (null — свой).</summary>
     public PeerRef? ProfilePeer => _peer;
     /// <summary>Кнопка «Открыть профиль» в боковой панели — только у людей (не групп, каналов и ботов).</summary>
@@ -230,7 +228,21 @@ public sealed partial class ProfileViewModel : ObservableObject
     }
 
     public ObservableCollection<GiftViewModel> Gifts { get; } = [];
-    public ICollectionView GiftsView { get; }
+    // Подарков бывают десятки тысяч: на экране — порция (дальше — по прокрутке), порядок считается одной сортировкой.
+    // (Сортированное представление WPF вставляло каждый подарок поиском места по всему списку и вешало окно.)
+    public ObservableCollection<GiftViewModel> ShownGifts { get; } = [];
+    private List<GiftViewModel> _ordered = [];
+    private const int GiftPortion = 96;
+
+    /// <summary>Показать следующую порцию подарков (вызывается при прокрутке к концу сетки).</summary>
+    public void ShowMoreGifts()
+    {
+        foreach (var g in _ordered.Skip(ShownGifts.Count).Take(GiftPortion).ToList())
+        {
+            ShownGifts.Add(g);
+            _ = g.LoadImageAsync(_tg.Media); // картинки — только у показанных
+        }
+    }
 
     [ObservableProperty] private GiftFilter _filter = GiftFilter.All;
     [ObservableProperty] private GiftSort _sort = GiftSort.Newest;
@@ -257,7 +269,7 @@ public sealed partial class ProfileViewModel : ObservableObject
         ? "Отметьте подарки, которые хотите продать"
         : $"Выбрано {SelectedCount} — получите {Fmt.Stars(SelectedStars)}";
 
-    public bool IsGiftsEmpty => !IsGiftsLoading && GiftsView.IsEmpty;
+    public bool IsGiftsEmpty => !IsGiftsLoading && _ordered.Count == 0;
 
     partial void OnFilterChanged(GiftFilter value) => RefreshView();
     partial void OnSortChanged(GiftSort value) => RefreshView();
@@ -271,9 +283,16 @@ public sealed partial class ProfileViewModel : ObservableObject
         OnSelectionChanged();
     }
 
-    private void RefreshView()
+    private void RefreshView(bool keepShown = false)
     {
-        GiftsView.Refresh();
+        var comparer = new GiftComparer(this);
+        var ordered = Gifts.Where(FilterGift).ToList();
+        ordered.Sort((a, b) => comparer.Compare(a, b));
+        // Догрузилась ещё страница, а уже показанное не сдвинулось — не пересобираем сетку (без мигания и прыжков).
+        var same = keepShown && ShownGifts.Count <= ordered.Count && ShownGifts.Select((g, i) => ReferenceEquals(g, ordered[i])).All(x => x);
+        _ordered = ordered;
+        if (!same) ShownGifts.Clear();
+        if (ShownGifts.Count < GiftPortion) ShowMoreGifts();
         OnPropertyChanged(nameof(IsGiftsEmpty));
     }
 
@@ -338,7 +357,7 @@ public sealed partial class ProfileViewModel : ObservableObject
         if (avatar is not null) Avatar = avatar;
         BuildInfoRows(profile);
         IsLoading = false;
-        foreach (var name in new[] { nameof(IsGroupProfile), nameof(IsBotProfile), nameof(ShowOpenFullProfile), nameof(HasBotCommands), nameof(ShowGifts), nameof(MembersTitle) })
+        foreach (var name in new[] { nameof(IsGroupProfile), nameof(IsBotProfile), nameof(ShowOpenFullProfile), nameof(ShowPremiumStar), nameof(HasBotCommands), nameof(ShowGifts), nameof(MembersTitle) })
             OnPropertyChanged(name);
     }
 
@@ -388,9 +407,12 @@ public sealed partial class ProfileViewModel : ObservableObject
         IsGiftsLoading = true;
         try
         {
-            // Уже показаны из кэша — обновляем молча, без счётчика «Подарки: N из M».
-            var progress = Gifts.Count > 0 ? null : new Progress<(int Loaded, int Total)>(p => LoadingText = $"Подарки: {p.Loaded} из {p.Total}");
-            SetGifts(await _tg.GetGiftsAsync(_peer, progress));
+            // Уже показаны из кэша — обновляем молча и целиком в конце; иначе — по мере прихода страниц.
+            var progressive = Gifts.Count == 0;
+            var pages = progressive ? new Progress<IReadOnlyList<GiftItem>>(AppendGifts) : null;
+            var all = await _tg.GetGiftsAsync(_peer, pages: pages);
+            if (progressive) await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background); // последние страницы дошли до сетки
+            if (!progressive || Gifts.Count != all.Count) SetGifts(all);
         }
         catch (Exception ex)
         {
@@ -424,9 +446,20 @@ public sealed partial class ProfileViewModel : ObservableObject
         }
         OnCountsChanged();
         RefreshView();
+    }
 
-        // Картинки грузятся в фоне, по мере готовности появляются в карточках.
-        _ = Task.WhenAll(Gifts.ToList().Select(g => g.LoadImageAsync(_tg.Media)));
+    // Первая загрузка (кэша нет): каждая страница с сервера — сразу в сетку, не дожидаясь всех десятков тысяч.
+    private void AppendGifts(IReadOnlyList<GiftItem> page)
+    {
+        foreach (var item in page)
+        {
+            var vm = new GiftViewModel(item);
+            vm.PropertyChanged += OnGiftPropertyChanged;
+            Gifts.Add(vm);
+        }
+        OnCountsChanged();
+        RefreshView(keepShown: true);
+        IsGiftsLoading = false; // сетка уже есть — без экрана загрузки
     }
 
     private void OnGiftPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -659,7 +692,7 @@ public sealed partial class ProfileViewModel : ObservableObject
     [RelayCommand]
     private void SelectAllConvertible()
     {
-        var visible = GiftsView.Cast<GiftViewModel>().Where(g => g.CanConvert).ToList();
+        var visible = _ordered.Where(g => g.CanConvert).ToList();
         var select = visible.Any(g => !g.IsSelected);
         foreach (var g in visible) g.IsSelected = select;
     }

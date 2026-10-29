@@ -416,30 +416,33 @@ public sealed partial class TelegramService : IAsyncDisposable
     // ===================================================================== Подарки
 
     /// <summary>Загружает все подарки профиля (с постраничной подгрузкой).</summary>
-    public async Task<IReadOnlyList<GiftItem>> GetGiftsAsync(PeerRef? peer = null, IProgress<(int Loaded, int Total)>? progress = null, CancellationToken ct = default)
+    public async Task<IReadOnlyList<GiftItem>> GetGiftsAsync(PeerRef? peer = null, IProgress<(int Loaded, int Total)>? progress = null, CancellationToken ct = default,
+        IProgress<IReadOnlyList<GiftItem>>? pages = null)
     {
         var isSelf = peer is null || peer.IsSelf;
         var target = isSelf ? InputPeer.Self : peer!.Info.ToInputPeer();
         var period = await GetConvertPeriodAsync().ConfigureAwait(false); // дальше — не в потоке интерфейса (разбор сотен подарков)
         await Task.Yield(); // ответ получен — дальше в пуле потоков, а не в сетевом потоке библиотеки (иначе обновления ждут)
         var result = new List<GiftItem>();
-        var pages = new List<Payments_SavedStarGifts>();
+        var pages_ = new List<Payments_SavedStarGifts>();
         var offset = "";
         do
         {
             ct.ThrowIfCancellationRequested();
             var page = await _client.Payments_GetSavedStarGifts(target, offset, 100);
             await Task.Yield(); // ответ получен — дальше в пуле потоков, а не в сетевом потоке библиотеки (иначе обновления ждут)
-            pages.Add(page);
+            pages_.Add(page);
+            var before = result.Count;
             MapGiftPage(page, period, isSelf, result);
+            pages?.Report(result.GetRange(before, result.Count - before)); // страница — сразу в интерфейс
             progress?.Report((result.Count, page.count));
             offset = page.next_offset;
         } while (!string.IsNullOrEmpty(offset));
         // Свои подарки — в кэш: при следующем запуске профиль показывается сразу целиком.
         if (isSelf) _ = Task.Run(() =>
         {
-            for (var i = 0; i < pages.Count; i++) _cache.Save($"me_gifts_{i}", pages[i]);
-            _cache.SaveBytes("me_gifts_count", BitConverter.GetBytes(pages.Count));
+            for (var i = 0; i < pages_.Count; i++) _cache.Save($"me_gifts_{i}", pages_[i]);
+            _cache.SaveBytes("me_gifts_count", BitConverter.GetBytes(pages_.Count));
         });
         return result;
     }
