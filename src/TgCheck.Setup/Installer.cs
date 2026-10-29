@@ -18,16 +18,50 @@ internal static class Installer
     private const string ExeName = "TgCheck.exe";
     private const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\TGCheck";
 
-    /// <summary>Последний релиз программы на GitHub (репозиторий — из настроек сборки, как у автообновления).</summary>
-    private static string DownloadUrl
+    private static string Repo
     {
         get
         {
             var repo = Assembly.GetExecutingAssembly().GetCustomAttributes<AssemblyMetadataAttribute>()
                 .FirstOrDefault(a => a.Key == "UpdateRepo")?.Value;
             if (string.IsNullOrEmpty(repo)) throw new InvalidOperationException("Установщик собран без адреса репозитория (UpdateRepo).");
-            return $"https://github.com/{repo}/releases/latest/download/{ExeName}";
+            return repo!;
         }
+    }
+
+    /// <summary>Последний релиз программы на GitHub (репозиторий — из настроек сборки, как у автообновления).</summary>
+    private static string DownloadUrl => $"https://github.com/{Repo}/releases/latest/download/{ExeName}";
+
+    /// <summary>
+    /// Версия последнего релиза на GitHub («1.4.1») — её установщик и поставит (пересобирать установщик под
+    /// каждый релиз не нужно). null — не удалось узнать (нет сети).
+    /// </summary>
+    public static string? LatestVersion()
+    {
+        try
+        {
+            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+            var request = (HttpWebRequest)WebRequest.Create($"https://api.github.com/repos/{Repo}/releases/latest");
+            request.UserAgent = "TgCheck-Setup";
+            request.Timeout = 8000;
+            using var response = request.GetResponse();
+            using var reader = new StreamReader(response.GetResponseStream()!);
+            var match = System.Text.RegularExpressions.Regex.Match(reader.ReadToEnd(), "\"tag_name\"\\s*:\\s*\"v?([^\"]+)\"");
+            return match.Success ? match.Groups[1].Value : null;
+        }
+        catch { return null; }
+    }
+
+    // Версия уже скачанной программы — для записи в «Приложениях».
+    private static string InstalledVersion()
+    {
+        try
+        {
+            var v = FileVersionInfo.GetVersionInfo(InstalledExe).ProductVersion ?? "";
+            var plus = v.IndexOf('+');
+            return plus > 0 ? v.Substring(0, plus) : v.Length > 0 ? v : Version;
+        }
+        catch { return Version; }
     }
 
     public static string InstallDir { get; } = Path.Combine(
@@ -103,7 +137,7 @@ internal static class Installer
         using (var key = Registry.CurrentUser.CreateSubKey(UninstallKey))
         {
             key.SetValue("DisplayName", AppName);
-            key.SetValue("DisplayVersion", Version);
+            key.SetValue("DisplayVersion", InstalledVersion());
             key.SetValue("Publisher", AppName);
             key.SetValue("DisplayIcon", InstalledExe + ",0");
             key.SetValue("InstallLocation", InstallDir);

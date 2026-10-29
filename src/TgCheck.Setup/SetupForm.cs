@@ -43,8 +43,14 @@ internal sealed class SetupForm : Form
             if (png is not null) logo.Image = Image.FromStream(png);
         var title = new Label
         {
-            Text = "TG Check " + Installer.Version, Font = new Font("Segoe UI Semibold", 16f), AutoSize = true, Location = new Point(116, 32),
+            Text = uninstall ? "TG Check " + Installer.Version : "TG Check", Font = new Font("Segoe UI Semibold", 16f), AutoSize = true, Location = new Point(116, 32),
         };
+        // Ставится последний релиз с GitHub — его версию и показываем (узнаём в фоне, без задержки окна).
+        if (!uninstall)
+            Shown += (_, _) => Task.Run(Installer.LatestVersion).ContinueWith(t =>
+            {
+                if (!IsDisposed && IsHandleCreated) BeginInvoke(new Action(() => title.Text = "TG Check " + (t.Result ?? Installer.Version)));
+            });
         var subtitle = new Label
         {
             Text = uninstall ? "Программа и ярлыки будут удалены с этого компьютера." : "Telegram-клиент для Windows: чаты, профиль и подарки.",
