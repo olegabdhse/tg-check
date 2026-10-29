@@ -398,6 +398,86 @@
             </Style.Triggers>
         </Style>
 
+        <!-- ================================================= Сложное сообщение: блоки по порядку (статья, коллаж, музыка) -->
+        <DataTemplate x:Key="RichBlockTpl" DataType="{x:Type vm:RichBlockViewModel}">
+            <ContentControl Content="{Binding}" Focusable="False">
+                <ContentControl.Style>
+                    <Style TargetType="ContentControl">
+                        <Setter Property="ContentTemplate">
+                            <Setter.Value>
+                                <DataTemplate>
+                                    <TextBlock helpers:RichText.Text="{Binding Text}" helpers:RichText.EmojiSize="18" TextWrapping="Wrap" FontSize="14"
+                                               Margin="0,2,0,4" MaxWidth="440" HorizontalAlignment="Left" />
+                                </DataTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Kind}" Value="Heading">
+                                <Setter Property="ContentTemplate">
+                                    <Setter.Value>
+                                        <DataTemplate>
+                                            <TextBlock helpers:RichText.Text="{Binding Text}" helpers:RichText.EmojiSize="20" TextWrapping="Wrap" FontSize="16"
+                                                       FontWeight="SemiBold" Margin="0,6,0,3" MaxWidth="440" HorizontalAlignment="Left" />
+                                        </DataTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Kind}" Value="Quote">
+                                <Setter Property="ContentTemplate">
+                                    <Setter.Value>
+                                        <DataTemplate>
+                                            <Border BorderBrush="{StaticResource AccentBrush}" BorderThickness="3,0,0,0" Padding="10,2,0,2" Margin="0,3,0,5" MaxWidth="440"
+                                                    HorizontalAlignment="Left">
+                                                <TextBlock helpers:RichText.Text="{Binding Text}" helpers:RichText.EmojiSize="18" TextWrapping="Wrap" FontStyle="Italic" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Kind}" Value="Code">
+                                <Setter Property="ContentTemplate">
+                                    <Setter.Value>
+                                        <DataTemplate>
+                                            <Border Background="#22000000" CornerRadius="6" Padding="10,6" Margin="0,3,0,5" MaxWidth="440" HorizontalAlignment="Left">
+                                                <TextBlock Text="{Binding Text}" FontFamily="Consolas" FontSize="13" TextWrapping="Wrap" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Kind}" Value="Divider">
+                                <Setter Property="ContentTemplate">
+                                    <Setter.Value>
+                                        <DataTemplate>
+                                            <Border Height="1" Background="{StaticResource BorderBrush}" Margin="0,8" />
+                                        </DataTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Kind}" Value="Media">
+                                <Setter Property="ContentTemplate">
+                                    <Setter.Value>
+                                        <DataTemplate>
+                                            <ContentControl Content="{Binding Media}" Style="{StaticResource MediaHost}" HorizontalAlignment="Left" Margin="0,3,0,5" />
+                                        </DataTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Kind}" Value="Album">
+                                <Setter Property="ContentTemplate">
+                                    <Setter.Value>
+                                        <DataTemplate>
+                                            <ContentControl Content="{Binding Media}" Style="{StaticResource MediaHost}" HorizontalAlignment="Left" Margin="0,3,0,5" />
+                                        </DataTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ContentControl.Style>
+            </ContentControl>
+        </DataTemplate>
+
         <!-- ================================================= Служебное сообщение -->
         <DataTemplate x:Key="ServiceTpl" DataType="{x:Type vm:MessageViewModel}">
             <Border HorizontalAlignment="Center" Margin="40,6" Padding="12,5" CornerRadius="12" Background="#99182533">
@@ -572,6 +652,10 @@
 
                             <!-- Медиа: создаётся только шаблон нужного типа -->
                             <ContentControl Content="{Binding}" Style="{StaticResource MediaHost}" HorizontalAlignment="Left" />
+                            <!-- Сложное сообщение (статья, коллаж, живые фото, музыка) — блоки по порядку, как в Telegram -->
+                            <ItemsControl ItemsSource="{Binding RichBlocks}" ItemTemplate="{StaticResource RichBlockTpl}" Focusable="False"
+                                          Visibility="{Binding IsRich, Converter={StaticResource BoolToVis}}" />
+
 
                             <!-- Время и галочки всегда прижаты к правому нижнему углу; в тексте под них оставлено место -->
                             <Grid>

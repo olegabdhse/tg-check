@@ -420,6 +420,11 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     {
         var vm = new MessageViewModel(m, Peer) { IsRead = m.IsOut && m.Id <= _readOutboxMaxId };
         vm.EnsurePreview(_tg.Media);
+        if (vm.IsRich)
+        {
+            vm.EnsureRichPreviews(_tg.Media);
+            foreach (var b in vm.RichBlocks) if (b.Media is { } rm && (rm.IsAudio || rm.IsVoice)) VoicePlayback.Attach(rm); // музыка в посте играет как обычное аудио
+        }
         vm.EnsureSenderAvatar(_tg.Media);
         if (vm.IsVoice || vm.IsAudio) vm.BuildWave();
         VoicePlayback.Attach(vm);
@@ -1733,7 +1738,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     /// <summary>Все фото/видео/GIF ленты по порядку (части альбомов — по отдельности).</summary>
     private List<MessageViewModel> ChatVisualMedia() =>
         Items.OfType<MessageViewModel>()
-            .SelectMany(v => v.IsAlbum ? v.Album.AsEnumerable() : [v])
+            .SelectMany(v => v.IsRich ? v.RichMedia : v.IsAlbum ? v.Album.AsEnumerable() : [v])
             .Where(v => v.IsVisualMedia)
             .ToList();
 

@@ -317,6 +317,32 @@ public sealed partial class MessageViewModel : ObservableObject
         NotifyAlbum();
     }
 
+    /// <summary>Альбом из готовых частей (коллаж внутри сложного сообщения).</summary>
+    public void SetAlbumParts(IEnumerable<MessageViewModel> parts)
+    {
+        Album.Clear();
+        foreach (var p in parts) Album.Add(p);
+        NotifyAlbum();
+    }
+
+    // ---- сложное сообщение (статья, коллаж, музыка): блоки по порядку, как в Telegram
+    private IReadOnlyList<RichBlockViewModel>? _richBlocks;
+    public IReadOnlyList<RichBlockViewModel> RichBlocks => _richBlocks ??= Item.Rich?.Select(b => new RichBlockViewModel(b, Chat)).ToList() ?? [];
+    public bool IsRich => Item.Rich is { Count: > 0 };
+    /// <summary>Все фото/видео сложного сообщения — для просмотрщика.</summary>
+    public IEnumerable<MessageViewModel> RichMedia => RichBlocks.SelectMany(b => b.Media is null ? [] : b.Media.IsAlbum ? b.Media.Album.AsEnumerable() : [b.Media]).Where(m => m.IsVisualMedia);
+
+    public void EnsureRichPreviews(MediaService media)
+    {
+        foreach (var b in RichBlocks)
+        {
+            if (b.Media is not { } m) continue;
+            m.EnsurePreview(media);
+            foreach (var part in m.Album) part.EnsurePreview(media);
+            if (m.IsVoice || m.IsAudio) m.BuildWave();
+        }
+    }
+
     public void RemoveFromAlbum(int id)
     {
         if (Album.FirstOrDefault(a => a.Id == id) is { } part) Album.Remove(part);
@@ -595,4 +621,23 @@ public sealed partial class UploadViewModel(string title, string icon, ImageSour
 
     [RelayCommand]
     private void Cancel() => Cts.Cancel();
+}
+
+/// <summary>Блок сложного сообщения: заголовок, абзац, цитата, код, разделитель, медиа или коллаж.</summary>
+public sealed class RichBlockViewModel
+{
+    public RichBlockViewModel(RichBlock block, PeerRef chat)
+    {
+        Kind = block.Kind;
+        Text = block.Text;
+        if (block.Items.Count == 0) return;
+        // Медиа — обычная модель сообщения (те же шаблоны фото, видео, музыки); коллаж — альбом из частей.
+        Media = new MessageViewModel(block.Items[0], chat);
+        if (block.Kind == RichBlockKind.Album)
+            Media.SetAlbumParts(block.Items.Select(i => new MessageViewModel(i, chat)));
+    }
+
+    public RichBlockKind Kind { get; }
+    public string? Text { get; }
+    public MessageViewModel? Media { get; }
 }

@@ -538,8 +538,12 @@ public sealed partial class TelegramService
             Comments = msg.replies is { } rep && rep.flags.HasFlag(MessageReplies.Flags.comments) ? rep.replies : null,
             Reactions = MapReactions(msg.reactions),
         };
-        return WithMedia(item, msg.media);
+        var mappedItem = WithMedia(item, msg.media);
+        if (msg.rich_message is { } rich) mappedItem.Rich = MapRich(item, rich); // статья, коллаж, музыка — блоками
+        return mappedItem;
     }
+
+
 
     private MessageItem WithMedia(MessageItem item, MessageMedia? media)
     {

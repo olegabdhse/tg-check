@@ -95,6 +95,17 @@ public sealed record CustomEmojiSpan(int Offset, int Length, long DocumentId);
 
 public enum MediaKind { None, Photo, Sticker, Video, Gif, Voice, VideoNote, Audio, Document, Poll, Contact, Location, WebPage, Other }
 
+/// <summary>Блок «сложного сообщения» Telegram (статья, коллаж, живые фото, музыка): по порядку, как в посте.</summary>
+public enum RichBlockKind { Heading, Paragraph, Quote, Code, Divider, Media, Album }
+
+public sealed class RichBlock
+{
+    public required RichBlockKind Kind { get; init; }
+    public string? Text { get; init; }
+    /// <summary>Одно медиа (Media) или несколько (Album: коллаж, слайд-шоу).</summary>
+    public IReadOnlyList<MessageItem> Items { get; init; } = [];
+}
+
 /// <summary>Сообщение чата.</summary>
 public sealed class MessageItem : MediaHolder
 {
@@ -108,6 +119,8 @@ public sealed class MessageItem : MediaHolder
     public DateTime? EditDateUtc { get; set; }
     /// <summary>Голосовое/кружок ещё не прослушано (у своих — собеседником). Меняется, когда послушают.</summary>
     public bool MediaUnread { get; set; }
+    /// <summary>Сложное сообщение (статья, коллаж, музыка) — блоки по порядку; null — обычное.</summary>
+    public IReadOnlyList<RichBlock>? Rich { get; set; }
     public int? ReplyToId { get; init; }
     /// <summary>Корень ветки (комментарии к посту), если сообщение — ответ внутри ветки.</summary>
     public int? ThreadTopId { get; init; }
@@ -151,7 +164,7 @@ public sealed class MessageItem : MediaHolder
     public PollInfo? Poll { get; set; }
 
     /// <summary>Короткий текст для списка чатов.</summary>
-    public string Preview => ServiceText ?? (Media switch
+    public string Preview => ServiceText ?? (Rich is { Count: > 0 } && string.IsNullOrEmpty(Text) ? Services.TelegramService.RichPreview(Rich) : Media switch
     {
         MediaKind.None or MediaKind.WebPage => Text,
         MediaKind.Photo => Prefix("🖼 Фото"),
