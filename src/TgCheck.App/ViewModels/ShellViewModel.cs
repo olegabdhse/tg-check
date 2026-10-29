@@ -25,7 +25,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _tg = tg;
         _onLoggedOut = onLoggedOut;
         _changeProxy = changeProxy;
-        _proxyText = env.Proxy ?? "";
+        _proxyText = env.UserProxy ?? ""; // встроенный прокси не показываем
+        _env = env;
         Picker = new MediaPickerViewModel(tg, env.DataDirectory);
         Chats = new ChatsViewModel(tg, this);
         MyProfile = new ProfileViewModel(tg, null, LogoutAsync, this);
@@ -49,8 +50,18 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     // ---- прокси: значок над настройками (щит — через прокси, «антенна» — напрямую) и окно смены
     private readonly Func<string?, Task>? _changeProxy;
+    private readonly AppEnv _env;
     public bool UsesProxy => _tg.UsesProxy;
-    public string ProxyTip => UsesProxy ? "Подключено через прокси" : "Подключено напрямую — без прокси";
+    public bool CanUseBuiltIn => _env.HasBuiltInProxy && !_env.UsesBuiltInProxy;
+    public string ProxyTip => _env.UsesBuiltInProxy ? "Подключено через встроенный прокси"
+        : UsesProxy ? "Подключено через свой прокси" : "Подключено напрямую — без прокси";
+
+    [RelayCommand]
+    private Task BuiltInProxy()
+    {
+        IsProxyOpen = false;
+        return _changeProxy?.Invoke(AppEnv.BuiltInProxy) ?? Task.CompletedTask;
+    }
     [ObservableProperty] private bool _isProxyOpen;
     [ObservableProperty] private string _proxyText;
     [ObservableProperty] private string? _proxyError;

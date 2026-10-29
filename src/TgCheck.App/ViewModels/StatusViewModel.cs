@@ -36,11 +36,28 @@ public sealed partial class StatusViewModel : ObservableObject
     private Action<string?>? _saveProxy;
 
     /// <summary>Не удалось подключиться: кроме «Повторить» — смена прокси (ссылка MTProxy/SOCKS5) или подключение без него.</summary>
-    public static StatusViewModel ConnectionError(string title, string message, Func<Task> retry, string? currentProxy, Action<string?> saveProxy) =>
-        new(title, message, false, retry, false) { _saveProxy = saveProxy, ProxyText = currentProxy ?? "", UsesProxy = currentProxy is not null };
+    /// Встроенный прокси (из сборки) в поле не показывается — только свой.
+    public static StatusViewModel ConnectionError(string title, string message, Func<Task> retry, Core.Config.AppEnv env) =>
+        new(title, message, false, retry, false)
+        {
+            _saveProxy = proxy => Core.Config.AppEnv.SaveUserProxy(env.DataDirectory, proxy),
+            ProxyText = env.UserProxy ?? "",
+            UsesProxy = env.Proxy is not null,
+            CanUseBuiltIn = env.HasBuiltInProxy && !env.UsesBuiltInProxy,
+            ProxyState = env.UsesBuiltInProxy ? "Сейчас: встроенный прокси" : env.UserProxy is not null ? "Сейчас: свой прокси" : "Сейчас: без прокси",
+        };
 
     public bool CanChangeProxy => _saveProxy is not null;
     public bool UsesProxy { get; private init; }
+    public bool CanUseBuiltIn { get; private init; }
+    public string? ProxyState { get; private init; }
+
+    [RelayCommand]
+    private Task BuiltInProxy()
+    {
+        _saveProxy?.Invoke(Core.Config.AppEnv.BuiltInProxy);
+        return Retry();
+    }
     [ObservableProperty] private string _proxyText = "";
     [ObservableProperty] private string? _proxyError;
 

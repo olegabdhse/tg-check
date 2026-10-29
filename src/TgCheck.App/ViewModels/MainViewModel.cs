@@ -64,9 +64,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         catch (Exception ex)
         {
             early?.Dispose();
-            var env = _env!;
-            CurrentPage = StatusViewModel.ConnectionError("Не удалось подключиться", TgErrors.Describe(ex), InitializeAsync,
-                env.Proxy, proxy => Core.Config.AppEnv.SaveUserProxy(env.DataDirectory, proxy));
+            CurrentPage = StatusViewModel.ConnectionError("Не удалось подключиться", TgErrors.Describe(ex), InitializeAsync, _env!);
             return;
         }
 

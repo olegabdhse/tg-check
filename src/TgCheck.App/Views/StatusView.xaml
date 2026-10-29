@@ -28,12 +28,14 @@
                 <StackPanel>
                     <TextBlock Text="Прокси" FontWeight="SemiBold" />
                     <TextBlock Text="{Binding ProxyState}" Foreground="{StaticResource AccentBrush}" FontSize="13" Margin="0,2,0,0" />
-                    <TextBlock Text="Вставьте ссылку на прокси (https://t.me/proxy?… или socks5://…) — подключимся через него."
+                    <TextBlock Text="Свой прокси: ссылка https://t.me/proxy?… или socks5://… — подключимся через него."
                                Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,4,0,10" />
                     <TextBox Style="{StaticResource InputBox}" Text="{Binding ProxyText, UpdateSourceTrigger=PropertyChanged}" Tag="https://t.me/proxy?server=…" />
                     <TextBlock Text="{Binding ProxyError}" Foreground="{StaticResource DangerBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"
                                Visibility="{Binding ProxyError, Converter={StaticResource NullToVis}}" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                        <Button Content="Встроенный" Style="{StaticResource SecondaryButton}" Margin="0,0,10,0" Command="{Binding BuiltInProxyCommand}"
+                                Visibility="{Binding CanUseBuiltIn, Converter={StaticResource BoolToVis}}" />
                         <Button Content="Без прокси" Style="{StaticResource SecondaryButton}" Margin="0,0,10,0" Command="{Binding NoProxyCommand}"
                                 Visibility="{Binding UsesProxy, Converter={StaticResource BoolToVis}}" />
                         <Button Content="Подключиться через прокси" Style="{StaticResource PrimaryButton}" Command="{Binding ApplyProxyCommand}" />

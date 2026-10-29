@@ -24,6 +24,15 @@ public sealed class AppEnv
     /// </summary>
     public string? Proxy { get; init; }
 
+    /// <summary>Свой прокси, заданный в программе (null — встроенный или без прокси). Встроенный наружу не показывается.</summary>
+    public string? UserProxy { get; init; }
+
+    /// <summary>В сборку зашит прокси (TG_PROXY).</summary>
+    public bool HasBuiltInProxy { get; init; }
+
+    /// <summary>Подключаемся через встроенный прокси.</summary>
+    public bool UsesBuiltInProxy => Proxy is not null && UserProxy is null;
+
     /// <summary>ID пользователей, которых приложение полностью игнорирует (TG_IGNORE_IDS).</summary>
     public IReadOnlySet<long> IgnoredUserIds { get; init; } = new HashSet<long>();
 
@@ -74,10 +83,15 @@ public sealed class AppEnv
         Directory.CreateDirectory(dataDir);
 
         // Прокси, заданный в самой программе (экран обрыва соединения), важнее встроенного TG_PROXY; "none" — без прокси.
-        var proxy = Get("TG_PROXY");
+        var builtIn = Get("TG_PROXY");
+        var proxy = builtIn;
+        string? userProxy = null;
         var userProxyFile = Path.Combine(dataDir, UserProxyFileName);
         if (File.Exists(userProxyFile) && File.ReadAllText(userProxyFile).Trim() is { Length: > 0 } user)
-            proxy = user.Equals("none", StringComparison.OrdinalIgnoreCase) ? null : IsSupportedProxy(user) ? user : proxy;
+        {
+            if (user.Equals("none", StringComparison.OrdinalIgnoreCase)) proxy = null;
+            else if (IsSupportedProxy(user)) proxy = userProxy = user;
+        }
         if (proxy is not null && !IsSupportedProxy(proxy))
             throw new EnvConfigException(
                 $"TG_PROXY не распознан: «{proxy}».\n\nПоддерживается MTProxy (https://t.me/proxy?server=…&port=…&secret=… или tg://proxy?…) " +
@@ -86,6 +100,8 @@ public sealed class AppEnv
         return new AppEnv
         {
             Proxy = proxy,
+            UserProxy = userProxy,
+            HasBuiltInProxy = builtIn is not null,
             IgnoredUserIds = ParseIds(Get("TG_IGNORE_IDS")),
             UpdateRepo = Get("TG_UPDATE_REPO") ?? BuildInfo.UpdateRepo,
             ApiId = apiId,
@@ -108,8 +124,15 @@ public sealed class AppEnv
     private const string UserProxyFileName = "proxy.txt";
 
     /// <summary>Запомнить прокси, выбранный в программе (null — без прокси). Действует со следующего подключения.</summary>
-    public static void SaveUserProxy(string dataDirectory, string? proxy) =>
-        File.WriteAllText(Path.Combine(dataDirectory, UserProxyFileName), string.IsNullOrWhiteSpace(proxy) ? "none" : proxy.Trim());
+    public static void SaveUserProxy(string dataDirectory, string? proxy)
+    {
+        var file = Path.Combine(dataDirectory, UserProxyFileName);
+        if (proxy == BuiltInProxy) File.Delete(file);
+        else File.WriteAllText(file, string.IsNullOrWhiteSpace(proxy) ? "none" : proxy.Trim());
+    }
+
+    /// <summary>Значение для SaveUserProxy: вернуться к встроенному прокси.</summary>
+    public const string BuiltInProxy = "builtin";
 
     /// <summary>Похоже ли на ссылку прокси, которую понимает программа (MTProxy или SOCKS5).</summary>
     public static bool IsValidProxy(string proxy) => IsSupportedProxy(proxy.Trim());
