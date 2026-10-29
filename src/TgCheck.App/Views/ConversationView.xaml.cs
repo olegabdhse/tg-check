@@ -152,6 +152,21 @@ public partial class ConversationView : UserControl
         });
     }
 
+    /// <summary>
+    /// Печать «в никуда» (фокус не в поле ввода) уходит в поле сообщения — как в Telegram.
+    /// false — писать сюда нельзя (канал, форум) или поле занято окном отправки.
+    /// </summary>
+    public bool TypeIntoComposer(string text)
+    {
+        if (_vm is not { CanWrite: true, HasAttachments: false, IsRecording: false } || !Composer.IsVisible) return false;
+        Composer.Focus();
+        Composer.SelectedText = "";
+        Composer.CaretIndex = Composer.Text.Length;
+        Composer.AppendText(text);
+        Composer.CaretIndex = Composer.Text.Length;
+        return true;
+    }
+
     private void InsertText(string text)
     {
         var caret = Composer.CaretIndex;
@@ -228,6 +243,15 @@ public partial class ConversationView : UserControl
                 }
                 break;
         }
+    }
+
+    // Выделение: Ctrl+клик начинает, а пока что-то выбрано — обычный клик выбирает / снимает (медиа не открываются).
+    private void MessageRow_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_vm is null || sender is not FrameworkElement { DataContext: MessageViewModel m }) return;
+        if (!_vm.IsSelecting && Keyboard.Modifiers != ModifierKeys.Control) return;
+        e.Handled = true;
+        _vm.ToggleSelect(m);
     }
 
     // Кружок у пузыря — открыть меню сообщения с панелью реакций (как в Telegram Desktop).

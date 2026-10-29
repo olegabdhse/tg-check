@@ -65,6 +65,15 @@ public partial class MainWindow : Window
         base.OnClosing(e);
     }
 
+    // Печать, когда фокус не в поле ввода: в открытый чат или в поиск (как в Telegram).
+    protected override void OnPreviewTextInput(System.Windows.Input.TextCompositionEventArgs e)
+    {
+        base.OnPreviewTextInput(e);
+        if (e.Handled || string.IsNullOrEmpty(e.Text) || char.IsControl(e.Text[0])) return;
+        if (System.Windows.Input.Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.PasswordBox) return;
+        if (ShellView.Current?.RouteTyping(e.Text) == true) e.Handled = true;
+    }
+
     private void ExitApp()
     {
         _exiting = true;

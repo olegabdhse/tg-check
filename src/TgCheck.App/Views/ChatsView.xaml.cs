@@ -92,6 +92,17 @@ public partial class ChatsView : UserControl
         }
     }
 
+    /// <summary>Печать вне полей ввода: в открытый чат (поле сообщения) или, если чат не открыт, в поиск.</summary>
+    public bool RouteTyping(string text)
+    {
+        if (_vm?.Conversation is { } conv && _views.TryGetValue(conv, out var view) && view.IsVisible)
+            return view.TypeIntoComposer(text);
+        SearchBox.Focus();
+        SearchBox.AppendText(text);
+        SearchBox.CaretIndex = SearchBox.Text.Length;
+        return true;
+    }
+
     // Последние открытые чаты держим готовыми (лента уже построена) — переключение мгновенное.
     private void ShowConversation()
     {

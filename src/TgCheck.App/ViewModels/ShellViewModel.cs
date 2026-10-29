@@ -116,6 +116,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public async Task StartAsync()
     {
         Chats.UnreadChanged += () => OnPropertyChanged(nameof(ChatsUnread));
+        Settings.StoriesSettingChanged += Chats.OnStoriesSettingChanged;
         _ = MyProfile.LoadAsync();
         _ = ReactionCatalog.LoadAsync(_tg);
         // Обновления — сразу при старте (не дожидаясь загрузки всех чатов) и затем каждые 30 минут.

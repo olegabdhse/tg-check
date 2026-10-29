@@ -108,6 +108,15 @@ public partial class MiniChatWindow : Window
         _current = view;
     }
 
+    // Печать вне поля ввода — в поле сообщения открытого чата.
+    protected override void OnPreviewTextInput(TextCompositionEventArgs e)
+    {
+        base.OnPreviewTextInput(e);
+        if (e.Handled || string.IsNullOrEmpty(e.Text) || char.IsControl(e.Text[0])) return;
+        if (Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase) return;
+        if (_current?.TypeIntoComposer(e.Text) == true) e.Handled = true;
+    }
+
     private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ButtonState != MouseButtonState.Pressed) return;

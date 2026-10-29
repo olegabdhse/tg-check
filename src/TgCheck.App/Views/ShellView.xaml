@@ -162,6 +162,12 @@
                     </CheckBox>
 
                     <TextBlock Text="Окно" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="13" Margin="12,12,0,2" />
+                    <CheckBox Style="{StaticResource SettingSwitch}" IsChecked="{Binding ShowStories}">
+                        <StackPanel>
+                            <TextBlock Text="Истории над списком чатов" />
+                            <TextBlock Text="Выключите, чтобы скрыть полосу историй" Style="{StaticResource Caption}" />
+                        </StackPanel>
+                    </CheckBox>
                     <CheckBox Style="{StaticResource SettingSwitch}" IsChecked="{Binding ShowIsland}">
                         <StackPanel>
                             <TextBlock Text="Островок при сворачивании" />

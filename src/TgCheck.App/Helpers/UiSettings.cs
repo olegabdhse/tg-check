@@ -18,6 +18,7 @@ public static class UiSettings
         public bool NotificationsOff { get; set; }
         public bool SoundOff { get; set; }
         public bool NotifyArchived { get; set; }
+        public bool HideStories { get; set; }
     }
 
     private static Data _data = Load();
@@ -48,6 +49,9 @@ public static class UiSettings
 
     /// <summary>Звук уведомления.</summary>
     public static bool NotificationSound { get => !_data.SoundOff; set { _data.SoundOff = !value; Save(); } }
+
+    /// <summary>Полоса историй над списком чатов.</summary>
+    public static bool ShowStories { get => !_data.HideStories; set { _data.HideStories = !value; Save(); } }
 
     /// <summary>Уведомлять и о чатах из архива (по умолчанию — нет, как в Telegram).</summary>
     public static bool NotifyArchived { get => _data.NotifyArchived; set { _data.NotifyArchived = value; Save(); } }

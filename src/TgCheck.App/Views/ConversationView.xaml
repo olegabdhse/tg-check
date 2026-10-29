@@ -418,7 +418,7 @@
 
         <!-- ================================================= Сообщение -->
         <DataTemplate x:Key="BubbleTpl" DataType="{x:Type vm:MessageViewModel}">
-            <Grid x:Name="Row" Margin="0,1" RenderTransformOrigin="0.5,1" Background="Transparent">
+            <Grid x:Name="Row" Margin="0,1" RenderTransformOrigin="0.5,1" Background="Transparent" PreviewMouseLeftButtonDown="MessageRow_PreviewMouseDown">
                 <Grid.RenderTransform>
                     <TranslateTransform />
                 </Grid.RenderTransform>
@@ -518,6 +518,9 @@
                                 <Separator />
                                 <MenuItem Header="Ответить" Tag="&#xE97A;"
                                           Command="{Binding PlacementTarget.Tag.ReplyCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}" />
+                                <MenuItem Header="Выделить" Tag="&#xE73A;"
+                                          Command="{Binding PlacementTarget.Tag.ToggleSelectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}" />
                                 <MenuItem Header="Переслать" Tag="&#xE72D;"
                                           Command="{Binding PlacementTarget.Tag.ForwardCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
@@ -778,6 +781,9 @@
                 <DataTrigger Binding="{Binding IsHighlighted}" Value="True">
                     <Setter TargetName="Row" Property="Background" Value="#262AABEE" />
                 </DataTrigger>
+                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                    <Setter TargetName="Row" Property="Background" Value="#332AABEE" />
+                </DataTrigger>
                 <DataTrigger Binding="{Binding IsOut}" Value="True">
                     <Setter TargetName="BubbleCol" Property="DockPanel.Dock" Value="Right" />
                     <Setter TargetName="BubbleWrap" Property="HorizontalAlignment" Value="Right" />
@@ -872,6 +878,21 @@
                             </StackPanel>
                         </StackPanel>
                     </Grid>
+                </DockPanel>
+            </Border>
+            <!-- Выделено несколько сообщений: панель действий вместо шапки (как в Telegram) -->
+            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,9" Background="{StaticResource SurfaceBrush}"
+                    Visibility="{Binding IsSelecting, Converter={StaticResource BoolToVis}}">
+                <DockPanel Height="42">
+                    <Button DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE711;" ToolTip="Отменить (Esc)"
+                            Command="{Binding ClearSelectionCommand}" Margin="0,0,8,0" />
+                    <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Margin="6,0,0,0" Command="{Binding DeleteSelectedCommand}"
+                            Visibility="{Binding CanDeleteSelected, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="Удалить" Foreground="{StaticResource DangerBrush}" />
+                    </Button>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="Копировать" Margin="6,0,0,0" Command="{Binding CopySelectedCommand}" />
+                    <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="Переслать" Padding="16,7" Command="{Binding ForwardSelectedCommand}" />
+                    <TextBlock Text="{Binding SelectedText}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
                 </DockPanel>
             </Border>
 
@@ -1331,11 +1352,13 @@
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem">
                             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
                             <Setter Property="Template">
                                 <Setter.Value>
                                     <ControlTemplate TargetType="ListBoxItem">
                                         <Border x:Name="Bd" CornerRadius="12" Background="Transparent" Padding="10,8" Cursor="Hand">
-                                            <ContentPresenter />
+                                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" />
                                         </Border>
                                         <ControlTemplate.Triggers>
                                             <Trigger Property="IsMouseOver" Value="True">
@@ -1375,7 +1398,8 @@
                                 </StackPanel>
                                 <StackPanel VerticalAlignment="Center">
                                     <StackPanel Orientation="Horizontal">
-                                        <TextBlock helpers:RichText.Text="{Binding Title}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock helpers:RichText.Text="{Binding Title}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{StaticResource TextBrush}" />
                                         <TextBlock Text="&#xE72E;" Style="{StaticResource Icon}" FontSize="11" Margin="6,0,0,0" ToolTip="Тема закрыта"
                                                    Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
                                                    Visibility="{Binding IsClosed, Converter={StaticResource BoolToVis}}" />

@@ -77,7 +77,9 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _isCompact;
 
     public bool HasConversation => Conversation is not null;
-    public bool HasStories => Stories.Count > 0;
+    /// <summary>Полоса историй над чатами (можно скрыть в настройках).</summary>
+    public bool HasStories => Stories.Count > 0 && UiSettings.ShowStories;
+    public void OnStoriesSettingChanged() => OnPropertyChanged(nameof(HasStories));
     public int ArchiveCount => Chats.Count(c => c.IsArchived);
     public int ArchiveUnread => Chats.Count(c => c.IsArchived && c.HasUnread && !c.IsMuted);
     /// <summary>Непрочитанные чаты для бейджей на вкладках «Все» и «Личные».</summary>

@@ -78,7 +78,7 @@
 
                 <!-- Поиск -->
                 <Grid Margin="12,12,12,8">
-                    <TextBox Style="{StaticResource SearchBox}" Padding="34,9,12,9" Tag="Поиск: чаты, люди, @ник, ссылка или ID"
+                    <TextBox x:Name="SearchBox" Style="{StaticResource SearchBox}" Padding="34,9,12,9" Tag="Поиск: чаты, люди, @ник, ссылка или ID"
                              Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}" />
                     <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" FontSize="13" Margin="13,0,0,0" IsHitTestVisible="False"
                                HorizontalAlignment="Left" Foreground="{StaticResource TextSecondaryBrush}" />

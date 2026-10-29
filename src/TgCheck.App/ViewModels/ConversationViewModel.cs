@@ -586,6 +586,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     public bool HandleEscape()
     {
         if (IsViewerOpen) { CloseViewer(); return true; }
+        if (IsSelecting) { ClearSelection(); return true; }
         if (IsForwardOpen) { Forwarding = null; return true; }
         if (IsStickerPackOpen) { StickerPack = null; return true; }
         if (IsPickerOpen) { IsPickerOpen = false; return true; }
@@ -1043,13 +1044,92 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     {
         if (Forwarding is not { } m || target is null) return;
         Forwarding = null;
+        var batch = _forwardBatch;
+        _forwardBatch = null;
         try
         {
-            var ids = m.IsAlbum ? m.Album.Select(a => a.Id).ToList() : [m.Id];
+            var ids = batch ?? (m.IsAlbum ? m.Album.Select(a => a.Id).ToList() : [m.Id]);
             await _tg.ForwardAsync(Peer, ids, target.Peer);
             _owner.ShowToast($"Переслано: {target.Title}");
         }
         catch (Exception ex) { _owner.ShowToast(TgErrors.Describe(ex), true); }
+    }
+
+    // ===================================================================== Выделение нескольких сообщений
+
+    private List<int>? _forwardBatch;
+    public ObservableCollection<MessageViewModel> Selected { get; } = [];
+    public bool IsSelecting => Selected.Count > 0;
+    public string SelectedText => $"{Fmt.N(Selected.Count)} {Fmt.Plural(Selected.Count, "сообщение", "сообщения", "сообщений")}";
+    /// <summary>Удалить выбранные можно, только если все они свои.</summary>
+    public bool CanDeleteSelected => Selected.Count > 0 && Selected.All(m => m.IsOut);
+
+    private void SelectionChanged()
+    {
+        OnPropertyChanged(nameof(IsSelecting));
+        OnPropertyChanged(nameof(SelectedText));
+        OnPropertyChanged(nameof(CanDeleteSelected));
+    }
+
+    /// <summary>Выбрать / снять сообщение (меню «Выделить», Ctrl+клик, клик в режиме выделения).</summary>
+    [RelayCommand]
+    public void ToggleSelect(MessageViewModel? m)
+    {
+        if (m is null || m.Item.ServiceText is not null) return;
+        m.IsSelected = !m.IsSelected;
+        if (m.IsSelected) Selected.Add(m); else Selected.Remove(m);
+        SelectionChanged();
+    }
+
+    [RelayCommand]
+    private void ClearSelection()
+    {
+        foreach (var m in Selected) m.IsSelected = false;
+        Selected.Clear();
+        SelectionChanged();
+    }
+
+    private List<int> SelectedIds() =>
+        Selected.OrderBy(m => m.Id).SelectMany(m => m.IsAlbum ? m.Album.Select(a => a.Id) : [m.Id]).Distinct().ToList();
+
+    [RelayCommand]
+    private void ForwardSelected()
+    {
+        if (Selected.Count == 0) return;
+        _forwardBatch = SelectedIds();
+        var first = Selected.OrderBy(m => m.Id).First();
+        ClearSelection();
+        ForwardQuery = "";
+        Forwarding = first;
+        FillForwardChats();
+    }
+
+    /// <summary>Скопировать текст выбранных — как в Telegram: «Имя, [время]» и текст.</summary>
+    [RelayCommand]
+    private void CopySelected()
+    {
+        if (Selected.Count == 0) return;
+        var text = string.Join("\n\n", Selected.OrderBy(m => m.Id).Select(m =>
+            $"{(m.IsOut ? "Вы" : m.SenderName)}, [{m.Item.DateUtc.ToLocalTime():dd.MM.yyyy HH:mm}]\n{(m.HasText ? m.Text : m.Item.Preview)}"));
+        try { Clipboard.SetText(text); _owner.ShowToast("Скопировано"); }
+        catch { /* буфер занят */ }
+        ClearSelection();
+    }
+
+    [RelayCommand]
+    private void DeleteSelected()
+    {
+        if (!CanDeleteSelected) return;
+        var ids = SelectedIds().ToArray();
+        _owner.Confirm = new ConfirmRequest(
+            $"Удалить {SelectedText}?", "Сообщения будут удалены для всех.", "Удалить", true,
+            async () =>
+            {
+                await _tg.DeleteAsync(Peer, ids, true);
+                OnMessagesDeleted(ids);
+                _owner.OnLocalDeleted(Peer.Key);
+                ClearSelection();
+            });
     }
 
     [RelayCommand]

@@ -16,6 +16,8 @@ public partial class ShellView : UserControl
     public ShellView()
     {
         InitializeComponent();
+        Loaded += (_, _) => Current = this;
+        Unloaded += (_, _) => { if (Current == this) Current = null; };
         Focusable = true;
         DataContextChanged += (_, _) =>
         {
@@ -85,6 +87,17 @@ public partial class ShellView : UserControl
             else if (e.Key == Key.Left) { stories.PreviousCommand.Execute(null); e.Handled = true; }
         }
         base.OnPreviewKeyDown(e);
+    }
+
+    /// <summary>Открытый экран приложения — окну нужно, чтобы передать ему печать вне полей ввода.</summary>
+    public static ShellView? Current { get; private set; }
+
+    /// <summary>Печать вне полей ввода: в чатах — в поле сообщения или в поиск (истории и настройки — не трогаем).</summary>
+    public bool RouteTyping(string text)
+    {
+        if (_vm is null || _vm.StoryViewer is not null || _vm.IsSettingsOpen) return false;
+        if (!ReferenceEquals(_vm.CurrentPage, _vm.Chats) || !ChatsPage.IsVisible) return false;
+        return ChatsPage.RouteTyping(text);
     }
 
     // Пока пишут ответ на историю — она стоит на паузе (как в Telegram).

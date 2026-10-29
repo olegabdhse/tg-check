@@ -405,6 +405,8 @@ public sealed partial class MessageViewModel : ObservableObject
         : $"{Fmt.N(n)} {Fmt.Plural(n, "комментарий", "комментария", "комментариев")}";
     /// <summary>Подсветка после перехода к сообщению (закреп, ответ).</summary>
     [ObservableProperty] private bool _isHighlighted;
+    /// <summary>Выбрано в режиме выделения нескольких сообщений.</summary>
+    [ObservableProperty] private bool _isSelected;
 
     public int Id => Item.Id;
     public bool IsOut => Item.IsOut;

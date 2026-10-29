@@ -10,6 +10,16 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _notifications = UiSettings.Notifications;
     [ObservableProperty] private bool _notificationSound = UiSettings.NotificationSound;
     [ObservableProperty] private bool _notifyArchived = UiSettings.NotifyArchived;
+    [ObservableProperty] private bool _showStories = UiSettings.ShowStories;
+
+    /// <summary>Изменилась настройка историй — список чатов показывает или прячет полосу.</summary>
+    public event Action? StoriesSettingChanged;
+
+    partial void OnShowStoriesChanged(bool value)
+    {
+        UiSettings.ShowStories = value;
+        StoriesSettingChanged?.Invoke();
+    }
 
     partial void OnShowIslandChanged(bool value) => UiSettings.ShowIsland = value;
     partial void OnNotificationsChanged(bool value) => UiSettings.Notifications = value;
