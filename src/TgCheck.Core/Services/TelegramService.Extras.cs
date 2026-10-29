@@ -610,19 +610,31 @@ public sealed partial class TelegramService
             if (_customEmoji.TryGetValue(id, out var existing)) return existing.Task;
             var tcs = new TaskCompletionSource<StickerItem?>(TaskCreationOptions.RunContinuationsAsynchronously);
             _customEmoji[id] = tcs;
-            _customEmojiQueue.Add(id);
-            if (!_customEmojiScheduled)
+            _ = Task.Run(() =>
             {
-                _customEmojiScheduled = true;
-                _ = FlushCustomEmojiAsync();
-            }
+                // Уже знакомое эмодзи — из локального кэша; иначе — в очередь к серверу (пачками).
+                if (Media.HasCachedDocumentPreview(id) && _cache.Load<Document>($"emoji_{id}") is { } cached && ToSticker(cached) is { } sticker)
+                {
+                    tcs.TrySetResult(sticker);
+                    return;
+                }
+                lock (_customEmoji)
+                {
+                    _customEmojiQueue.Add(id);
+                    if (!_customEmojiScheduled)
+                    {
+                        _customEmojiScheduled = true;
+                        _ = FlushCustomEmojiAsync();
+                    }
+                }
+            });
             return tcs.Task;
         }
     }
 
     private async Task FlushCustomEmojiAsync()
     {
-        await Task.Delay(40);
+        await Task.Delay(40).ConfigureAwait(false);
         long[] batch;
         lock (_customEmoji)
         {
@@ -633,7 +645,9 @@ public sealed partial class TelegramService
         if (_customEmojiScheduled) _ = FlushCustomEmojiAsync();
         try
         {
-            var docs = (await _client.Messages_GetCustomEmojiDocuments(batch)).OfType<Document>().ToDictionary(d => d.id);
+            var docs = (await _client.Messages_GetCustomEmojiDocuments(batch).ConfigureAwait(false)).OfType<Document>().ToDictionary(d => d.id);
+            // На диск: при следующем запуске эмодзи (реакции, статусы, в тексте) видны сразу, без запроса к серверу.
+            foreach (var d in docs.Values) _cache.Save($"emoji_{d.id}", d);
             lock (_customEmoji)
                 foreach (var id in batch)
                     _customEmoji[id].TrySetResult(docs.TryGetValue(id, out var d) ? ToSticker(d) : null);

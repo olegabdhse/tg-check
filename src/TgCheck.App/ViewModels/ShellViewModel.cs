@@ -144,7 +144,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         Chats.UnreadChanged += () => OnPropertyChanged(nameof(ChatsUnread));
         Settings.StoriesSettingChanged += Chats.OnStoriesSettingChanged;
-        _ = MyProfile.LoadAsync();
+        // Профиль (с подарками — это десятки запросов) — после основного списка чатов: при первом входе не отнимает у него сеть.
+        _ = Chats.MainLoaded.ContinueWith(_ => MyProfile.LoadAsync(), TaskScheduler.FromCurrentSynchronizationContext());
         _ = ReactionCatalog.LoadAsync(_tg);
         // Обновления — сразу при старте (не дожидаясь загрузки всех чатов) и затем каждые 30 минут.
         _ = CheckUpdatesAsync();

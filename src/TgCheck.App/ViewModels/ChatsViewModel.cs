@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows.Data;
@@ -314,23 +314,27 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         await ShowCachedAsync();
         IsLoading = Chats.Count == 0;
 
-        // 2) Сеть: основная папка быстро, затем архив (он бывает огромным). Истории — параллельно.
+        // 2) Сеть: основная папка и архив — одновременно и постранично (каждые 100 чатов сразу в списке;
+        //    раньше при первом входе всё ждало, пока скачается весь архив). Истории — параллельно.
         try
         {
             var stories = LoadStoriesAsync();
-            Merge(await _tg.GetDialogsAsync(archived: false), false, removeMissing: true);
+            var main = LoadFolderAsync(archived: false);
+            var archive = LoadFolderAsync(archived: true);
+            await main;
             IsLoading = false;
-            NotifyArchive();
-            OnPropertyChanged(nameof(IsListEmpty)); // полная пересборка списка не нужна: Merge сам расставил изменившиеся строки
+            _mainLoaded.TrySetResult();
             _ = stories;
             _syncTimer.Start();
-            _ = RefreshForumUnreadAsync(onlyMarked: false);
             LoadRecentSearch();
             _ = RefreshPresenceAsync();
 
-            Merge(await _tg.GetDialogsAsync(archived: true), true, removeMissing: true);
-            NotifyArchive();
-            OnPropertyChanged(nameof(IsListEmpty));
+            var seenMain = await main;
+            var seenAll = await archive;
+            seenAll.UnionWith(seenMain);
+            RemoveMissing(seenAll);
+            // Второстепенное — после того, как список загружен целиком: не отнимает у него сеть.
+            _ = RefreshForumUnreadAsync(onlyMarked: false);
             Shell.NotifyIslandChanged();
         }
         catch (Exception ex)
@@ -341,7 +345,41 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         finally
         {
             IsLoading = false;
+            _mainLoaded.TrySetResult();
         }
+    }
+
+    private readonly TaskCompletionSource _mainLoaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Основная папка загружена с сервера (или загрузка не удалась) — можно грузить второстепенное.</summary>
+    public Task MainLoaded => _mainLoaded.Task;
+
+    // Папка с сервера постранично: каждая страница — сразу в список; исчезнувшие чаты убираем, когда пришла вся папка.
+    private async Task<HashSet<long>> LoadFolderAsync(bool archived)
+    {
+        var seen = new HashSet<long>();
+        await foreach (var page in _tg.GetDialogsPagedAsync(archived))
+        {
+            foreach (var d in page) seen.Add(d.Peer.Key);
+            Merge(page, archived, removeMissing: false);
+            if (!archived) IsLoading = false; // первая страница основной папки — список уже есть
+            NotifyArchive();
+            OnPropertyChanged(nameof(IsListEmpty));
+        }
+        return seen;
+    }
+
+    // Убрать чаты, которых сервер не прислал ни в одной папке (удалены, вышли из группы). По обеим сразу:
+    // закреплённые в архиве приходят в ответе основной папки.
+    private void RemoveMissing(HashSet<long> seen)
+    {
+        foreach (var gone in Chats.Where(c => !seen.Contains(c.Key) && c != SelectedChat && c.AddedUtc is null).ToList())
+        {
+            Chats.Remove(gone);
+            _byKey.Remove(gone.Key);
+        }
+        NotifyArchive();
+        OnPropertyChanged(nameof(IsListEmpty));
     }
 
     // Группы с темами: общий счётчик сервера расходится с темами (у тем 0, у группы «7»),
@@ -392,8 +430,8 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     // Обновляем существующие строки, добавляем новые, убираем пропавшие — без мерцания списка.
     private void Merge(IReadOnlyList<ChatSummary> dialogs, bool archived, bool removeMissing)
     {
-        // Мало изменений — двигаем только изменившиеся строки (без перерисовки всего списка).
-        if (dialogs.Count(d => !_byKey.ContainsKey(d.Peer.Key)) <= 30)
+        // Обычный случай (в т.ч. страница по 100 чатов) — строки встают на место по одной, без перерисовки всего списка.
+        if (dialogs.Count(d => !_byKey.ContainsKey(d.Peer.Key)) <= 300)
         {
             foreach (var chat in MergeCore(dialogs, archived, removeMissing)) Reposition(chat);
             return;

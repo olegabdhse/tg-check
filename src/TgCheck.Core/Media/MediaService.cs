@@ -19,6 +19,8 @@ public sealed class MediaService
     private readonly Func<Client> _client;
     private readonly string _cacheDir;
     private readonly SemaphoreSlim _downloads = new(4, 4);
+    // Аватарки маленькие и нужны сразу (первый вход — десятки строк) — своя, более широкая очередь, не за картинками сообщений.
+    private readonly SemaphoreSlim _avatarDownloads = new(8, 8);
     // Загрузчики запускаются в пуле потоков: даже чтение с диска не должно идти в UI-потоке (в группах это десятки файлов разом).
     private readonly ConcurrentDictionary<string, Task<byte[]?>> _inflight = new();
 
@@ -216,7 +218,7 @@ public sealed class MediaService
         try
         {
             if (File.Exists(path)) return await File.ReadAllBytesAsync(path);
-            await _downloads.WaitAsync();
+            await _avatarDownloads.WaitAsync();
             try
             {
                 using var ms = new MemoryStream();
@@ -226,7 +228,7 @@ public sealed class MediaService
                 await File.WriteAllBytesAsync(path, bytes);
                 return bytes;
             }
-            finally { _downloads.Release(); }
+            finally { _avatarDownloads.Release(); }
         }
         catch (Exception ex)
         {
@@ -253,6 +255,9 @@ public sealed class MediaService
     /// <summary>
     /// Картинка для пузыря сообщения: фото (~800px), превью видео/GIF, стикер (PNG с прозрачностью).
     /// </summary>
+    /// <summary>Превью документа уже скачано (лежит в кэше на диске).</summary>
+    public bool HasCachedDocumentPreview(long documentId) => File.Exists(Path.Combine(_cacheDir, $"msgdoc_{documentId}.img"));
+
     public Task<byte[]?> GetMessagePreviewAsync(MediaHolder message)
     {
         var key = message.Photo is { } p ? $"msgphoto_{p.id}" : message.Document is { } d ? $"msgdoc_{d.id}" : null;

@@ -155,6 +155,48 @@ public sealed partial class TelegramService
     }
 
     /// <summary>
+    /// Диалоги папки постранично (по 100): каждая страница отдаётся сразу, не дожидаясь остальных —
+    /// при первом входе (кэша ещё нет) список появляется через одну страницу, а не после всех десятков.
+    /// В конце весь список сохраняется в кэш. Разбор страниц — не в потоке интерфейса.
+    /// </summary>
+    public async IAsyncEnumerable<IReadOnlyList<ChatSummary>> GetDialogsPagedAsync(bool archived,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var folder = archived ? 1 : 0;
+        var dialogs = new List<DialogBase>();
+        var seen = new HashSet<long>();
+        var messages = new List<MessageBase>();
+        var users = new Dictionary<long, User>();
+        var chats = new Dictionary<long, ChatBase>();
+        DateTime offsetDate = default;
+        int offsetId = 0;
+        InputPeer? offsetPeer = null;
+        for (var pageNo = 0; pageNo < 100; pageNo++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var page = await Task.Run(() => _client.Messages_GetDialogs(offsetDate, offsetId, offsetPeer, 100, 0, folder_id: folder), ct)
+                .ConfigureAwait(false);
+            var pageDialogs = page.Dialogs.OfType<Dialog>().Where(d => seen.Add(PeerRef.KeyOf(d.peer))).ToList();
+            if (page is Messages_DialogsNotModified || pageDialogs.Count == 0) break;
+            dialogs.AddRange(pageDialogs);
+            messages.AddRange(page.Messages);
+            page.CollectUsersChats(users, chats);
+            yield return MapDialogs(page, archived);
+
+            if (page is not Messages_DialogsSlice slice || dialogs.Count >= slice.count) break;
+            // Следующая страница — от последнего диалога этой (как в официальных клиентах).
+            var last = pageDialogs[^1];
+            var lastKey = PeerRef.KeyOf(last.peer);
+            var lastMsg = page.Messages.FirstOrDefault(m => m.ID == last.top_message && PeerRef.KeyOf(m.Peer) == lastKey);
+            offsetId = last.top_message;
+            offsetDate = lastMsg?.Date ?? default;
+            offsetPeer = PeerOf(last.peer)?.Info.ToInputPeer();
+        }
+        var all = new Messages_Dialogs { dialogs = [.. dialogs], messages = [.. messages], users = users, chats = chats };
+        _cache.Save($"dialogs_{folder}", all);
+    }
+
+    /// <summary>
     /// Верх списка чатов с сервера (последние ~60): точные счётчики непрочитанных и последние сообщения.
     /// Нужен для сверки: в больших группах Telegram присылает не все обновления.
     /// </summary>
@@ -177,13 +219,15 @@ public sealed partial class TelegramService
             var lastById = dialogs.Messages
                 .GroupBy(m => (PeerRef.KeyOf(m.Peer), m.ID))
                 .ToDictionary(g => g.Key, g => g.First());
-            // Папка — по самому диалогу: в ответ на запрос архива приходят и закреплённые чаты основной папки,
-            // и раньше они помечались архивными (пропадали из «Все», список перерисовывался туда-обратно).
+            // Папка — по самому диалогу: закреплённые в архиве чаты Telegram присылает в ответе основной папки
+            // (с folder_id = 1) — они архивные: в «Все» не показываются, в «Личных» — да.
             var folderKnown = dialogs.Dialogs.OfType<Dialog>().Any(x => x.flags.HasFlag(Dialog.Flags.has_folder_id));
 
             foreach (var d in dialogs.Dialogs.OfType<Dialog>())
             {
-                if (folderKnown && d.folder_id != folder) continue; // диалог другой папки — его даст свой запрос
+                // В ответ архива сервер подмешивает закреплённые диалоги без отметки папки (и основные, и даже архивные) —
+                // их папку верно сообщает ответ основной папки; из архива берём только явно архивные.
+                if (folder == 1 && folderKnown && d.folder_id != 1) continue;
                 if (IsIgnored(d.peer) || PeerOf(d.peer) is not { } peer) continue;
                 if (peer.Info is Channel { flags: var cf } && cf.HasFlag(Channel.Flags.left)) continue;
                 // Старые группы, превращённые в супергруппы, и деактивированные — как в официальном клиенте, не показываем.
@@ -202,7 +246,7 @@ public sealed partial class TelegramService
                     IsPinned = d.flags.HasFlag(Dialog.Flags.pinned),
                     IsMarkedUnread = d.flags.HasFlag(Dialog.Flags.unread_mark),
                     IsMuted = d.notify_settings?.mute_until > DateTime.UtcNow,
-                    IsArchived = folder == 1,
+                    IsArchived = folderKnown ? d.folder_id == 1 : folder == 1,
                 });
             }
         }
