@@ -96,7 +96,7 @@ public sealed record CustomEmojiSpan(int Offset, int Length, long DocumentId);
 public enum MediaKind { None, Photo, Sticker, Video, Gif, Voice, VideoNote, Audio, Document, Poll, Contact, Location, WebPage, Other }
 
 /// <summary>Блок «сложного сообщения» Telegram (статья, коллаж, живые фото, музыка): по порядку, как в посте.</summary>
-public enum RichBlockKind { Heading, Paragraph, Quote, Code, Divider, Media, Album }
+public enum RichBlockKind { Heading, Paragraph, Quote, Code, Divider, Media, Album, Slideshow }
 
 public sealed class RichBlock
 {

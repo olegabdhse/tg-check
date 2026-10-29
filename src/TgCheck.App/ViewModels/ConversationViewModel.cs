@@ -409,6 +409,21 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             prev = vm;
         }
         var firstExisting = Items.OfType<MessageViewModel>().FirstOrDefault();
+        // Альбом на стыке порций (подгрузка вверх, вторая часть ленты при открытии): уже показанные части
+        // присоединяем к подгруженным — иначе одно фото альбома «отклеивалось» отдельным сообщением.
+        if (firstExisting is not null && prev is not null && prev.Item.GroupedId != 0 && firstExisting.Item.GroupedId == prev.Item.GroupedId)
+        {
+            var parts = firstExisting.IsAlbum ? firstExisting.Album.ToList() : [firstExisting];
+            foreach (var part in parts)
+            {
+                prev.AddToAlbum(part, _tg.Media);
+                _byId[part.Id] = prev;
+            }
+            Items.Remove(firstExisting);
+            // Дата, стоявшая за ним, проставится ниже заново (иначе две одинаковые даты подряд).
+            if (Items.FirstOrDefault() is DateSeparatorViewModel) Items.RemoveAt(0);
+            firstExisting = Items.OfType<MessageViewModel>().FirstOrDefault();
+        }
         if (firstExisting is not null && firstExisting.Item.DateUtc.ToLocalTime().Date != lastDay)
             block.Add(new DateSeparatorViewModel(firstExisting.Item.DateUtc.ToLocalTime().Date));
 

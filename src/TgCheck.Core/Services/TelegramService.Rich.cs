@@ -38,7 +38,8 @@ public sealed partial class TelegramService
                 AddCaption(a.caption, result);
                 return;
             case PageBlockSlideshow s:
-                AddGallery(s.items, s.caption, result, owner, photos, docs);
+                AddGallery(s.items, s.caption, result, owner, photos, docs, slideshow: true); // одним окном со стрелками и точками
+
                 return;
             case PageBlockCollage c:
                 AddGallery(c.items, c.caption, result, owner, photos, docs);
@@ -78,7 +79,7 @@ public sealed partial class TelegramService
     }
 
     private void AddGallery(PageBlock[] items, PageCaption? caption, List<RichBlock> result, MessageItem owner,
-        Dictionary<long, Photo> photos, Dictionary<long, Document> docs)
+        Dictionary<long, Photo> photos, Dictionary<long, Document> docs, bool slideshow = false)
     {
         var media = new List<MessageItem>();
         foreach (var item in items)
@@ -87,7 +88,7 @@ public sealed partial class TelegramService
             else if (item is PageBlockVideo v && docs.TryGetValue(v.video_id, out var video)) media.Add(WithMedia(owner, new MessageMediaDocument { document = video }));
         }
         if (media.Count == 1) result.Add(new RichBlock { Kind = RichBlockKind.Media, Items = media });
-        else if (media.Count > 1) result.Add(new RichBlock { Kind = RichBlockKind.Album, Items = media });
+        else if (media.Count > 1) result.Add(new RichBlock { Kind = slideshow ? RichBlockKind.Slideshow : RichBlockKind.Album, Items = media });
         AddCaption(caption, result);
     }
 

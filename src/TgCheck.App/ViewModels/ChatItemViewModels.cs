@@ -330,12 +330,13 @@ public sealed partial class MessageViewModel : ObservableObject
     public IReadOnlyList<RichBlockViewModel> RichBlocks => _richBlocks ??= Item.Rich?.Select(b => new RichBlockViewModel(b, Chat)).ToList() ?? [];
     public bool IsRich => Item.Rich is { Count: > 0 };
     /// <summary>Все фото/видео сложного сообщения — для просмотрщика.</summary>
-    public IEnumerable<MessageViewModel> RichMedia => RichBlocks.SelectMany(b => b.Media is null ? [] : b.Media.IsAlbum ? b.Media.Album.AsEnumerable() : [b.Media]).Where(m => m.IsVisualMedia);
+    public IEnumerable<MessageViewModel> RichMedia => RichBlocks.SelectMany(b => b.Slides.Count > 0 ? b.Slides : b.Media is null ? [] : b.Media.IsAlbum ? b.Media.Album.AsEnumerable() : [b.Media]).Where(m => m.IsVisualMedia);
 
     public void EnsureRichPreviews(MediaService media)
     {
         foreach (var b in RichBlocks)
         {
+            foreach (var slide in b.Slides) slide.EnsurePreview(media);
             if (b.Media is not { } m) continue;
             m.EnsurePreview(media);
             foreach (var part in m.Album) part.EnsurePreview(media);
@@ -624,13 +625,21 @@ public sealed partial class UploadViewModel(string title, string icon, ImageSour
 }
 
 /// <summary>Блок сложного сообщения: заголовок, абзац, цитата, код, разделитель, медиа или коллаж.</summary>
-public sealed class RichBlockViewModel
+public sealed partial class RichBlockViewModel : ObservableObject
 {
     public RichBlockViewModel(RichBlock block, PeerRef chat)
     {
         Kind = block.Kind;
         Text = block.Text;
         if (block.Items.Count == 0) return;
+        if (block.Kind == RichBlockKind.Slideshow)
+        {
+            // Слайд-шоу: одно окно, листание стрелками, точки — какой слайд сейчас (как в Telegram).
+            Slides = block.Items.Select(i => new MessageViewModel(i, chat)).ToList();
+            Dots = Slides.Select((_, i) => new SlideDot(i == 0)).ToList();
+            SlideHeight = Math.Clamp(363 / Aspect(block.Items[0]), 200, 440);
+            return;
+        }
         // Медиа — обычная модель сообщения (те же шаблоны фото, видео, музыки); коллаж — альбом из частей.
         Media = new MessageViewModel(block.Items[0], chat);
         if (block.Kind == RichBlockKind.Album)
@@ -640,4 +649,29 @@ public sealed class RichBlockViewModel
     public RichBlockKind Kind { get; }
     public string? Text { get; }
     public MessageViewModel? Media { get; }
+
+    // ---- слайд-шоу
+    public IReadOnlyList<MessageViewModel> Slides { get; } = [];
+    public IReadOnlyList<SlideDot> Dots { get; } = [];
+    public double SlideHeight { get; } = 300;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(Current), nameof(HasPrev), nameof(HasNext))] private int _index;
+    public MessageViewModel? Current => Slides.Count > 0 ? Slides[Index] : null;
+    public bool HasPrev => Index > 0;
+    public bool HasNext => Index < Slides.Count - 1;
+
+    partial void OnIndexChanged(int value)
+    {
+        for (var i = 0; i < Dots.Count; i++) Dots[i].IsActive = i == value;
+    }
+
+    [RelayCommand] private void PrevSlide() { if (HasPrev) Index--; }
+    [RelayCommand] private void NextSlide() { if (HasNext) Index++; }
+
+    private static double Aspect(MessageItem m) => m is { MediaWidth: > 0, MediaHeight: > 0 } ? Math.Clamp((double)m.MediaWidth / m.MediaHeight, 0.6, 2) : 1;
+}
+
+/// <summary>Точка под слайд-шоу: белая — текущий слайд.</summary>
+public sealed partial class SlideDot(bool active) : ObservableObject
+{
+    [ObservableProperty] private bool _isActive = active;
 }
