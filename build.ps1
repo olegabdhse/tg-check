@@ -46,8 +46,20 @@ elseif ($keepEnv) { Set-Content -Path $distEnv -Value $keepEnv -Encoding UTF8 -N
 
 $exe = Join-Path $dist 'TgCheck.exe'
 $size = [Math]::Round((Get-Item $exe).Length / 1MB, 1)
+
+# Установщик (ярлыки, удаление через «Приложения» Windows) — внутри него только что собранный TgCheck.exe.
+$setupProject = Join-Path $root 'src\TgCheck.Setup\TgCheck.Setup.csproj'
+$setupArgs = @('build', $setupProject, '-c', 'Release', '-nologo', '-v', 'quiet')
+if ($Version) { $setupArgs += "-p:Version=$Version" }
+dotnet @setupArgs
+if ($LASTEXITCODE -ne 0) { throw "Сборка установщика завершилась с ошибкой ($LASTEXITCODE)" }
+$setup = Join-Path $dist 'TgCheck-Setup.exe'
+Copy-Item (Join-Path $root 'src\TgCheck.Setup\bin\Release\net48\TgCheck-Setup.exe') $setup -Force
+$setupSize = [Math]::Round((Get-Item $setup).Length / 1MB, 1)
+
 Write-Host ""
 Write-Host "Готово: $exe ($size МБ)" -ForegroundColor Green
+Write-Host "Установщик: $setup ($setupSize МБ)" -ForegroundColor Green
 if (-not (Test-Path $distEnv)) {
-    Write-Host "Не забудьте создать dist\.env по образцу .env.example" -ForegroundColor Yellow
+    Write-Host "Ключи Telegram встроены в exe из .env; рядом с программой .env не обязателен." -ForegroundColor DarkGray
 }

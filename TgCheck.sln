@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TgCheck.Core", "src\TgCheck
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TgCheck.App", "src\TgCheck.App\TgCheck.App.csproj", "{892B3506-A32A-4B0A-9771-F81353194A0E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TgCheck.Setup", "src\TgCheck.Setup\TgCheck.Setup.csproj", "{6EF7E9B3-DF8D-4736-B6CD-61F98B7AEA85}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -26,9 +28,14 @@ Global
 		{892B3506-A32A-4B0A-9771-F81353194A0E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{892B3506-A32A-4B0A-9771-F81353194A0E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{892B3506-A32A-4B0A-9771-F81353194A0E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6EF7E9B3-DF8D-4736-B6CD-61F98B7AEA85}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6EF7E9B3-DF8D-4736-B6CD-61F98B7AEA85}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6EF7E9B3-DF8D-4736-B6CD-61F98B7AEA85}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6EF7E9B3-DF8D-4736-B6CD-61F98B7AEA85}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{676ABDA1-6FBC-4308-B3AA-3EFA2A6C26F2} = {258D2705-6F52-4DE4-8F79-B33FD5FEB66E}
 		{892B3506-A32A-4B0A-9771-F81353194A0E} = {258D2705-6F52-4DE4-8F79-B33FD5FEB66E}
+		{6EF7E9B3-DF8D-4736-B6CD-61F98B7AEA85} = {258D2705-6F52-4DE4-8F79-B33FD5FEB66E}
 	EndGlobalSection
 EndGlobal
