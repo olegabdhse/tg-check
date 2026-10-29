@@ -92,6 +92,10 @@ public sealed partial class ProfileViewModel : ObservableObject
     public bool HasMembers => Members.Count > 0;
     public bool IsGroupProfile => Profile?.Kind == PeerKind.Group;
     public bool IsBotProfile => Profile?.Kind == PeerKind.Bot;
+    /// <summary>Чей профиль открыт (null — свой).</summary>
+    public PeerRef? ProfilePeer => _peer;
+    /// <summary>Кнопка «Открыть профиль» в боковой панели — только у людей (не групп, каналов и ботов).</summary>
+    public bool ShowOpenFullProfile => IsCompact && !IsSelf && Profile?.Kind == PeerKind.User;
     public bool HasBotCommands => Profile?.BotCommands.Count > 0;
     public bool ShowGifts => !IsCompact && Profile?.Kind is not (PeerKind.Group or PeerKind.Bot);
     public string MembersTitle => Profile?.MembersCount is { } n ? $"Участники · {Fmt.N(n)}" : "Участники";
@@ -334,7 +338,7 @@ public sealed partial class ProfileViewModel : ObservableObject
         if (avatar is not null) Avatar = avatar;
         BuildInfoRows(profile);
         IsLoading = false;
-        foreach (var name in new[] { nameof(IsGroupProfile), nameof(IsBotProfile), nameof(HasBotCommands), nameof(ShowGifts), nameof(MembersTitle) })
+        foreach (var name in new[] { nameof(IsGroupProfile), nameof(IsBotProfile), nameof(ShowOpenFullProfile), nameof(HasBotCommands), nameof(ShowGifts), nameof(MembersTitle) })
             OnPropertyChanged(name);
     }
 

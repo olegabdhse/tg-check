@@ -436,7 +436,8 @@ public partial class ConversationView : UserControl
     // ←/→ листают медиа в просмотрщике.
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
-        if (_vm?.IsViewerOpen == true && Keyboard.FocusedElement is not TextBox)
+        // Полей ввода в просмотрщике нет, а фокус часто остаётся в поле сообщения — стрелки всё равно листают медиа.
+        if (_vm?.IsViewerOpen == true)
         {
             if (e.Key == Key.Left) { _vm.ViewerPrevCommand.Execute(null); e.Handled = true; }
             else if (e.Key == Key.Right) { _vm.ViewerNextCommand.Execute(null); e.Handled = true; }
