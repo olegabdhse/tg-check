@@ -205,6 +205,8 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     [ObservableProperty] private bool _viewerLoading;
     [ObservableProperty] private double _viewerProgress;
     [ObservableProperty] private string? _viewerVideoPath;
+    /// <summary>Встроенный плеер не смог открыть видео (кодек, формат) — показываем превью и кнопку «Открыть в плеере».</summary>
+    [ObservableProperty] private bool _viewerVideoFailed;
 
     public bool IsViewerOpen => ViewerMessage is not null;
     public bool ViewerIsVideo => ViewerMessage?.Item.Media is MediaKind.Video or MediaKind.Gif;
@@ -1647,6 +1649,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         // Листаем всё медиа чата (или вкладки «Медиа» в профиле, если открыли оттуда).
         _viewerList = SharedItems.Contains(m) ? SharedItems.Where(v => v.IsVisualMedia).ToList() : ChatVisualMedia();
         if (!_viewerList.Contains(m)) _viewerList = [m];
+        if (!SharedItems.Contains(m) && !IsThread) _ = ExtendViewerListAsync();
         return ShowInViewer(m);
     }
 
@@ -1679,10 +1682,12 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         }
         AudioPlayer.Instance.Stop();
         ViewerMessage = m;
+        m.EnsurePreview(_tg.Media); // элемент из полного списка чата мог ещё не иметь превью
         OnPropertyChanged(nameof(ViewerCounter));
         OnPropertyChanged(nameof(ViewerHasPrev));
         OnPropertyChanged(nameof(ViewerHasNext));
         ViewerImage = m.Preview;
+        ViewerVideoFailed = false;
         ViewerVideoPath = null;
         ViewerLoading = true;
         ViewerProgress = 0;
@@ -1717,6 +1722,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     [RelayCommand]
     private void CloseViewer()
     {
+        _viewerListCts?.Cancel();
         ViewerMessage = null;
         ViewerImage = null;
         ViewerVideoPath = null;
@@ -1724,4 +1730,56 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
 
     [RelayCommand]
     private Task SaveViewer() => ViewerMessage is { } m ? Download(m) : Task.CompletedTask;
+
+    /// <summary>Видео, которое не открылось встроенным плеером, — в системном (там есть все установленные кодеки).</summary>
+    [RelayCommand]
+    private void OpenViewerExternally()
+    {
+        if (ViewerVideoPath is not { } path || !System.IO.File.Exists(path)) return;
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true }); }
+        catch (Exception ex) { _owner.ShowToast(TgErrors.Describe(ex), true); }
+    }
+
+    // Список для листания — всё фото/видео чата с сервера, а не только уже загруженное в ленту
+    // (как в Telegram: «5 из 120», стрелки идут дальше загруженного). Догружается в фоне после открытия.
+    private CancellationTokenSource? _viewerListCts;
+
+    private async Task ExtendViewerListAsync()
+    {
+        _viewerListCts?.Cancel();
+        var cts = _viewerListCts = new CancellationTokenSource();
+        try
+        {
+            var all = new List<MessageItem>();
+            var offset = 0;
+            for (var page = 0; page < 30; page++) // до 3000 фото/видео
+            {
+                var items = await _tg.SearchMediaAsync(Peer, SharedMediaKind.Media, offset, 100);
+                if (cts.IsCancellationRequested) return;
+                if (items.Count == 0) break;
+                all.AddRange(items);
+                offset = items[^1].Id;
+                if (items.Count < 100) break;
+            }
+            if (cts.IsCancellationRequested || ViewerMessage is null || all.Count == 0) return;
+            // Уже открытые в ленте модели переиспользуем (у них загружены превью), недостающие создаём.
+            var known = _viewerList.GroupBy(v => v.Item.Id).ToDictionary(g => g.Key, g => g.First());
+            var list = all.Where(i => i.Media is MediaKind.Photo or MediaKind.Video or MediaKind.Gif)
+                .Select(i =>
+                {
+                    if (known.Remove(i.Id, out var vm)) return vm;
+                    var created = new MessageViewModel(i, Peer);
+                    return created;
+                })
+                .Concat(known.Values) // что есть в ленте, но поиск не вернул (GIF и т.п.)
+                .OrderBy(v => v.Item.Id)
+                .ToList();
+            if (!list.Contains(ViewerMessage)) return;
+            _viewerList = list;
+            OnPropertyChanged(nameof(ViewerCounter));
+            OnPropertyChanged(nameof(ViewerHasPrev));
+            OnPropertyChanged(nameof(ViewerHasNext));
+        }
+        catch (Exception ex) { TgErrors.Describe(ex); }
+    }
 }

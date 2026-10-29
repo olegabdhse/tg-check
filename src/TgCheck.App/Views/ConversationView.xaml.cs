@@ -435,6 +435,15 @@ public partial class ConversationView : UserControl
         _videoTimer.Start();
     }
 
+    // Формат/кодек, которого нет у встроенного плеера (webm, HEVC без расширения Windows и т.п.).
+    private void VideoPlayer_MediaFailed(object sender, ExceptionRoutedEventArgs e)
+    {
+        _videoTimer.Stop();
+        _videoPlaying = false;
+        TgCheck.Core.Services.Logging.Write($"video failed {_vm?.ViewerMessage?.Item.MimeType} {_vm?.ViewerVideoPath}: {e.ErrorException?.Message}");
+        if (_vm is not null) _vm.ViewerVideoFailed = true;
+    }
+
     private void VideoPlayer_MediaEnded(object sender, RoutedEventArgs e)
     {
         VideoPlayer.Position = TimeSpan.Zero;
