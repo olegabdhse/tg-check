@@ -25,6 +25,7 @@ public sealed partial class TelegramService
         for (var page = 0; page < 5; page++)
         {
             if (await _client.Stories_GetAllStories(state, next: state is not null).ConfigureAwait(false) is not Stories_AllStories all) break;
+            await Task.Yield(); // ответ получен — дальше в пуле потоков, а не в сетевом потоке библиотеки (иначе обновления ждут)
             // Первая страница — в кэш: при следующем запуске полоса историй видна сразу, вместе со списком чатов.
             if (page == 0) _ = Task.Run(() => _cache.Save("stories", all));
             MapAllStories(all, result);
@@ -98,6 +99,7 @@ public sealed partial class TelegramService
             var res = archive
                 ? await _client.Stories_GetStoriesArchive(peer.Info.ToInputPeer(), limit: 60).ConfigureAwait(false)
                 : await _client.Stories_GetPinnedStories(peer.Info.ToInputPeer(), limit: 60).ConfigureAwait(false);
+            await Task.Yield(); // ответ получен — дальше в пуле потоков, а не в сетевом потоке библиотеки (иначе обновления ждут)
             foreach (var (k, v) in res.users) _users[k] = v;
             foreach (var (k, v) in res.chats) _chats[k] = v;
             return res.stories.OfType<StoryItem>().Select(MapStory).OfType<StoryInfo>().OrderByDescending(s => s.Id).ToList();
@@ -209,6 +211,7 @@ public sealed partial class TelegramService
     {
         if (forum.Info is not Channel channel) return [];
         var res = await _client.Messages_GetForumTopics(channel, default, 0, 0, 100).ConfigureAwait(false); // разбор ответа — не в потоке интерфейса
+        await Task.Yield(); // ответ получен — дальше в пуле потоков, а не в сетевом потоке библиотеки (иначе обновления ждут)
         res.CollectUsersChats(_users, _chats);
         var lastMessages = res.messages.Where(m => m is Message && !IsHiddenMessage(m)).ToDictionary(m => m.ID, MapMessage);
         return res.topics.OfType<ForumTopic>()
@@ -502,6 +505,7 @@ public sealed partial class TelegramService
         try
         {
             var full = await _client.Users_GetFullUser(user).ConfigureAwait(false);
+            await Task.Yield(); // ответ получен — дальше в пуле потоков, а не в сетевом потоке библиотеки (иначе обновления ждут)
             full.CollectUsersChats(_users, _chats);
             var hasMain = user.flags2.HasFlag(User.Flags2.bot_has_main_app);
             return full.full_user.bot_info?.menu_button switch
@@ -646,6 +650,7 @@ public sealed partial class TelegramService
         try
         {
             var docs = (await _client.Messages_GetCustomEmojiDocuments(batch).ConfigureAwait(false)).OfType<Document>().ToDictionary(d => d.id);
+            await Task.Yield(); // ответ получен — дальше в пуле потоков, а не в сетевом потоке библиотеки (иначе обновления ждут)
             // На диск: при следующем запуске эмодзи (реакции, статусы, в тексте) видны сразу, без запроса к серверу.
             foreach (var d in docs.Values) _cache.Save($"emoji_{d.id}", d);
             lock (_customEmoji)

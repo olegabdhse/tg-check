@@ -257,6 +257,7 @@ public sealed partial class TelegramService : IAsyncDisposable
 
         InputUserBase input = peer is { IsSelf: false, Info: User target } ? target : InputUser.Self;
         var full = await _client.Users_GetFullUser(input).ConfigureAwait(false);
+        await Task.Yield(); // ответ получен — дальше в пуле потоков, а не в сетевом потоке библиотеки (иначе обновления ждут)
         full.CollectUsersChats(_users, _chats);
         var me = full.users.TryGetValue(full.full_user.id, out var u) ? u : throw new InvalidOperationException("Не удалось получить пользователя.");
         var isSelf = me.id == _client.UserId;
@@ -420,6 +421,7 @@ public sealed partial class TelegramService : IAsyncDisposable
         var isSelf = peer is null || peer.IsSelf;
         var target = isSelf ? InputPeer.Self : peer!.Info.ToInputPeer();
         var period = await GetConvertPeriodAsync().ConfigureAwait(false); // дальше — не в потоке интерфейса (разбор сотен подарков)
+        await Task.Yield(); // ответ получен — дальше в пуле потоков, а не в сетевом потоке библиотеки (иначе обновления ждут)
         var result = new List<GiftItem>();
         var pages = new List<Payments_SavedStarGifts>();
         var offset = "";
@@ -427,6 +429,7 @@ public sealed partial class TelegramService : IAsyncDisposable
         {
             ct.ThrowIfCancellationRequested();
             var page = await _client.Payments_GetSavedStarGifts(target, offset, 100);
+            await Task.Yield(); // ответ получен — дальше в пуле потоков, а не в сетевом потоке библиотеки (иначе обновления ждут)
             pages.Add(page);
             MapGiftPage(page, period, isSelf, result);
             progress?.Report((result.Count, page.count));

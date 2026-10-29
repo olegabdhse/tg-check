@@ -146,6 +146,7 @@ public sealed class MediaService
         {
             using var ms = new MemoryStream();
             await _client().DownloadFileAsync(doc, ms, thumb);
+            await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
             return SKImage.FromEncodedData(ms.ToArray());
         }
         finally { _downloads.Release(); }
@@ -182,6 +183,7 @@ public sealed class MediaService
             if (File.Exists(path)) return (await File.ReadAllBytesAsync(path), doc.mime_type);
             using var ms = new MemoryStream();
             var mime = await _client().DownloadFileAsync(doc, ms);
+            await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
             var bytes = ms.ToArray();
             var tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             await File.WriteAllBytesAsync(tmp, bytes);
@@ -212,7 +214,7 @@ public sealed class MediaService
         return _inflight.GetOrAdd(key, _ => Task.Run(() => LoadAvatarAsync(peer, key)));
     }
 
-    private async Task<byte[]?> LoadAvatarAsync(IPeerInfo peer, string key)
+    private async Task<byte[]?> LoadAvatarAsync(IPeerInfo peer, string key, bool big = false)
     {
         var path = Path.Combine(_cacheDir, key + ".jpg");
         try
@@ -222,7 +224,8 @@ public sealed class MediaService
             try
             {
                 using var ms = new MemoryStream();
-                await _client().DownloadProfilePhotoAsync(peer, ms, big: false);
+                await _client().DownloadProfilePhotoAsync(peer, ms, big: big);
+                await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
                 if (ms.Length == 0) return null;
                 var bytes = ms.ToArray();
                 await File.WriteAllBytesAsync(path, bytes);
@@ -235,6 +238,21 @@ public sealed class MediaService
             Logging.Write($"avatar {peer.ID}: {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>Большое фото профиля (для страницы профиля) — с кэшем на диске: повторное открытие профиля мгновенное.</summary>
+    public Task<byte[]?> GetPeerAvatarBigAsync(PeerRef peer)
+    {
+        if (!peer.HasPhoto) return Task.FromResult<byte[]?>(null);
+        var photoId = peer.Info switch
+        {
+            User u => u.photo?.photo_id ?? 0,
+            Channel c => (c.photo as ChatPhoto)?.photo_id ?? 0,
+            Chat c => (c.photo as ChatPhoto)?.photo_id ?? 0,
+            _ => 0,
+        };
+        var key = $"avabig_{peer.Info.ID}_{photoId}";
+        return _inflight.GetOrAdd(key, _ => Task.Run(() => LoadAvatarAsync(peer.Info, key, big: true)));
     }
 
     /// <summary>Маленький аватар пользователя/группы/канала (jpeg) или null.</summary>
@@ -281,6 +299,7 @@ public sealed class MediaService
                 {
                     using var ms = new MemoryStream();
                     await _client().DownloadFileAsync(photo, ms, size);
+                    await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
                     bytes = ms.ToArray();
                 }
                 finally { _downloads.Release(); }
@@ -303,6 +322,7 @@ public sealed class MediaService
                     {
                         using var ms = new MemoryStream();
                         await _client().DownloadFileAsync(doc, ms, thumb);
+                        await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
                         bytes = ms.ToArray();
                     }
                     finally { _downloads.Release(); }
@@ -438,6 +458,7 @@ public sealed class MediaService
             {
                 using var ms = new MemoryStream();
                 await _client().DownloadFileAsync(photo, ms, photo.LargestPhotoSize);
+                await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
                 var bytes = ms.ToArray();
                 await File.WriteAllBytesAsync(path, bytes);
                 return bytes;
@@ -486,6 +507,7 @@ public sealed class MediaService
                 await using (var fs = File.Create(part))
                     await _client().DownloadFileAsync(doc, fs, (PhotoSizeBase?)null,
                         (done, total) => progress?.Report(total > 0 ? (double)done / total : 0));
+                await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
             }
             finally { if (!priority) _backgroundFiles.Release(); }
             File.Move(part, path, overwrite: true);
@@ -537,6 +559,7 @@ public sealed class MediaService
             {
                 using var ms = new MemoryStream();
                 await _client().DownloadFileAsync(photo.Photo, ms, photo.Photo.LargestPhotoSize);
+                await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
                 var bytes = ms.ToArray();
                 await File.WriteAllBytesAsync(path, bytes);
                 return bytes;

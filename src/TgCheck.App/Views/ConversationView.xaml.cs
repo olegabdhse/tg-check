@@ -110,6 +110,14 @@ public partial class ConversationView : UserControl
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
             Scroller.UpdateLayout();
+            if (animated && _feedHidden && _vm is { Items.Count: > 0 })
+            {
+                // Лента только что пересобрана (возврат вниз от закрепа): встаём чуть выше конца и доезжаем плавно.
+                SmoothScroll.JumpTo(Scroller, Math.Max(0, Scroller.ScrollableHeight - Scroller.ViewportHeight * 1.2));
+                RevealFeed();
+                SmoothScroll.ScrollTo(Scroller, Scroller.ScrollableHeight);
+                return;
+            }
             if (animated && !_feedHidden) SmoothScroll.ScrollTo(Scroller, Scroller.ScrollableHeight);
             else SmoothScroll.JumpTo(Scroller, Scroller.ScrollableHeight);
             if (_vm is { Items.Count: > 0 }) RevealFeed();

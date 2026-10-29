@@ -472,6 +472,8 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         if (_byId.ContainsKey(m.Id)) return;
         if (_detached)
         {
+            // Лента у старого сообщения — новое дописываем в сохранённый конец (покажется по «вниз»).
+            if (_liveTail is { } tail && !tail.Any(t => t.Id == m.Id)) tail.Add(m);
             if (!m.IsOut) PendingNewCount++;
             return;
         }
@@ -1462,6 +1464,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     public event Action? FeedResetting;
     public bool IsDetached => _detached;
     private bool _detached;
+    private List<MessageItem>? _liveTail;
 
     private async Task LoadPinnedAsync()
     {
@@ -1507,6 +1510,9 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             {
                 // Уже подгружено заранее (следующий закреп) — без запроса; иначе — 40 сообщений вокруг (меньше пересборка).
                 var around = _aroundCache.Remove(id, out var prefetched) ? await prefetched : await _tg.GetHistoryAroundAsync(Peer, id, 40);
+                // Конец ленты запоминаем (один раз — при первом уходе от него): «вниз» вернёт его мгновенно.
+                if (!_detached)
+                    _liveTail = Items.OfType<MessageViewModel>().SelectMany(v => v.IsAlbum ? v.Album.Select(a => a.Item) : [v.Item]).TakeLast(60).ToList();
                 FeedResetting?.Invoke();
                 ResetItems(around, staged: false); // нужное сообщение — в середине, оно должно быть сразу
                 HasMoreHistory = true;
@@ -1647,11 +1653,14 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         PendingNewCount = 0;
         if (_detached)
         {
-            // После перехода к старому сообщению лента «оторвана» — возвращаем последние.
+            // После перехода к старому сообщению лента «оторвана» — возвращаем последние: сохранённый конец ленты
+            // (с пришедшими за это время сообщениями) — сразу, без запроса; нет его — с сервера.
             _detached = false;
+            var tail = _liveTail;
+            _liveTail = null;
             FeedResetting?.Invoke();
-            try { ResetItems(await FetchAsync(0)); } catch { }
-            ScrollToBottomRequested?.Invoke(false);
+            try { ResetItems(tail is { Count: > 0 } ? tail : await FetchAsync(0)); } catch { }
+            ScrollToBottomRequested?.Invoke(true); // короткая анимация к низу (как в Telegram), а не прыжок
         }
         else ScrollToBottomRequested?.Invoke(true);
         MarkRead();

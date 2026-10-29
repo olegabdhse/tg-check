@@ -31,6 +31,10 @@ public partial class App : Application
         listener.Start();
 
         base.OnStartup(e);
+        // Сетевой цикл Telegram работает в пуле потоков: при запуске пул забит фоновыми задачами (кэш, страницы чатов,
+        // видеодвижок), и без запаса потоков входящие сообщения и статусы ждали свободного по несколько секунд.
+        ThreadPool.GetMinThreads(out var workers, out var io);
+        ThreadPool.SetMinThreads(Math.Max(workers, 32), Math.Max(io, 32));
         // Закрытие окна прячет его в трей; выход — из меню значка.
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         DispatcherUnhandledException += OnUnhandled;

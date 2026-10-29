@@ -176,6 +176,7 @@ public sealed partial class TelegramService
             ct.ThrowIfCancellationRequested();
             var page = await Task.Run(() => _client.Messages_GetDialogs(offsetDate, offsetId, offsetPeer, 100, 0, folder_id: folder), ct)
                 .ConfigureAwait(false);
+            await Task.Yield(); // ответ получен — дальше в пуле потоков, а не в сетевом потоке библиотеки (иначе обновления ждут)
             var pageDialogs = page.Dialogs.OfType<Dialog>().Where(d => seen.Add(PeerRef.KeyOf(d.peer))).ToList();
             if (page is Messages_DialogsNotModified || pageDialogs.Count == 0) break;
             dialogs.AddRange(pageDialogs);
@@ -258,6 +259,7 @@ public sealed partial class TelegramService
     {
         if (query.Trim().Length < 2) return [];
         var found = await _client.Contacts_Search(query.Trim(), 20).ConfigureAwait(false);
+        await Task.Yield(); // ответ получен — дальше в пуле потоков, а не в сетевом потоке библиотеки (иначе обновления ждут)
         found.CollectUsersChats(_users, _chats);
         return found.my_results.Concat(found.results)
             .Where(p => !IsIgnored(p))
