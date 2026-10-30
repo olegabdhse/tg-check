@@ -111,6 +111,19 @@ public sealed class AudioPlayer : IDisposable
             // Не считаем это концом — ждём данные и продолжаем с того же места (раньше песня запускалась и сразу вставала).
             lock (_lock)
             {
+                // Декодер не смог читать файл, который ещё качается (встал в самом начале), — играем уже готовый файл:
+                // показываем загрузку, дожидаемся конца скачивания и запускаем с того же места.
+                if (ReferenceEquals(_output, output) && _source is GrowingFileStream growing && _stream is not null
+                    && (_stream.Position == 0 || restarts >= 3))
+                {
+                    var resumeAt = _stream.Position;
+                    var playingKey2 = key;
+                    Logging.Write("audio: песня ещё качается и не читается на ходу — ждём файл целиком");
+                    _restartPending = true;
+                    Notify();
+                    _ = growing.Done.ContinueWith(t => SwitchToFile(playingKey2, output, t.IsCompletedSuccessfully ? t.Result : null, resumeAt));
+                    return;
+                }
                 if (ReferenceEquals(_output, output) && _stream is not null && _stream.Position < _stream.Length - _stream.WaveFormat.AverageBytesPerSecond / 2
                     && restarts++ < 40)
                 {
@@ -140,6 +153,38 @@ public sealed class AudioPlayer : IDisposable
         Key = key;
         _output.Play();
         _timer = new Timer(_ => { if (IsPlaying || IsBuffering) Notify(); }, null, 0, 50);
+    }
+
+    // Песня докачалась — продолжаем с готового файла (если за это время не включили что-то другое).
+    private void SwitchToFile(string key, WaveOutEvent previous, string? path, long resumeAt)
+    {
+        lock (_lock)
+        {
+            _restartPending = false;
+            if (!ReferenceEquals(_output, previous) || Key != key) return; // уже играет другое или остановили
+            if (path is null)
+            {
+                Logging.Write("audio: песня не скачалась");
+                StopInternal();
+            }
+            else
+            {
+                try
+                {
+                    var loop = Loop;
+                    StopInternal();
+                    Start(key, Open(path));
+                    if (resumeAt > 0 && _stream is { } s) s.Position = Math.Min(resumeAt, s.Length - 1) / s.WaveFormat.BlockAlign * s.WaveFormat.BlockAlign;
+                    Loop = loop;
+                }
+                catch (Exception ex)
+                {
+                    Logging.Write("audio file: " + ex.Message);
+                    StopInternal();
+                }
+            }
+        }
+        Notify();
     }
 
     public void Pause()

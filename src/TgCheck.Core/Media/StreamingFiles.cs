@@ -53,6 +53,9 @@ internal sealed class GrowingFileStream : Stream
     /// <summary>Ждёт ещё не скачанные данные.</summary>
     public bool IsWaiting { get; private set; }
 
+    /// <summary>Конец загрузки: путь к готовому файлу (null — не скачалось).</summary>
+    public Task<string?> Done => _done;
+
     public override bool CanRead => true;
     public override bool CanSeek => true;
     public override bool CanWrite => false;
