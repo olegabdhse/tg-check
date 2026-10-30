@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:TgCheck.App.ViewModels"
              xmlns:controls="clr-namespace:TgCheck.App.Controls"
+             xmlns:views="clr-namespace:TgCheck.App.Views"
              DataContext="{x:Static vm:MusicNow.Instance}">
     <!-- Плеер музыки: обложка с волнами, название и исполнитель, перемотка, повтор, пауза, закрыть -->
     <DockPanel>
@@ -15,7 +16,25 @@
                 Command="{Binding SeekEndCommand}" ToolTip="В конец" />
         <Button DockPanel.Dock="Right" Style="{StaticResource RoundButton}" Width="38" Height="38" Margin="4,0,2,0" VerticalAlignment="Center"
                 Command="{Binding ToggleCommand}" ToolTip="Играть / пауза">
-            <TextBlock FontSize="14" Foreground="White">
+            <Grid>
+            <!-- Догружается — вместо значка аккуратная загрузка (а не вид «остановлено») -->
+            <Path Width="18" Height="18" Stretch="None" Stroke="White" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                  Data="M9,1.5 A7.5,7.5 0 1 1 1.5,9" RenderTransformOrigin="0.5,0.5"
+                  Visibility="{Binding IsBuffering, Converter={StaticResource BoolToVis}}">
+                <Path.RenderTransform>
+                    <RotateTransform />
+                </Path.RenderTransform>
+                <Path.Triggers>
+                    <EventTrigger RoutedEvent="Loaded">
+                        <BeginStoryboard>
+                            <Storyboard RepeatBehavior="Forever">
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)" From="0" To="360" Duration="0:0:0.9" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </EventTrigger>
+                </Path.Triggers>
+            </Path>
+            <TextBlock FontSize="14" Foreground="White" Visibility="{Binding IsBuffering, Converter={StaticResource InvBoolToVis}}">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock" BasedOn="{StaticResource Icon}">
                         <Setter Property="Text" Value="&#xE768;" />
@@ -27,6 +46,7 @@
                     </Style>
                 </TextBlock.Style>
             </TextBlock>
+            </Grid>
         </Button>
         <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE892;" FontSize="13" Padding="7" VerticalAlignment="Center"
                 Command="{Binding SeekStartCommand}" ToolTip="В начало" />

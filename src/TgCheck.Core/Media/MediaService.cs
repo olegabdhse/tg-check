@@ -24,16 +24,25 @@ public sealed class MediaService
     // Загрузчики запускаются в пуле потоков: даже чтение с диска не должно идти в UI-потоке (в группах это десятки файлов разом).
     private readonly ConcurrentDictionary<string, Task<byte[]?>> _inflight = new();
 
-    // Общий запрос на время загрузки: одновременные просьбы одной картинки ждут одну загрузку. Готовый результат
-    // здесь не хранится (раньше оставался навсегда — все превью, аватары и эмодзи сессии висели в памяти, сотни МБ);
-    // повторно картинка читается с диска.
+    // Общий запрос на время загрузки: одновременные просьбы одной картинки ждут одну загрузку. Готовые картинки
+    // держим в памяти в ограниченном кэше (последние, до 64 МБ): повторный показ мгновенный, как раньше, но память
+    // не растёт без конца (раньше хранилось всё за сессию — сотни МБ).
     private Task<byte[]?> Shared(string key, Func<Task<byte[]?>> start)
     {
+        if (_recent.Get(key) is { } ready) return Task.FromResult<byte[]?>(ready);
         var task = _inflight.GetOrAdd(key, _ => start());
-        if (task.IsCompleted) _inflight.TryRemove(new KeyValuePair<string, Task<byte[]?>>(key, task));
-        else _ = task.ContinueWith(t => _inflight.TryRemove(new KeyValuePair<string, Task<byte[]?>>(key, t)), TaskScheduler.Default);
+        if (task.IsCompleted) Done(task);
+        else _ = task.ContinueWith(Done, TaskScheduler.Default);
         return task;
+
+        void Done(Task<byte[]?> t)
+        {
+            _inflight.TryRemove(new KeyValuePair<string, Task<byte[]?>>(key, t));
+            if (t.IsCompletedSuccessfully && t.Result is { } bytes) _recent.Put(key, bytes);
+        }
     }
+
+    private readonly BytesCache _recent = new(64L * 1024 * 1024);
 
     internal MediaService(Func<Client> client, string cacheDir)
     {
@@ -219,6 +228,7 @@ public sealed class MediaService
             try
             {
                 if (File.Exists(path)) return await File.ReadAllBytesAsync(path);
+                if (background) await WhilePriorityAsync();
                 var (bytes, mime) = await DownloadDocumentAsync(doc, background ? _emojiPrefetch : _emojiDownloads);
                 if (bytes is null) return null;
                 using var image = mime == "application/x-tgsticker" || IsGzip(bytes) ? RenderLottie(bytes, px) : SKImage.FromEncodedData(bytes);
@@ -621,6 +631,13 @@ public sealed class MediaService
     }
 
     private readonly ConcurrentDictionary<long, bool> _cancelledFiles = new();
+    // Открытое пользователем (песня, видео) качается — фоновые загрузки (голосовые на экране, набор эмодзи) ждут.
+    private int _priorityActive;
+
+    private async Task WhilePriorityAsync()
+    {
+        while (Volatile.Read(ref _priorityActive) > 0) await Task.Delay(250);
+    }
     // Файлы, которые качаются прямо сейчас (путь к .part) — их можно читать на ходу.
     private readonly ConcurrentDictionary<long, string> _partPaths = new();
 
@@ -739,7 +756,8 @@ public sealed class MediaService
             }
             _cancelledFiles.TryRemove(doc.id, out _);
             var part = path + "." + Guid.NewGuid().ToString("N")[..8] + ".part";
-            if (!priority) await _backgroundFiles.WaitAsync();
+            if (!priority) { await WhilePriorityAsync(); await _backgroundFiles.WaitAsync(); }
+            else Interlocked.Increment(ref _priorityActive);
             try
             {
                 // Файл открыт для чтения другими (песня играет, пока качается); запись строго по порядку — без «дыр».
@@ -757,7 +775,12 @@ public sealed class MediaService
                 }
                 await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
             }
-            finally { if (!priority) _backgroundFiles.Release(); _partPaths.TryRemove(doc.id, out _); }
+            finally
+            {
+                if (!priority) _backgroundFiles.Release();
+                else Interlocked.Decrement(ref _priorityActive);
+                _partPaths.TryRemove(doc.id, out _);
+            }
             File.Move(part, path, overwrite: true);
             return path;
         }

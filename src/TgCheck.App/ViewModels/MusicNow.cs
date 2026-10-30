@@ -23,6 +23,8 @@ public sealed partial class MusicNow : ObservableObject
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsActive), nameof(ShowMusicBar), nameof(ShowIslandMusic))] private string? _title;
     [ObservableProperty] private string _subtitle = "";
     [ObservableProperty] private bool _isPlaying;
+    /// <summary>Песня догружается (открывается или проигрыватель догнал загрузку) — вместо «стоп» показываем загрузку.</summary>
+    [ObservableProperty] private bool _isBuffering;
     [ObservableProperty] private double _progress;
     [ObservableProperty] private string _timeText = "";
     [ObservableProperty] private ImageSource? _cover;
@@ -71,6 +73,7 @@ public sealed partial class MusicNow : ObservableObject
         Level = 0;
         TimeText = "Загрузка…";
         Player.Stop(); // прошлая песня замолкает сразу
+        IsBuffering = true;
         _resumeAfter = false;
     }
 
@@ -104,6 +107,7 @@ public sealed partial class MusicNow : ObservableObject
         }
         if (_pendingKey == _key) _pendingKey = null;
         IsPlaying = Player.IsPlaying;
+        IsBuffering = Player.IsBuffering;
         Level = Player.IsPlaying ? Player.Level : 0;
         var total = Player.Duration.TotalSeconds;
         Progress = total > 0 ? Player.Position.TotalSeconds / total : 0;
@@ -148,6 +152,7 @@ public sealed partial class MusicNow : ObservableObject
         Title = null;
         Cover = null;
         Level = 0;
+        IsBuffering = false;
         IsPlaying = false;
         Progress = 0;
     }

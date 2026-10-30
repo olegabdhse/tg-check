@@ -31,6 +31,9 @@ public sealed class AudioPlayer : IDisposable
     public bool Loop { get; set; }
     /// <summary>Сила басов сейчас 0..1 (низкие частоты) — обложка в плеере «толкается» на басах.</summary>
     public float Bass { get; private set; }
+    /// <summary>Песня догружается: проигрыватель ждёт данные (в плеере вместо «стоп» — загрузка).</summary>
+    public bool IsBuffering => (_source as GrowingFileStream)?.IsWaiting == true || _restartPending;
+    private volatile bool _restartPending;
 
     /// <summary>Вызывается ~20 раз в секунду во время воспроизведения и при смене состояния (из фонового потока).</summary>
     public event Action? Changed;
@@ -112,7 +115,9 @@ public sealed class AudioPlayer : IDisposable
                     && restarts++ < 40)
                 {
                     Logging.Write($"audio: остановка не в конце ({_stream.Position}/{_stream.Length}) — продолжаем");
-                    _ = Task.Delay(400).ContinueWith(_ => { lock (_lock) if (ReferenceEquals(_output, output)) output.Play(); Notify(); });
+                    _restartPending = true;
+                    Notify();
+                    _ = Task.Delay(400).ContinueWith(_ => { lock (_lock) { _restartPending = false; if (ReferenceEquals(_output, output)) output.Play(); } Notify(); });
                     return;
                 }
             }
@@ -134,7 +139,7 @@ public sealed class AudioPlayer : IDisposable
         };
         Key = key;
         _output.Play();
-        _timer = new Timer(_ => { if (IsPlaying) Notify(); }, null, 0, 50);
+        _timer = new Timer(_ => { if (IsPlaying || IsBuffering) Notify(); }, null, 0, 50);
     }
 
     public void Pause()

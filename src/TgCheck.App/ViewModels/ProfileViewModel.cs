@@ -416,6 +416,12 @@ public sealed partial class ProfileViewModel : ObservableObject
             OnPropertyChanged(name);
     }
 
+    private async Task LoadSmallAvatarAsync(PeerRef owner)
+    {
+        if (await _tg.Media.GetPeerAvatarAsync(owner) is not { } small) return;
+        if (Avatar is null && await Task.Run(() => Images.FromBytes(small, 256)) is { } img) Avatar ??= img; // большое могло успеть раньше
+    }
+
     private async Task LoadBigAvatarAsync(PeerRef owner)
     {
         if (await _tg.Media.GetPeerAvatarBigAsync(owner) is not { } bytes) return;
@@ -432,11 +438,13 @@ public sealed partial class ProfileViewModel : ObservableObject
         {
             // Чужой профиль показываем, не дожидаясь большого фото: сначала маленькая аватарка (обычно уже в кэше),
             // большое — следом, в фоне (раньше вся страница ждала его скачивания).
+            var started = Environment.TickCount64;
             var profile = await _tg.GetProfileAsync(_peer, withAvatar: IsSelf && !IsCompact);
+            Logging.Write($"[perf] profile {_peer?.Id ?? 0}: данные за {Environment.TickCount64 - started} мс");
             var avatar = profile.Avatar is { } bytes ? await Task.Run(() => Images.FromBytes(bytes, 256)) : null;
-            if (avatar is null && profile.Peer is { HasPhoto: true } who && await _tg.Media.GetPeerAvatarAsync(who) is { } small)
-                avatar = await Task.Run(() => Images.FromBytes(small, 256));
+            // Профиль — сразу, не дожидаясь аватарки (её загрузка с диска или из сети раньше задерживала всю страницу).
             ApplyProfile(profile, avatar);
+            if (avatar is null && profile.Peer is { HasPhoto: true } who) _ = LoadSmallAvatarAsync(who);
             if (!IsSelf && !IsCompact && profile.Peer is { HasPhoto: true } owner) _ = LoadBigAvatarAsync(owner);
             _ = LoadMembersAsync();
             _ = LoadStoriesAsync();

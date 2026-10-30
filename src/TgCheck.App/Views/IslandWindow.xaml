@@ -124,8 +124,29 @@
                                 <ContentPresenter />
                             </ControlTemplate>
                         </Button.Template>
-                        <controls:MusicWaves Width="50" Height="50" CoverRatio="0.64" BassPulse="True" Cover="{Binding Cover}" CoverBrush="{Binding CoverBrush}"
+                        <Grid>
+                            <controls:MusicWaves Width="50" Height="50" CoverRatio="0.64" BassPulse="True" Cover="{Binding Cover}" CoverBrush="{Binding CoverBrush}"
                                              Level="{Binding Level}" Progress="{Binding Progress}" IsPlaying="{Binding IsPlaying}" />
+                            <!-- Песня догружается — на обложке аккуратная загрузка -->
+                            <Grid Width="32" Height="32" Visibility="{Binding IsBuffering, Converter={StaticResource BoolToVis}}" IsHitTestVisible="False">
+                                <Ellipse Fill="#88000000" />
+                                <Path Width="18" Height="18" Stretch="None" Stroke="White" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Data="M9,1.5 A7.5,7.5 0 1 1 1.5,9" RenderTransformOrigin="0.5,0.5">
+                                    <Path.RenderTransform>
+                                        <RotateTransform />
+                                    </Path.RenderTransform>
+                                    <Path.Triggers>
+                                        <EventTrigger RoutedEvent="Loaded">
+                                            <BeginStoryboard>
+                                                <Storyboard RepeatBehavior="Forever">
+                                                    <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)" From="0" To="360" Duration="0:0:0.9" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </EventTrigger>
+                                    </Path.Triggers>
+                                </Path>
+                            </Grid>
+                        </Grid>
                     </Button>
                     <!-- Управление разворачивается прямо в островке (плавно расширяя его); крестик сворачивает — музыка играет дальше -->
                     <Border x:Name="MusicPanel" Width="0" Height="50" ClipToBounds="True" VerticalAlignment="Center">

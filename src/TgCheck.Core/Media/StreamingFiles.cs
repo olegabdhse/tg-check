@@ -50,6 +50,9 @@ internal sealed class GrowingFileStream : Stream
         _done = done;
     }
 
+    /// <summary>Ждёт ещё не скачанные данные.</summary>
+    public bool IsWaiting { get; private set; }
+
     public override bool CanRead => true;
     public override bool CanSeek => true;
     public override bool CanWrite => false;
@@ -66,7 +69,12 @@ internal sealed class GrowingFileStream : Stream
         var want = Math.Min(count, _total - _file.Position);
         if (want <= 0) return 0;
         // Ждём, пока нужное докачается (или загрузка закончится — тогда отдаём что есть).
-        while (_file.Length < _file.Position + want && !_done.IsCompleted) Thread.Sleep(30);
+        while (_file.Length < _file.Position + want && !_done.IsCompleted)
+        {
+            IsWaiting = true; // проигрыватель догнал загрузку — в плеере показывается «загрузка»
+            Thread.Sleep(30);
+        }
+        IsWaiting = false;
         return _file.Read(buffer, offset, (int)Math.Min(want, Math.Max(0, _file.Length - _file.Position)));
     }
 
@@ -74,5 +82,46 @@ internal sealed class GrowingFileStream : Stream
     {
         if (disposing) _file.Dispose();
         base.Dispose(disposing);
+    }
+}
+
+/// <summary>Последние картинки в памяти (LRU) с потолком по размеру: старые вытесняются.</summary>
+internal sealed class BytesCache(long capacity)
+{
+    private readonly object _lock = new();
+    private readonly Dictionary<string, LinkedListNode<(string Key, byte[] Bytes)>> _map = [];
+    private readonly LinkedList<(string Key, byte[] Bytes)> _order = new();
+    private long _size;
+
+    public byte[]? Get(string key)
+    {
+        lock (_lock)
+        {
+            if (!_map.TryGetValue(key, out var node)) return null;
+            _order.Remove(node);
+            _order.AddFirst(node);
+            return node.Value.Bytes;
+        }
+    }
+
+    public void Put(string key, byte[] bytes)
+    {
+        if (bytes.Length > capacity / 8) return; // огромное не кэшируем — вытеснило бы всё
+        lock (_lock)
+        {
+            if (_map.TryGetValue(key, out var old))
+            {
+                _order.Remove(old);
+                _size -= old.Value.Bytes.Length;
+            }
+            _map[key] = _order.AddFirst((key, bytes));
+            _size += bytes.Length;
+            while (_size > capacity && _order.Last is { } last)
+            {
+                _order.RemoveLast();
+                _map.Remove(last.Value.Key);
+                _size -= last.Value.Bytes.Length;
+            }
+        }
     }
 }
