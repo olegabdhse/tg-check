@@ -1,3 +1,4 @@
+using TgCheck.App.Helpers;
 using System.Windows;
 using System.Windows.Media;
 
@@ -79,7 +80,7 @@ public sealed class MusicWaves : FrameworkElement
         if ((now - _last).TotalMilliseconds < 1000.0 / 40) return; // ~40 кадров/с
         _last = now;
         // Громкость прямо из плеера (не через привязку — без задержки), нормированная по недавнему пику: тихие песни тоже «качают».
-        var level = IsPlaying ? Core.Media.AudioPlayer.Instance.Level : 0;
+        var level = IsPlaying ? MusicPlayer.Instance.Level : 0; // громкость играющей песни
         _peak = Math.Max(level, _peak * 0.995);
         var norm = _peak > 0.02 ? Math.Min(1, level / _peak) : 0;
         // Быстро растут, плавно спадают — как у эквалайзера.
@@ -99,7 +100,7 @@ public sealed class MusicWaves : FrameworkElement
         _turn += 0.004;
         if (BassPulse)
         {
-            var bass = IsPlaying ? Core.Media.AudioPlayer.Instance.Bass : 0;
+            var bass = IsPlaying ? MusicPlayer.Instance.Bass : 0;
             _bassPeak = Math.Max(bass, _bassPeak * 0.995);
             var b = _bassPeak > 0.02 ? Math.Min(1, bass / _bassPeak) : 0;
             b = b > 0.55 ? (b - 0.55) / 0.45 : 0; // только удары, а не фон

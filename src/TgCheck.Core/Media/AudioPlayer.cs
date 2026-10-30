@@ -281,7 +281,7 @@ public sealed class AudioPlayer : IDisposable
 /// <summary>
 /// Замер громкости на лету (каждые ~40 мс): пик всего сигнала и пик басов — после простого фильтра низких частот (~150 Гц).
 /// </summary>
-internal sealed class LevelMeter(ISampleProvider source, Action<float, float> report) : ISampleProvider
+public sealed class LevelMeter(ISampleProvider source, Action<float, float> report) : ISampleProvider
 {
     private readonly int _block = source.WaveFormat.SampleRate * source.WaveFormat.Channels / 25;
     private readonly float _alpha = 1 - MathF.Exp(-2 * MathF.PI * 150f / source.WaveFormat.SampleRate);

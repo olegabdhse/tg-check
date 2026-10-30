@@ -37,7 +37,7 @@ internal sealed class SequentialStream(Stream inner) : Stream
 /// Чтение файла, который ещё качается: длина — полный размер; если читаем дальше скачанного — ждём новые данные
 /// (или конца загрузки). Перемотка вперёд за скачанное тоже ждёт.
 /// </summary>
-internal sealed class GrowingFileStream : Stream
+public sealed class GrowingFileStream : Stream
 {
     private readonly FileStream _file;
     private readonly long _total;

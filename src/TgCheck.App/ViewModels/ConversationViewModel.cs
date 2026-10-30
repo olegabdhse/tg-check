@@ -1472,11 +1472,11 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         if (m is null) return;
         try
         {
-            // Песни — в своём проигрывателе (музыка), голосовые — в общем.
-            var player = m.IsAudio ? AudioPlayer.Music : AudioPlayer.Instance;
-            if (player.Key == m.AudioKey)
+            // Песни — в своём проигрывателе (музыка, VLC), голосовые — в общем.
+            if (m.IsAudio ? MusicPlayer.Instance.Key == m.AudioKey : AudioPlayer.Instance.Key == m.AudioKey)
             {
-                player.Toggle(m.AudioKey, "");
+                if (m.IsAudio) MusicPlayer.Instance.Toggle(m.AudioKey, "");
+                else AudioPlayer.Instance.Toggle(m.AudioKey, "");
                 return;
             }
             m.IsLoadingAudio = true;
@@ -1494,7 +1494,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
                     throw new IOException("Не удалось загрузить аудио.");
                 }
                 if (_songRequested != m.AudioKey) { stream.Dispose(); return; } // пока открывалась, выбрали другую песню
-                await Task.Run(() => AudioPlayer.Music.PlayStream(m.AudioKey, stream));
+                await Task.Run(() => MusicPlayer.Instance.PlayStream(m.AudioKey, stream));
                 MusicNow.Instance.Start(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush);
                 return;
             }

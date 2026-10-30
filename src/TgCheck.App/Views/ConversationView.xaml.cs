@@ -507,8 +507,9 @@ public partial class ConversationView : UserControl
     {
         if (sender is not FrameworkElement { DataContext: MessageViewModel m } wave || _vm is null) return;
         var fraction = e.GetPosition(wave).X / wave.ActualWidth;
-        var player = m.IsAudio ? AudioPlayer.Music : AudioPlayer.Instance; // песни — в своём проигрывателе
-        if (player.Key == m.AudioKey) player.Seek(fraction);
+        // Песни — в своём проигрывателе (VLC), голосовые — в общем.
+        if (m.IsAudio && MusicPlayer.Instance.Key == m.AudioKey) MusicPlayer.Instance.Seek(fraction);
+        else if (!m.IsAudio && AudioPlayer.Instance.Key == m.AudioKey) AudioPlayer.Instance.Seek(fraction);
         else _vm.PlayAudioCommand.Execute(m);
         e.Handled = true;
     }

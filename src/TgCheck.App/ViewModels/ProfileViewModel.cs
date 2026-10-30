@@ -382,7 +382,7 @@ public sealed partial class ProfileViewModel : ObservableObject
         if (Music is not { } m) return;
         try
         {
-            if (AudioPlayer.Music.Key == m.AudioKey) { AudioPlayer.Music.Toggle(m.AudioKey, ""); return; }
+            if (MusicPlayer.Instance.Key == m.AudioKey) { MusicPlayer.Instance.Toggle(m.AudioKey, ""); return; }
             m.IsLoadingAudio = true;
             var requested = m.AudioKey;
             MusicNow.Instance.ShowPending(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush); // смена трека — сразу на экране
@@ -394,7 +394,7 @@ public sealed partial class ProfileViewModel : ObservableObject
                 MusicNow.Instance.CancelPending(m.AudioKey);
                 throw new IOException("Не удалось загрузить песню.");
             }
-            await Task.Run(() => AudioPlayer.Music.PlayStream(requested, stream));
+            await Task.Run(() => MusicPlayer.Instance.PlayStream(requested, stream));
             MusicNow.Instance.Start(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush);
         }
         catch (Exception ex)

@@ -8,7 +8,7 @@ namespace TgCheck.App.ViewModels;
 
 /// <summary>
 /// Играющая песня — плеер музыки под списком чатов и в островке. У музыки свой проигрыватель
-/// (<see cref="AudioPlayer.Music"/>): просмотр фото её не трогает, а голосовое, кружок, видео или история
+/// (<see cref="MusicPlayer"/> на VLC): просмотр фото её не трогает, а голосовое, кружок, видео или история
 /// ставят её на паузу — когда они закончились, песня продолжается сама.
 /// </summary>
 public sealed partial class MusicNow : ObservableObject
@@ -18,7 +18,7 @@ public sealed partial class MusicNow : ObservableObject
     // Что прерывает музыку (может быть несколько сразу; продолжаем, когда не осталось ни одного).
     public const string Voice = "voice", Round = "round", Video = "video", Story = "story", Recording = "recording";
 
-    private static AudioPlayer Player => AudioPlayer.Music;
+    private static MusicPlayer Player => MusicPlayer.Instance;
 
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsActive), nameof(ShowMusicBar), nameof(ShowIslandMusic))] private string? _title;
     [ObservableProperty] private string _subtitle = "";

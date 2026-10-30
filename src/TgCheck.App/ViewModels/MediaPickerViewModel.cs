@@ -22,23 +22,35 @@ public static class VoicePlayback
 
     static VoicePlayback()
     {
-        AudioPlayer.Instance.Changed += () => Anim.Ui(() => Update(AudioPlayer.Instance, ref _currentVoice));
-        AudioPlayer.Music.Changed += () => Anim.Ui(() => Update(AudioPlayer.Music, ref _currentSong));
+        AudioPlayer.Instance.Changed += () => Anim.Ui(UpdateVoice);
+        MusicPlayer.Instance.Changed += () => Anim.Ui(UpdateSong);
     }
 
     public static void Attach(MessageViewModel vm)
     {
         if (!(vm.IsVoice || vm.IsAudio)) return;
         lock (Bubbles) Bubbles[vm.AudioKey] = new WeakReference<MessageViewModel>(vm);
-        if (AudioPlayer.Instance.Key == vm.AudioKey) Update(AudioPlayer.Instance, ref _currentVoice);
-        if (AudioPlayer.Music.Key == vm.AudioKey) Update(AudioPlayer.Music, ref _currentSong);
+        if (AudioPlayer.Instance.Key == vm.AudioKey) UpdateVoice();
+        if (MusicPlayer.Instance.Key == vm.AudioKey) UpdateSong();
     }
 
-    private static void Update(AudioPlayer player, ref MessageViewModel? current)
+    private static void UpdateVoice()
+    {
+        var p = AudioPlayer.Instance;
+        Update(p.Key, p.IsPlaying, p.Position, p.Duration, ref _currentVoice);
+    }
+
+    private static void UpdateSong()
+    {
+        var p = MusicPlayer.Instance;
+        Update(p.Key, p.IsPlaying, p.Position, p.Duration, ref _currentSong);
+    }
+
+    private static void Update(string? playingKey, bool isPlaying, TimeSpan position, TimeSpan duration, ref MessageViewModel? current)
     {
         MessageViewModel? vm = null;
         lock (Bubbles)
-            if (player.Key is { } key && Bubbles.TryGetValue(key, out var weak)) weak.TryGetTarget(out vm);
+            if (playingKey is { } key && Bubbles.TryGetValue(key, out var weak)) weak.TryGetTarget(out vm);
 
         if (current is not null && current != vm)
         {
@@ -48,10 +60,10 @@ public static class VoicePlayback
         }
         current = vm;
         if (vm is null) return;
-        vm.IsPlaying = player.IsPlaying;
-        var total = player.Duration.TotalSeconds;
-        vm.PlayProgress = total > 0 ? player.Position.TotalSeconds / total : 0;
-        vm.PositionText = player.IsPlaying || vm.PlayProgress > 0 ? Fmt.Duration(player.Position.TotalSeconds) : null;
+        vm.IsPlaying = isPlaying;
+        var total = duration.TotalSeconds;
+        vm.PlayProgress = total > 0 ? position.TotalSeconds / total : 0;
+        vm.PositionText = isPlaying || vm.PlayProgress > 0 ? Fmt.Duration(position.TotalSeconds) : null;
     }
 }
 
