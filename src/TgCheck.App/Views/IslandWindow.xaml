@@ -117,13 +117,19 @@
                 <StackPanel x:Name="MusicSlot" Orientation="{Binding IslandOrientation, RelativeSource={RelativeSource AncestorType=Window}}"
                             DataContext="{x:Static vm:NowPlaying.Instance}" Visibility="{Binding ShowMusicBar, Converter={StaticResource BoolToVis}}">
                     <Border Width="1" Height="26" Background="#33FFFFFF" Margin="6,0,4,0" x:Name="MusicDivider" />
-                    <Button x:Name="MusicButton" Width="50" Height="50" Cursor="Hand" ToolTip="Музыка" Click="MusicButton_Click" Style="{StaticResource BareButton}">
-                        <controls:MusicWaves Width="50" Height="50" CoverRatio="0.64" Cover="{Binding Cover}" CoverBrush="{Binding CoverBrush}"
+                    <Button x:Name="MusicButton" Width="50" Height="50" Cursor="Hand" ToolTip="Музыка" Click="MusicButton_Click" FocusVisualStyle="{x:Null}">
+                        <!-- Без эффектов при наведении: только обложка с волнами -->
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <ContentPresenter />
+                            </ControlTemplate>
+                        </Button.Template>
+                        <controls:MusicWaves Width="50" Height="50" CoverRatio="0.64" BassPulse="True" Cover="{Binding Cover}" CoverBrush="{Binding CoverBrush}"
                                              Level="{Binding Level}" Progress="{Binding Progress}" IsPlaying="{Binding IsPlaying}" />
                     </Button>
                     <!-- Управление разворачивается прямо в островке (плавно расширяя его); крестик сворачивает — музыка играет дальше -->
                     <Border x:Name="MusicPanel" Width="0" Height="50" ClipToBounds="True" VerticalAlignment="Center">
-                        <views:MusicPlayerBar x:Name="IslandPlayer" Width="330" Margin="8,0,0,0" HorizontalAlignment="Left" HideOnly="True" />
+                        <views:MusicPlayerBar x:Name="IslandPlayer" Width="270" Margin="6,0,0,0" HorizontalAlignment="Left" HideOnly="True" />
                     </Border>
                 </StackPanel>
             </StackPanel>

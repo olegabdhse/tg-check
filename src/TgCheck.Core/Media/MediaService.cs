@@ -24,6 +24,17 @@ public sealed class MediaService
     // Загрузчики запускаются в пуле потоков: даже чтение с диска не должно идти в UI-потоке (в группах это десятки файлов разом).
     private readonly ConcurrentDictionary<string, Task<byte[]?>> _inflight = new();
 
+    // Общий запрос на время загрузки: одновременные просьбы одной картинки ждут одну загрузку. Готовый результат
+    // здесь не хранится (раньше оставался навсегда — все превью, аватары и эмодзи сессии висели в памяти, сотни МБ);
+    // повторно картинка читается с диска.
+    private Task<byte[]?> Shared(string key, Func<Task<byte[]?>> start)
+    {
+        var task = _inflight.GetOrAdd(key, _ => start());
+        if (task.IsCompleted) _inflight.TryRemove(new KeyValuePair<string, Task<byte[]?>>(key, task));
+        else _ = task.ContinueWith(t => _inflight.TryRemove(new KeyValuePair<string, Task<byte[]?>>(key, t)), TaskScheduler.Default);
+        return task;
+    }
+
     internal MediaService(Func<Client> client, string cacheDir)
     {
         _client = client;
@@ -35,7 +46,7 @@ public sealed class MediaService
     public Task<byte[]?> GetGiftImageAsync(GiftItem gift, int size)
     {
         var key = gift.ImageKey(size);
-        return _inflight.GetOrAdd(key, _ => Task.Run(() => RenderCachedAsync(gift, size, key)));
+        return Shared(key, () => Task.Run(() => RenderCachedAsync(gift, size, key)));
     }
 
     private async Task<byte[]?> RenderCachedAsync(GiftItem gift, int size, string key)
@@ -106,7 +117,7 @@ public sealed class MediaService
     {
         if (card.CenterColor is not { } center || card.EdgeColor is not { } edge) return Task.FromResult<byte[]?>(null);
         var key = $"giftbg_{center:x6}_{edge:x6}_{card.PatternColor ?? 0:x6}_{card.Pattern?.id ?? 0}_{size}";
-        return _inflight.GetOrAdd(key, _ => Task.Run(async () =>
+        return Shared(key, () => Task.Run(async () =>
         {
             var path = Path.Combine(_cacheDir, key + ".png");
             try
@@ -202,7 +213,7 @@ public sealed class MediaService
     {
         if (emoji.Document is not { } doc) return Task.FromResult<byte[]?>(null);
         var key = $"emo_{doc.id}_{px}";
-        return _inflight.GetOrAdd(key, _ => Task.Run(async () =>
+        return Shared(key, () => Task.Run(async () =>
         {
             var path = Path.Combine(_cacheDir, key + ".png");
             try
@@ -312,7 +323,7 @@ public sealed class MediaService
             _ => 0,
         };
         var key = $"ava_{peer.ID}_{photoId}";
-        return _inflight.GetOrAdd(key, _ => Task.Run(() => LoadAvatarAsync(peer, key)));
+        return Shared(key, () => Task.Run(() => LoadAvatarAsync(peer, key)));
     }
 
     private async Task<byte[]?> LoadAvatarAsync(IPeerInfo peer, string key, bool big = false)
@@ -354,7 +365,7 @@ public sealed class MediaService
             _ => 0,
         };
         var key = $"avabig_{peer.Info.ID}_{photoId}";
-        return _inflight.GetOrAdd(key, _ => Task.Run(() => LoadAvatarAsync(peer.Info, key, big: true)));
+        return Shared(key, () => Task.Run(() => LoadAvatarAsync(peer.Info, key, big: true)));
     }
 
     /// <summary>Маленький аватар пользователя/группы/канала (jpeg) или null.</summary>
@@ -369,7 +380,7 @@ public sealed class MediaService
             _ => 0,
         };
         var key = $"ava_{peer.Info.ID}_{photoId}";
-        return _inflight.GetOrAdd(key, _ => Task.Run(() => LoadAvatarAsync(peer.Info, key)));
+        return Shared(key, () => Task.Run(() => LoadAvatarAsync(peer.Info, key)));
     }
 
     /// <summary>
@@ -382,7 +393,7 @@ public sealed class MediaService
     {
         var key = message.Photo is { } p ? $"msgphoto_{p.id}" : message.Document is { } d ? $"msgdoc_{d.id}" : null;
         if (key is null) return Task.FromResult<byte[]?>(null);
-        return _inflight.GetOrAdd(key, _ => Task.Run(() => LoadMessagePreviewAsync(message, key)));
+        return Shared(key, () => Task.Run(() => LoadMessagePreviewAsync(message, key)));
     }
 
     private async Task<byte[]?> LoadMessagePreviewAsync(MediaHolder message, string key)
@@ -464,7 +475,7 @@ public sealed class MediaService
         if (full.Length < 3) return Task.FromResult<byte[]?>(null);
         var hash = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(full.ToLowerInvariant())))[..16];
         var key = "cover2_" + hash;
-        return _inflight.GetOrAdd(key, _ => Task.Run(async () =>
+        return Shared(key, () => Task.Run(async () =>
         {
             var path = Path.Combine(_cacheDir, key + ".jpg");
             var miss = Path.Combine(_cacheDir, key + ".none");
@@ -551,7 +562,7 @@ public sealed class MediaService
     {
         if (item.Latitude is not { } lat || item.Longitude is not { } lon) return Task.FromResult<byte[]?>(null);
         var key = $"map_{lat:F5}_{lon:F5}_{w}x{h}_{zoom}".Replace(',', '.');
-        return _inflight.GetOrAdd(key, _ => Task.Run(() => LoadMapAsync(item, lat, lon, w, h, zoom, key)));
+        return Shared(key, () => Task.Run(() => LoadMapAsync(item, lat, lon, w, h, zoom, key)));
     }
 
     private async Task<byte[]?> LoadMapAsync(MessageItem item, double lat, double lon, int w, int h, int zoom, string key)

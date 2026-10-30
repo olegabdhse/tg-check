@@ -167,7 +167,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _updateTimer.Start();
         await Chats.EnsureLoadedAsync();
         Helpers.VlcRuntime.Prewarm(); // видеоплеер — заранее, в фоне: первое видео откроется без распаковки движка
-        Views.WebAppWindow.Prewarm(); // и окружение мини-приложений — первое откроется быстрее
+        // Движок мини-приложений (WebView2) заранее не запускаем: это несколько процессов на ~150–200 МБ, а нужен он редко.
         OnPropertyChanged(nameof(ChatsUnread));
     }
 

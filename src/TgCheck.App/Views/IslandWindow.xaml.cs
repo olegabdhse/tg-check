@@ -114,7 +114,7 @@ public partial class IslandWindow : Window
     private void SetMusicOpen(bool open)
     {
         _musicOpen = open;
-        var anim = new DoubleAnimation(open ? 338 : 0, TimeSpan.FromMilliseconds(open ? 240 : 180))
+        var anim = new DoubleAnimation(open ? 278 : 0, TimeSpan.FromMilliseconds(open ? 240 : 180))
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
         };

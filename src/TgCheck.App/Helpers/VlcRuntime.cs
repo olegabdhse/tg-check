@@ -16,23 +16,43 @@ public static class VlcRuntime
     /// <summary>Готовый движок (null — не удалось распаковать/загрузить).</summary>
     public static Task<LibVLC?> GetAsync() => _init ??= Task.Run(Init);
 
-    /// <summary>Подготовить заранее, в простое — первое видео откроется без ожидания распаковки.</summary>
-    public static void Prewarm() => _ = GetAsync();
+    /// <summary>
+    /// Подготовить заранее, в простое: только распаковать файлы (первое видео откроется без ожидания распаковки).
+    /// Сам движок в память не грузим — он занимал десятки МБ, даже если видео так и не открыли.
+    /// </summary>
+    public static void Prewarm() => _ = Task.Run(Extract);
 
-    private static LibVLC? Init()
+    private static readonly object ExtractLock = new();
+
+    private static string? Extract()
     {
-        try
+        lock (ExtractLock)
         {
-            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TgCheck", "vlc", Version);
-            var marker = Path.Combine(dir, ".ready");
-            if (!File.Exists(marker))
+            try
             {
+                var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TgCheck", "vlc", Version);
+                var marker = Path.Combine(dir, ".ready");
+                if (File.Exists(marker)) return dir;
                 using var zip = typeof(VlcRuntime).Assembly.GetManifestResourceStream("TgCheck.vlc.zip");
                 if (zip is null) return null;
                 if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
                 ZipFile.ExtractToDirectory(zip, dir, overwriteFiles: true);
                 File.WriteAllText(marker, Version);
+                return dir;
             }
+            catch (Exception ex)
+            {
+                TgCheck.Core.Services.Logging.Write("vlc extract: " + ex.Message);
+                return null;
+            }
+        }
+    }
+
+    private static LibVLC? Init()
+    {
+        try
+        {
+            if (Extract() is not { } dir) return null;
             LibVLCSharp.Shared.Core.Initialize(dir);
             return new LibVLC("--quiet", "--no-osd", "--no-video-title-show", "--no-snapshot-preview", "--no-stats");
         }

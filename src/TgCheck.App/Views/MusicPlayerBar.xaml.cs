@@ -9,7 +9,18 @@ public partial class MusicPlayerBar : UserControl
     public MusicPlayerBar() => InitializeComponent();
 
     /// <summary>Крестик только сворачивает плеер (в островке): музыка играет дальше. Иначе — закрыть плеер.</summary>
-    public bool HideOnly { get; set; }
+    public bool HideOnly
+    {
+        get => _hideOnly;
+        set
+        {
+            _hideOnly = value;
+            // В островке обложка с волнами уже стоит слева от плеера — здесь её не повторяем.
+            Waves.Visibility = value ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+        }
+    }
+
+    private bool _hideOnly;
 
     /// <summary>Нажат крестик при HideOnly.</summary>
     public event Action? HideRequested;

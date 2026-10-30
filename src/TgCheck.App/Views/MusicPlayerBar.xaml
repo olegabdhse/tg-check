@@ -6,7 +6,7 @@
              DataContext="{x:Static vm:NowPlaying.Instance}">
     <!-- Плеер музыки: обложка с волнами, название и исполнитель, перемотка, повтор, пауза, закрыть -->
     <DockPanel>
-        <controls:MusicWaves DockPanel.Dock="Left" Width="58" Height="58" Margin="0,0,10,0" CoverRatio="0.7" BassPulse="True"
+        <controls:MusicWaves x:Name="Waves" DockPanel.Dock="Left" Width="58" Height="58" Margin="0,0,10,0" CoverRatio="0.7" BassPulse="True"
                              Cover="{Binding Cover}" CoverBrush="{Binding CoverBrush}" Level="{Binding Level}"
                              Progress="{Binding Progress}" IsPlaying="{Binding IsPlaying}" />
         <Button x:Name="CloseButton" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="12" Padding="8" VerticalAlignment="Center"

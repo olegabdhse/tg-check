@@ -26,9 +26,9 @@ public partial class MainWindow : Window
         InitializeComponent();
         // Иконку окна берём из exe (см. ApplyExeIcon): PNG-иконку WPF панель задач не показывает.
         StateChanged += OnStateChanged;
-        IsVisibleChanged += (_, _) => UpdateOnScreen();
+        IsVisibleChanged += (_, e) => { UpdateOnScreen(); if (e.NewValue is false) TrimMemorySoon(); };
         Activated += (_, _) => { UpdateOnScreen(); if (WindowState != WindowState.Minimized) _island?.HideIsland(); };
-        Deactivated += (_, _) => { UpdateOnScreen(); ShowIslandIfAway(); };
+        Deactivated += (_, _) => { UpdateOnScreen(); ShowIslandIfAway(); TrimMemorySoon(); };
         // Кнопка на панели задач появляется при показе окна и берёт иконку exe через оболочку (у нас — пустой значок);
         // повторная установка иконки после показа заставляет панель её обновить.
         ContentRendered += (_, _) => WindowEffects.RefreshExeIconWhenIdle(this);
@@ -145,9 +145,30 @@ public partial class MainWindow : Window
     private void OnStateChanged(object? sender, EventArgs e)
     {
         UpdateOnScreen();
-        if (WindowState == WindowState.Minimized) ShowIsland();
+        if (WindowState == WindowState.Minimized) { ShowIsland(); TrimMemorySoon(); }
         else _island?.HideIsland();
     }
+
+    // Свернули или убрали в трей — освобождаем память, как Telegram Desktop: сборка мусора и сброс рабочего набора
+    // (страницы, которые сейчас не нужны, уходят из оперативной памяти; понадобятся — вернутся сами).
+    private CancellationTokenSource? _trimCts;
+
+    private async void TrimMemorySoon()
+    {
+        _trimCts?.Cancel();
+        var cts = _trimCts = new CancellationTokenSource();
+        try { await Task.Delay(3000, cts.Token); } catch (TaskCanceledException) { return; }
+        if (IsActive && IsVisible && WindowState != WindowState.Minimized) return; // вернулись в окно — не трогаем
+        await Task.Run(() =>
+        {
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+            try { SetProcessWorkingSetSize(System.Diagnostics.Process.GetCurrentProcess().Handle, -1, -1); } catch { }
+        });
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern bool SetProcessWorkingSetSize(IntPtr process, nint min, nint max);
 
     // Чат главного окна «читается» только пока окно на экране и в фокусе (как в Telegram Desktop):
     // окно за другими программами — сообщения остаются непрочитанными.
