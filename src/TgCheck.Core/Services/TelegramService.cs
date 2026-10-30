@@ -55,7 +55,7 @@ public sealed partial class TelegramService : IAsyncDisposable
         client.OnOther += OnOtherAsync;
         // Одновременных загрузок у библиотеки по умолчанию мало — открытая песня или видео ждали в очереди за превью,
         // стикерами и аватарами. Больше параллельных — то, что открыто, качается сразу.
-        client.ParallelTransfers = 12;
+        client.ParallelTransfers = 4; // больше — загрузки забивали соединение, и обычные запросы (профиль, сообщения) ждали десятки секунд
         if (_env.Proxy is { } proxy)
         {
             if (AppEnv.IsMtProxy(proxy)) client.MTProxyUrl = proxy;
