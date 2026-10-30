@@ -260,3 +260,32 @@ public static class WindowEffects
         DwmSetWindowAttribute(hwnd, 20, ref on, sizeof(int)); // тёмная тема рамки
     }
 }
+
+/// <summary>
+/// Готовые (декодированные) картинки по ключу — по слабым ссылкам: пока картинка где-то на экране или в открытом чате,
+/// повторный показ берёт её отсюда мгновенно, без мигания и повторного декодирования; когда она больше нигде не нужна —
+/// сборщик мусора её освобождает, так что кэш не держит лишней памяти.
+/// </summary>
+public static class ImageCache
+{
+    private static readonly Dictionary<string, WeakReference<ImageSource>> Items = [];
+    private static int _puts;
+
+    public static ImageSource? Get(string key)
+    {
+        lock (Items) return Items.TryGetValue(key, out var weak) && weak.TryGetTarget(out var img) ? img : null;
+    }
+
+    public static ImageSource? Put(string key, ImageSource? image)
+    {
+        if (image is null) return null;
+        lock (Items)
+        {
+            Items[key] = new WeakReference<ImageSource>(image);
+            // Изредка убираем записи, чьи картинки уже собраны.
+            if (++_puts % 500 == 0)
+                foreach (var dead in Items.Where(p => !p.Value.TryGetTarget(out _)).Select(p => p.Key).ToList()) Items.Remove(dead);
+        }
+        return image;
+    }
+}

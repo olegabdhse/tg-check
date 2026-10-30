@@ -286,6 +286,7 @@ public sealed partial class TelegramService : IAsyncDisposable
             catch (Exception ex) { Logging.Write("avatar: " + ex.Message); }
         }
         if (isSelf && withAvatar) SaveSelfProfileCache(full, stars, ton, avatar);
+        if (!isSelf) _ = Task.Run(() => _cache.Save($"user_full_{me.id}", full)); // чужой профиль в следующий раз — сразу из кэша
         return BuildUserProfile(full, me, isSelf, stars, ton, avatar);
     }
 
@@ -305,6 +306,14 @@ public sealed partial class TelegramService : IAsyncDisposable
         }
         _cache.SaveBytes("me_extra", ms.ToArray());
     });
+
+    /// <summary>Профиль другого пользователя из локального кэша (null — ещё не открывали); свежий придёт следом.</summary>
+    public ProfileInfo? GetCachedProfile(PeerRef peer)
+    {
+        if (!peer.IsUser || peer.IsSelf || IsIgnored(peer.Id) || _cache.Load<Users_UserFull>($"user_full_{peer.Id}") is not { } full) return null;
+        full.CollectUsersChats(_users, _chats);
+        return full.users.TryGetValue(full.full_user.id, out var user) ? BuildUserProfile(full, user, false, 0, null, null) : null;
+    }
 
     /// <summary>Свой профиль из локального кэша (null — кэша нет).</summary>
     public ProfileInfo? GetCachedSelfProfile()

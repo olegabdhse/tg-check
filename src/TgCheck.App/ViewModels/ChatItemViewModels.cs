@@ -57,8 +57,10 @@ public partial class PeerAvatarViewModel : ObservableObject
     {
         if (_requested || !Peer.HasPhoto || Peer.IsSelf) return;
         _requested = true;
+        var key = $"ava_{Peer.Key}_{Peer.PhotoId}";
+        if (ImageCache.Get(key) is { } ready) { Avatar = ready; return; } // уже показан где-то — сразу, без мигания
         var bytes = await media.GetPeerAvatarAsync(Peer).ConfigureAwait(false);
-        Avatar = Images.FromBytes(bytes, 128);
+        Avatar = ImageCache.Put(key, Images.FromBytes(bytes, 128));
     }
 }
 
@@ -662,8 +664,10 @@ public sealed partial class MessageViewModel : ObservableObject
         }
         if (!(Item.Media is MediaKind.Photo or MediaKind.Video)) return;
         _previewRequested = true;
+        var key = $"prev_{Item.MediaId}";
+        if (ImageCache.Get(key) is { } ready) { Preview = ready; return; } // уже декодировано (тот же снимок в другом месте) — сразу
         var bytes = await media.GetMessagePreviewAsync(Item).ConfigureAwait(false);
-        Preview = Images.FromBytesMax(bytes, 760);
+        Preview = ImageCache.Put(key, Images.FromBytesMax(bytes, 760));
     }
 
     public async void EnsureSenderAvatar(MediaService media)

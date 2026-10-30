@@ -430,6 +430,12 @@ public sealed partial class ProfileViewModel : ObservableObject
 
     public async Task LoadAsync()
     {
+        // Чужой профиль, который уже открывали, — сразу из кэша (на диске), свежий придёт следом без загрузчика.
+        if (Profile is null && !IsSelf && _peer is { } cachedPeer && await Task.Run(() => _tg.GetCachedProfile(cachedPeer)) is { } cachedProfile && Profile is null)
+        {
+            ApplyProfile(cachedProfile, null);
+            if (cachedProfile.Peer is { HasPhoto: true } who) _ = LoadSmallAvatarAsync(who);
+        }
         // Уже показан из кэша — обновляем без экрана «Загрузка…».
         IsLoading = Profile is null;
         LoadError = null;
