@@ -1913,8 +1913,9 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     private void OpenFullProfile()
     {
         var who = SideProfile?.ProfilePeer ?? Peer; // из боковой панели — тот, чей профиль в ней открыт
+        var seed = SideProfile; // уже загруженное в панели — в полный профиль, без загрузки с нуля
         SideProfile = null;
-        _owner.Shell.OpenProfile(who);
+        _owner.Shell.OpenProfile(who, seed);
     }
 
     [RelayCommand]

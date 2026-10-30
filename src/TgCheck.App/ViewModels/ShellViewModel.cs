@@ -189,7 +189,10 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     // ===================================================================== Навигация
 
-    public void OpenProfile(PeerRef peer)
+    public void OpenProfile(PeerRef peer) => OpenProfile(peer, null);
+
+    /// <param name="seed">Уже загруженный профиль этого же человека (боковая панель) — открыть сразу с его данными.</param>
+    public void OpenProfile(PeerRef peer, ProfileViewModel? seed)
     {
         if (peer.IsSelf)
         {
@@ -203,7 +206,16 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             return;
         }
         var vm = new ProfileViewModel(_tg, peer, LogoutAsync, this);
+        if (seed?.Profile?.Peer?.Key == peer.Key) vm.SeedFrom(seed);
+        if (CurrentPage is ProfileViewModel previous) previous.Suspend(); // ушёл назад — подарки отпускаем
         _back.Push(CurrentPage);
+        // Назад — не глубже 5 страниц: дальние профили освобождаются (раньше все открытые подряд висели в памяти).
+        if (_back.Count > 5)
+        {
+            var keep = _back.Take(5).Reverse().ToList();
+            _back.Clear();
+            foreach (var page in keep) _back.Push(page);
+        }
         CurrentPage = vm;
         OnPropertyChanged(nameof(CanGoBack));
         _ = vm.LoadAsync();
@@ -240,6 +252,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         if (_back.Count == 0) return;
         CurrentPage = _back.Pop();
+        if (CurrentPage is ProfileViewModel profile) profile.ResumePage();
         OnPropertyChanged(nameof(CanGoBack));
     }
 

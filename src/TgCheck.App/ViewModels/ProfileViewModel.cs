@@ -431,10 +431,17 @@ public sealed partial class ProfileViewModel : ObservableObject
     public async Task LoadAsync()
     {
         // Чужой профиль, который уже открывали, — сразу из кэша (на диске), свежий придёт следом без загрузчика.
-        if (Profile is null && !IsSelf && _peer is { } cachedPeer && await Task.Run(() => _tg.GetCachedProfile(cachedPeer)) is { } cachedProfile && Profile is null)
+        // Ошибка чтения кэша (файл как раз дописывается) не должна обрывать загрузку — раньше так выходил пустой профиль.
+        if (Profile is null && !IsSelf && _peer is { } cachedPeer)
         {
-            ApplyProfile(cachedProfile, null);
-            if (cachedProfile.Peer is { HasPhoto: true } who) _ = LoadSmallAvatarAsync(who);
+            ProfileInfo? cachedProfile = null;
+            try { cachedProfile = await Task.Run(() => _tg.GetCachedProfile(cachedPeer)); }
+            catch (Exception ex) { Logging.Write("profile cache: " + ex.Message); }
+            if (cachedProfile is not null && Profile is null)
+            {
+                ApplyProfile(cachedProfile, null);
+                if (cachedProfile.Peer is { HasPhoto: true } who) _ = LoadSmallAvatarAsync(who);
+            }
         }
         // Уже показан из кэша — обновляем без экрана «Загрузка…».
         IsLoading = Profile is null;
@@ -449,7 +456,9 @@ public sealed partial class ProfileViewModel : ObservableObject
             Logging.Write($"[perf] profile {_peer?.Id ?? 0}: данные за {Environment.TickCount64 - started} мс");
             var avatar = profile.Avatar is { } bytes ? await Task.Run(() => Images.FromBytes(bytes, 256)) : null;
             // Профиль — сразу, не дожидаясь аватарки (её загрузка с диска или из сети раньше задерживала всю страницу).
-            ApplyProfile(profile, avatar);
+            // Уже показан (из кэша или боковой панели) и не изменился — не перерисовываем.
+            if (Profile is { } shown && Signature(shown) == Signature(profile)) { if (avatar is not null) Avatar = avatar; IsLoading = false; }
+            else ApplyProfile(profile, avatar);
             if (avatar is null && profile.Peer is { HasPhoto: true } who) _ = LoadSmallAvatarAsync(who);
             if (!IsSelf && !IsCompact && profile.Peer is { HasPhoto: true } owner) _ = LoadBigAvatarAsync(owner);
             _ = LoadMembersAsync();
@@ -469,6 +478,56 @@ public sealed partial class ProfileViewModel : ObservableObject
         {
             IsLoading = false;
         }
+    }
+
+    /// <summary>
+    /// Полный профиль открыли из боковой панели — берём уже загруженное там (данные, аватар, подарки с картинками):
+    /// страница открывается сразу целиком, а не грузится заново с нуля.
+    /// </summary>
+    public void SeedFrom(ProfileViewModel other)
+    {
+        if (other.Profile is not { } profile) return;
+        ApplyProfile(profile, other.Avatar);
+        if (other.Gifts.Count == 0) return;
+        foreach (var g in other.Gifts)
+        {
+            var vm = new GiftViewModel(g.Item) { Image = g.Image, SenderAvatar = g.SenderAvatar };
+            vm.PropertyChanged += OnGiftPropertyChanged;
+            Gifts.Add(vm);
+        }
+        OnCountsChanged();
+        RefreshView();
+    }
+
+    // Чем отличается свежий профиль от показанного: совпадает — страницу не перерисовываем (иначе она «дёргалась»).
+    private static string Signature(ProfileInfo p) => string.Join('|', p.FirstName, p.LastName, p.Username, p.Bio, p.Phone, p.Presence,
+        p.LastSeenUtc, p.GiftsCount, p.Music?.MediaId, p.Peer?.PhotoId, p.Peer?.EmojiStatusId, p.Birthday, p.PersonalChannelTitle,
+        p.RatingLevel, p.RatingStars, p.IsPremium, p.StarsBalance, p.CollectibleStatusTitle, p.BusinessAddress, string.Join(',', p.ExtraUsernames));
+
+    // ---- ушли с профиля на другой (он остался в стеке «назад»)
+    private bool _suspended;
+
+    /// <summary>
+    /// Профиль ушёл в стек «назад»: отпускаем подарки с картинками (их бывают тысячи — десятки МБ на профиль;
+    /// раньше все открытые подряд профили висели в памяти). При возврате подарки подгрузятся снова.
+    /// </summary>
+    public void Suspend()
+    {
+        if (IsSelf || _suspended) return;
+        _suspended = true;
+        foreach (var g in Gifts) g.PropertyChanged -= OnGiftPropertyChanged;
+        Gifts.Clear();
+        ShownGifts.Clear();
+        _ordered = [];
+        _photoCache.Clear();
+    }
+
+    /// <summary>Вернулись на профиль из стека «назад».</summary>
+    public void ResumePage()
+    {
+        if (!_suspended) return;
+        _suspended = false;
+        if (ShowGifts) _ = LoadGiftsAsync();
     }
 
     private async Task LoadGiftsAsync()
