@@ -452,15 +452,18 @@ public sealed class MediaService
     // ===================================================================== Обложка песни
 
     /// <summary>
-    /// Обложка альбома для песни без встроенной картинки: поиск по исполнителю и названию в открытом каталоге iTunes
-    /// (без ключей). Ответ — и «не найдено» тоже — кэшируется на диске, повторно не спрашиваем.
+    /// Обложка альбома для песни без встроенной картинки — из открытых каталогов без ключей: сначала iTunes,
+    /// не нашлось — Deezer (в нём много русской музыки). Ищем по «исполнитель + название», затем по одному названию;
+    /// мусор вроде «(lmusic.kz)» из названия убирается. Ответ — и «не найдено» тоже — кэшируется на диске.
     /// </summary>
     public Task<byte[]?> GetSongCoverAsync(string? performer, string title)
     {
-        var term = string.Join(' ', new[] { performer, title }.Where(s => !string.IsNullOrWhiteSpace(s))).Trim();
-        if (term.Length < 3) return Task.FromResult<byte[]?>(null);
-        var hash = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(term.ToLowerInvariant())))[..16];
-        var key = "cover_" + hash;
+        var song = CleanSongTitle(title);
+        var artist = string.IsNullOrWhiteSpace(performer) ? null : CleanSongTitle(performer);
+        var full = string.Join(' ', new[] { artist, song }.Where(s => !string.IsNullOrWhiteSpace(s))).Trim();
+        if (full.Length < 3) return Task.FromResult<byte[]?>(null);
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(full.ToLowerInvariant())))[..16];
+        var key = "cover2_" + hash;
         return _inflight.GetOrAdd(key, _ => Task.Run(async () =>
         {
             var path = Path.Combine(_cacheDir, key + ".jpg");
@@ -469,15 +472,19 @@ public sealed class MediaService
             {
                 if (File.Exists(path)) return await File.ReadAllBytesAsync(path);
                 if (File.Exists(miss)) return null;
-                var url = "https://itunes.apple.com/search?media=music&entity=song&limit=1&term=" + Uri.EscapeDataString(term);
-                using var json = System.Text.Json.JsonDocument.Parse(await MapHttp.GetStringAsync(url));
-                var results = json.RootElement.GetProperty("results");
-                if (results.GetArrayLength() == 0 || !results[0].TryGetProperty("artworkUrl100", out var art) || art.GetString() is not { } artUrl)
+                var terms = artist is null || song.Length < 3 ? [full] : new[] { full, song };
+                string? artUrl = null;
+                foreach (var term in terms)
+                {
+                    artUrl = await FindITunesCoverAsync(term) ?? await FindDeezerCoverAsync(term);
+                    if (artUrl is not null) break;
+                }
+                if (artUrl is null)
                 {
                     await File.WriteAllTextAsync(miss, "");
                     return null;
                 }
-                var bytes = await MapHttp.GetByteArrayAsync(artUrl.Replace("100x100", "300x300"));
+                var bytes = await MapHttp.GetByteArrayAsync(artUrl);
                 await File.WriteAllBytesAsync(path, bytes);
                 return bytes;
             }
@@ -488,6 +495,41 @@ public sealed class MediaService
                 return null;
             }
         }));
+    }
+
+    private static async Task<string?> FindITunesCoverAsync(string term)
+    {
+        try
+        {
+            var url = "https://itunes.apple.com/search?media=music&entity=song&limit=1&term=" + Uri.EscapeDataString(term);
+            using var json = System.Text.Json.JsonDocument.Parse(await MapHttp.GetStringAsync(url));
+            var results = json.RootElement.GetProperty("results");
+            return results.GetArrayLength() > 0 && results[0].TryGetProperty("artworkUrl100", out var art) && art.GetString() is { } a
+                ? a.Replace("100x100", "600x600") : null;
+        }
+        catch (Exception ex) { Logging.Write($"song cover itunes: {ex.Message}"); return null; }
+    }
+
+    private static async Task<string?> FindDeezerCoverAsync(string term)
+    {
+        try
+        {
+            var url = "https://api.deezer.com/search?limit=1&q=" + Uri.EscapeDataString(term);
+            using var json = System.Text.Json.JsonDocument.Parse(await MapHttp.GetStringAsync(url));
+            if (!json.RootElement.TryGetProperty("data", out var data) || data.GetArrayLength() == 0) return null;
+            return data[0].TryGetProperty("album", out var album) && album.TryGetProperty("cover_big", out var cover) && cover.GetString() is { Length: > 0 } c
+                ? c : null;
+        }
+        catch (Exception ex) { Logging.Write($"song cover deezer: {ex.Message}"); return null; }
+    }
+
+    // «без тебя мир некрасивый (lmusic.kz)» → «без тебя мир некрасивый»: сайты, «official audio» и т.п. мешают поиску.
+    private static string CleanSongTitle(string s)
+    {
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"[\(\[][^\)\]]*(\.\w{2,4}|official|audio|video|lyrics|remaster|prod\.?)[^\)\]]*[\)\]]", "",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"\b[\w-]+\.(kz|ru|com|net|org|me|fm)\b", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return System.Text.RegularExpressions.Regex.Replace(s, @"\s+", " ").Trim(' ', '-', '_', '.');
     }
 
     // ===================================================================== Карта для геопозиции

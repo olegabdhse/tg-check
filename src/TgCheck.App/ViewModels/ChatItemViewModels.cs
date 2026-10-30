@@ -560,6 +560,33 @@ public sealed partial class MessageViewModel : ObservableObject
     /// <summary>Песня: название (крупно) и исполнитель (мельче), как в Telegram.</summary>
     public string SongTitle => Item.SongTitle ?? Item.MediaTitle ?? "Аудио";
     public string? SongPerformer => Item.SongPerformer;
+    /// <summary>Фон обложки, пока её нет или если её не нашлось: красивый градиент, всегда один и тот же для песни.</summary>
+    public Brush CoverBrush => SongGradients[(int)((uint)StableHash(SongTitle + SongPerformer) % SongGradients.Length)];
+
+    private static readonly Brush[] SongGradients =
+    [
+        Grad(0xFF5F6D, 0xFFC371), Grad(0x7F00FF, 0xE100FF), Grad(0x00C6FF, 0x0072FF), Grad(0x11998E, 0x38EF7D),
+        Grad(0xFC466B, 0x3F5EFB), Grad(0xF7971E, 0xFFD200), Grad(0x8E2DE2, 0x4A00E0), Grad(0xEE0979, 0xFF6A00),
+        Grad(0x43CEA2, 0x185A9D), Grad(0xDA4453, 0x89216B), Grad(0x00B09B, 0x96C93D), Grad(0x654EA3, 0xEAAFC8),
+    ];
+
+    private static Brush Grad(int a, int b)
+    {
+        var brush = new LinearGradientBrush(Color.FromRgb((byte)(a >> 16), (byte)(a >> 8), (byte)a), Color.FromRgb((byte)(b >> 16), (byte)(b >> 8), (byte)b), 45);
+        brush.Freeze();
+        return brush;
+    }
+
+    // string.GetHashCode меняется от запуска к запуску — свой, чтобы цвет у песни был всегда один.
+    private static int StableHash(string s)
+    {
+        unchecked
+        {
+            var h = 23;
+            foreach (var c in s) h = h * 31 + c;
+            return h;
+        }
+    }
     public string? FileSubtitle => Item.Media is MediaKind.Audio ? Fmt.Duration(Item.DurationSeconds)
         : Item.MediaSize > 0 ? Fmt.FileSize(Item.MediaSize) : null;
     public bool IsBubbleless => IsSticker || IsRound || IsJumboEmoji ||

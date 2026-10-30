@@ -181,10 +181,7 @@
                         Command="{Binding DataContext.PlayAudioCommand, ElementName=Root}" CommandParameter="{Binding}">
                     <Grid>
                         <Grid helpers:RoundClip.Radius="10">
-                            <Border Background="{StaticResource AccentBrush}" />
-                            <TextBlock Text="&#xE8D6;" Style="{StaticResource Icon}" FontSize="20" Foreground="#99FFFFFF"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center"
-                                       Visibility="{Binding Preview, Converter={StaticResource InvNullToVis}}" />
+                            <Border Background="{Binding CoverBrush}" /> <!-- нет обложки — градиент песни -->
                             <Image Source="{Binding Preview}" Stretch="UniformToFill" />
                         </Grid>
                         <Border Width="30" Height="30" CornerRadius="15" Background="#99000000" HorizontalAlignment="Center" VerticalAlignment="Center">
