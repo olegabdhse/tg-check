@@ -215,7 +215,7 @@ public sealed class MediaService
     }
 
     // Эмодзи — маленькие и нужны сразу десятками: своя широкая очередь и отрисовка сразу в нужном размере.
-    private readonly LifoGate _emojiDownloads = new(12);
+    private readonly LifoGate _emojiDownloads = new(4); // эмодзи не занимают все места загрузок — чаты и открытое пользователем идут вперёд
     private readonly LifoGate _emojiPrefetch = new(2);
 
     /// <summary>Картинка эмодзи Telegram (PNG нужного размера) с кэшем на диске.</summary>

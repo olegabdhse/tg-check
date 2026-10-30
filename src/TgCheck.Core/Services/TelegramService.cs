@@ -55,7 +55,7 @@ public sealed partial class TelegramService : IAsyncDisposable
         client.OnOther += OnOtherAsync;
         // Одновременных загрузок у библиотеки по умолчанию мало — открытая песня или видео ждали в очереди за превью,
         // стикерами и аватарами. Больше параллельных — то, что открыто, качается сразу.
-        client.ParallelTransfers = 4; // больше — загрузки забивали соединение, и обычные запросы (профиль, сообщения) ждали десятки секунд
+        client.ParallelTransfers = 12;
         if (_env.Proxy is { } proxy)
         {
             if (AppEnv.IsMtProxy(proxy)) client.MTProxyUrl = proxy;
@@ -264,6 +264,10 @@ public sealed partial class TelegramService : IAsyncDisposable
     {
         if (peer is not null) EnsureNotIgnored(peer);
         if (peer is { IsSelf: false, IsUser: false }) return await GetChatProfileAsync(peer, withAvatar);
+        // Тот же человек только что загружен (боковая панель → полный профиль, обновление ссылки на песню) — не спрашиваем
+        // Telegram снова: частые запросы одного профиля он тормозит (FLOOD_WAIT), и профиль открывался по 20 с.
+        if (peer is { IsSelf: false } p0 && !withAvatar && _freshProfiles.TryGetValue(p0.Id, out var fresh) && DateTime.UtcNow - fresh.At < TimeSpan.FromSeconds(90))
+            return fresh.Profile;
 
         InputUserBase input = peer is { IsSelf: false, Info: User target } ? target : InputUser.Self;
         var full = await _client.Users_GetFullUser(input).ConfigureAwait(false);
@@ -287,8 +291,15 @@ public sealed partial class TelegramService : IAsyncDisposable
         }
         if (isSelf && withAvatar) SaveSelfProfileCache(full, stars, ton, avatar);
         if (!isSelf) _ = Task.Run(() => _cache.Save($"user_full_{me.id}", full)); // чужой профиль в следующий раз — сразу из кэша
-        return BuildUserProfile(full, me, isSelf, stars, ton, avatar);
+        var built = BuildUserProfile(full, me, isSelf, stars, ton, avatar);
+        if (!isSelf) { _freshProfiles[me.id] = (DateTime.UtcNow, built); _freshFull[me.id] = (DateTime.UtcNow, full); }
+        return built;
     }
+
+    // Свежие ответы сервера по людям (короткая память в ОЗУ): повторные открытия одного профиля не дёргают Telegram.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<long, (DateTime At, ProfileInfo Profile)> _freshProfiles = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<long, (DateTime At, Users_UserFull Full)> _freshFull = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<long, (DateTime At, IReadOnlyList<GiftItem> Gifts)> _freshGifts = new();
 
     // ---- Свой профиль из кэша: при запуске показывается сразу, до ответа сервера.
 
@@ -462,6 +473,12 @@ public sealed partial class TelegramService : IAsyncDisposable
     public async Task<IReadOnlyList<GiftItem>> GetGiftsAsync(PeerRef? peer = null, IProgress<(int Loaded, int Total)>? progress = null, CancellationToken ct = default,
         IProgress<IReadOnlyList<GiftItem>>? pages = null)
     {
+        // Подарки этого же человека только что загружены (боковая панель → полный профиль) — отдаём их, без повторных запросов.
+        if (peer is { IsSelf: false } gp && _freshGifts.TryGetValue(gp.Key, out var fg) && DateTime.UtcNow - fg.At < TimeSpan.FromSeconds(60))
+        {
+            pages?.Report(fg.Gifts);
+            return fg.Gifts;
+        }
         var isSelf = peer is null || peer.IsSelf;
         var target = isSelf ? InputPeer.Self : peer!.Info.ToInputPeer();
         var period = await GetConvertPeriodAsync().ConfigureAwait(false); // дальше — не в потоке интерфейса (разбор сотен подарков)
@@ -487,6 +504,7 @@ public sealed partial class TelegramService : IAsyncDisposable
             for (var i = 0; i < pages_.Count; i++) _cache.Save($"me_gifts_{i}", pages_[i]);
             _cache.SaveBytes("me_gifts_count", BitConverter.GetBytes(pages_.Count));
         });
+        if (!isSelf && peer is not null) _freshGifts[peer.Key] = (DateTime.UtcNow, result);
         return result;
     }
 

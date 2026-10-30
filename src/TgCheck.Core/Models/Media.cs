@@ -12,6 +12,8 @@ public abstract class MediaHolder
 
     public bool CanDownload => Document is not null || Photo is not null;
     public long MediaId => Photo?.id ?? Document?.id ?? 0;
+    /// <summary>Ссылка на файл (Telegram выдаёт её на время).</summary>
+    internal byte[] FileReference => Document?.file_reference ?? Photo?.file_reference ?? [];
     public string? MimeType => Document?.mime_type;
     public double DurationSeconds { get; init; }
     /// <summary>Волна голосового: 0..31 на столбик.</summary>

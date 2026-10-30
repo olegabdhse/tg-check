@@ -23,6 +23,11 @@ public sealed partial class TelegramService
         // Музыка профиля (не сообщение): профиль заново — в нём песня со свежей ссылкой.
         if (item.Id == 0)
         {
+            // Профиль только что загружен (минуты назад) — свежая ссылка уже есть, лишний запрос не нужен.
+            if (_freshFull.TryGetValue(item.PeerKey, out var recent) && DateTime.UtcNow - recent.At < TimeSpan.FromMinutes(20)
+                && recent.Full.full_user.saved_music is Document recentSong && recentSong.id == mediaId
+                && !recentSong.file_reference.AsSpan().SequenceEqual(item.FileReference))
+                return recentSong;
             if (!_users.TryGetValue(item.PeerKey, out var user)) return null;
             var full = await _client.Users_GetFullUser(user).ConfigureAwait(false);
             await Task.Yield();
