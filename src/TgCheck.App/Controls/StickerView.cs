@@ -60,6 +60,7 @@ public sealed class StickerView : Image
     /// <summary>Эмодзи в тексте: при появлении анимация проигрывается один раз и замирает (как в Telegram), а не крутится.
     /// Задавать до Media; уже показанная статичная картинка (Source) остаётся, пока грузится анимация.</summary>
     public bool Once { get; set; }
+    private bool _onceDone;
 
     /// <summary>Проиграть анимацию один раз и скрыться (эффект при постановке реакции).</summary>
     public bool PlayOnce { get; set; }
@@ -75,7 +76,12 @@ public sealed class StickerView : Image
     public StickerView()
     {
         RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.HighQuality);
-        Loaded += (_, _) => UpdateActive();
+        Loaded += (_, _) =>
+        {
+            // Снова на экране (меню реакций открыли ещё раз) — однократная анимация играет заново.
+            if (Once && _onceDone && _animation is null) { _onceDone = false; Reload(); }
+            else UpdateActive();
+        };
         Unloaded += (_, _) => { Active.Remove(this); };
         IsVisibleChanged += (_, _) => UpdateActive();
     }
@@ -224,6 +230,7 @@ public sealed class StickerView : Image
         if (Once && elapsed >= duration)
         {
             // Доиграла один раз — последний кадр остаётся, анимация больше не нужна.
+            _onceDone = true;
             _animation.SeekFrameTime(Math.Max(0, duration - 0.001), null);
             Draw();
             Active.Remove(this);

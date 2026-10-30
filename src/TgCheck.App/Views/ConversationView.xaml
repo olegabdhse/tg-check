@@ -54,12 +54,12 @@
                             <Grid.RenderTransform>
                                 <ScaleTransform x:Name="Zoom" />
                             </Grid.RenderTransform>
-                            <controls:StickerView Width="36" Height="36" Media="{Binding Animation}" Animate="False"
+                            <controls:StickerView Width="36" Height="36" Once="True" Media="{Binding Animation}"
                                                   Visibility="{Binding HasAnimation, Converter={StaticResource BoolToVis}}" />
                             <TextBlock helpers:RichText.Text="{Binding Emoji}" helpers:RichText.EmojiSize="30" HorizontalAlignment="Center" VerticalAlignment="Center"
                                        Visibility="{Binding ShowEmojiText, Converter={StaticResource BoolToVis}}" />
                             <!-- Собственные (премиум) эмодзи канала -->
-                            <controls:StickerView Width="34" Height="34" CustomEmojiId="{Binding CustomEmojiId}" Animate="False"
+                            <controls:StickerView Width="34" Height="34" Once="True" CustomEmojiId="{Binding CustomEmojiId}"
                                                   Visibility="{Binding IsCustom, Converter={StaticResource BoolToVis}}" />
                         </Grid>
                         <ControlTemplate.Triggers>
@@ -626,7 +626,7 @@
                                             <!-- Три строки, дальше — прокрутка -->
                                             <ScrollViewer MaxHeight="132" Margin="0,4,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                                           helpers:SmoothScroll.IsEnabled="True"
-                                                          Visibility="{Binding IsChecked, ElementName=MoreReactions, Converter={StaticResource BoolToVis}}">
+                                                          Visibility="{Binding Children[0].Children[0].IsChecked, RelativeSource={RelativeSource AncestorType=StackPanel}, Converter={StaticResource BoolToVis}}">
                                             <ItemsControl ItemsSource="{Binding MoreReactionItems}" Focusable="False" Width="308">
                                                 <ItemsControl.ItemsPanel>
                                                     <ItemsPanelTemplate>
@@ -774,11 +774,11 @@
                                                     <Grid>
                                                         <Border x:Name="Pill" CornerRadius="16" Height="32" Padding="6,0,11,0" Background="#24FFFFFF">
                                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                                <controls:StickerView Width="24" Height="24" Media="{Binding Icon}" Animate="False" VerticalAlignment="Center"
+                                                                <controls:StickerView Width="24" Height="24" Once="True" Media="{Binding Icon}" VerticalAlignment="Center"
                                                                                       Visibility="{Binding HasIcon, Converter={StaticResource BoolToVis}}" />
                                                                 <TextBlock helpers:RichText.Text="{Binding Emoji}" helpers:RichText.EmojiSize="21" VerticalAlignment="Center"
                                                                            Visibility="{Binding ShowEmojiText, Converter={StaticResource BoolToVis}}" />
-                                                                <controls:StickerView Width="24" Height="24" CustomEmojiId="{Binding CustomEmojiId}" VerticalAlignment="Center"
+                                                                <controls:StickerView Width="24" Height="24" Once="True" CustomEmojiId="{Binding CustomEmojiId}" VerticalAlignment="Center"
                                                                                       Visibility="{Binding IsCustom, Converter={StaticResource BoolToVis}}" />
                                                                 <TextBlock x:Name="Count" Text="{Binding CountText}" FontSize="14" FontWeight="SemiBold" Foreground="White"
                                                                            Margin="6,0,0,1" VerticalAlignment="Center" />
