@@ -1,38 +1,83 @@
 namespace TgCheck.Core.Media;
 
 /// <summary>
-/// Обёртка «без перемотки»: библиотека Telegram тогда пишет файл строго по порядку (без пропусков),
-/// и его можно читать, пока он качается.
+/// Файл для загрузки, который можно читать на ходу: библиотека Telegram пишет куски параллельно и вразнобой
+/// (с перемоткой), а на диск они ложатся строго подряд — пришедшие раньше времени ждут в памяти своей очереди.
+/// Так у читающего (песня, которая играет во время загрузки) никогда нет «дыр». Раньше была обёртка без перемотки —
+/// библиотека с ней писала уже после закрытия файла, и загрузка песни падала.
 /// </summary>
-internal sealed class SequentialStream(Stream inner) : Stream
+internal sealed class OrderedFileStream(FileStream file) : Stream
 {
+    private readonly object _lock = new();
+    private readonly SortedDictionary<long, byte[]> _pending = [];
+    private long _position, _flushed;
+
     public override bool CanRead => false;
-    public override bool CanSeek => false;
+    public override bool CanSeek => true;
     public override bool CanWrite => true;
-    public override long Length => inner.Length;
-    public override long Position { get => inner.Position; set => throw new NotSupportedException(); }
-    public override void Flush() => inner.Flush();
-    public override Task FlushAsync(CancellationToken ct) => inner.FlushAsync(ct);
+    public override long Length { get { lock (_lock) return Math.Max(_flushed, _pending.Count == 0 ? 0 : _pending.Max(p => p.Key + p.Value.Length)); } }
+    public override long Position { get { lock (_lock) return _position; } set { lock (_lock) _position = value; } }
+    public override void Flush() { lock (_lock) file.Flush(); }
     public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void SetLength(long value) { }
+
+    public override long Seek(long offset, SeekOrigin origin)
+    {
+        lock (_lock)
+            return _position = origin switch { SeekOrigin.Begin => offset, SeekOrigin.Current => _position + offset, _ => Length + offset };
+    }
+
     public override void Write(byte[] buffer, int offset, int count)
     {
-        inner.Write(buffer, offset, count);
-        inner.Flush(); // сразу на диск — читающий поток видит новые данные
+        lock (_lock)
+        {
+            var at = _position;
+            _position += count;
+            if (at + count <= _flushed) return; // уже записано (повтор)
+            if (at > _flushed)
+            {
+                _pending[at] = buffer.AsSpan(offset, count).ToArray(); // пришло раньше своей очереди — подождёт
+                return;
+            }
+            var skip = (int)(_flushed - at);
+            file.Write(buffer, offset + skip, count - skip);
+            _flushed += count - skip;
+            // Подтягиваем дождавшиеся куски.
+            while (_pending.Count > 0)
+            {
+                var first = _pending.First();
+                if (first.Key > _flushed) break;
+                _pending.Remove(first.Key);
+                var tail = (int)(_flushed - first.Key);
+                if (tail < first.Value.Length)
+                {
+                    file.Write(first.Value, tail, first.Value.Length - tail);
+                    _flushed += first.Value.Length - tail;
+                }
+            }
+            file.Flush(); // сразу на диск — читающий видит новые данные
+        }
     }
-    public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken ct)
+
+    public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken ct)
     {
-        await inner.WriteAsync(buffer.AsMemory(offset, count), ct);
-        await inner.FlushAsync(ct);
+        Write(buffer, offset, count);
+        return Task.CompletedTask;
     }
-    public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default)
+
+    public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default)
     {
-        await inner.WriteAsync(buffer, ct);
-        await inner.FlushAsync(ct);
+        Write(buffer.ToArray(), 0, buffer.Length);
+        return ValueTask.CompletedTask;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        // Файл закрывает владелец; здесь только дописываем всё, что успело прийти.
+        if (disposing) lock (_lock) { foreach (var (at, data) in _pending) { file.Position = at; file.Write(data); } _pending.Clear(); file.Flush(); }
+        base.Dispose(disposing);
     }
 }
-
 /// <summary>
 /// Чтение файла, который ещё качается: длина — полный размер; если читаем дальше скачанного — ждём новые данные
 /// (или конца загрузки). Перемотка вперёд за скачанное тоже ждёт.

@@ -25,11 +25,11 @@ public sealed class MediaService
     private readonly ConcurrentDictionary<string, Task<byte[]?>> _inflight = new();
 
     // Общий запрос на время загрузки: одновременные просьбы одной картинки ждут одну загрузку. Готовые картинки
-    // держим в памяти в ограниченном кэше (последние, до 128 МБ, вместе с «нет картинки»): повторный показ мгновенный, как раньше, но память
+    // держим в памяти в ограниченном кэше (последние, до 256 МБ): повторный показ мгновенный, как раньше, но память
     // не растёт без конца (раньше хранилось всё за сессию — сотни МБ).
     private Task<byte[]?> Shared(string key, Func<Task<byte[]?>> start)
     {
-        if (_recent.Get(key) is { } ready) return Task.FromResult<byte[]?>(ready.Length == 0 ? null : ready); // пустой — «нет картинки», запомнено
+        if (_recent.Get(key) is { } ready) return Task.FromResult<byte[]?>(ready);
         var task = _inflight.GetOrAdd(key, _ => start());
         if (task.IsCompleted) Done(task);
         else _ = task.ContinueWith(Done, TaskScheduler.Default);
@@ -37,14 +37,14 @@ public sealed class MediaService
 
         void Done(Task<byte[]?> t)
         {
-            // Сбой загрузки (сеть, таймаут) сам убирает запись из _inflight — такой ответ не запоминаем, повторим при показе.
-            var normal = _inflight.TryRemove(new KeyValuePair<string, Task<byte[]?>>(key, t));
-            // Запоминаем и «нет картинки» (как раньше): иначе такие файлы запрашивались заново при каждом показе.
-            if (normal && t.IsCompletedSuccessfully) _recent.Put(key, t.Result ?? []);
+            _inflight.TryRemove(new KeyValuePair<string, Task<byte[]?>>(key, t));
+            // Запоминаем только настоящие картинки. «Нет картинки» не запоминаем: сбой при запуске (ещё нет связи) мог
+            // выглядеть так же — и превью оставалось серым до перезапуска.
+            if (t.IsCompletedSuccessfully && t.Result is { Length: > 0 } bytes) _recent.Put(key, bytes);
         }
     }
 
-    private readonly BytesCache _recent = new(128L * 1024 * 1024);
+    private readonly BytesCache _recent = new(256L * 1024 * 1024);
 
     internal MediaService(Func<Client> client, string cacheDir)
     {
@@ -784,7 +784,7 @@ public sealed class MediaService
             {
                 // Файл открыт для чтения другими (песня играет, пока качается); запись строго по порядку — без «дыр».
                 await using (var fs = new FileStream(part, FileMode.Create, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
-                await using (var ordered = new SequentialStream(fs))
+                await using (var ordered = new OrderedFileStream(fs))
                 {
                     _partPaths[doc.id] = part;
                     await _client().DownloadFileAsync(doc, ordered, (PhotoSizeBase?)null,

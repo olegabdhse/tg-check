@@ -211,7 +211,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         conv.EnsureAvatar(_tg.Media);
         _conversations[peer.Key] = conv;
         // Держим в памяти несколько последних чатов — быстрое переключение.
-        if (_conversations.Count > 10)
+        if (_conversations.Count > 20)
             _conversations.Remove(_conversations.Keys.First(k => k != peer.Key && k != Conversation?.Peer.Key));
         return conv;
     }

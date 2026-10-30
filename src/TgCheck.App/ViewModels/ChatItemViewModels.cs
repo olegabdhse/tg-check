@@ -268,6 +268,7 @@ public sealed partial class MessageViewModel : ObservableObject
 {
     private const double MaxMediaWidth = 360, MaxMediaHeight = 400;
     private bool _previewRequested;
+    private int _previewAttempts;
 
     public MessageViewModel(MessageItem item, PeerRef chat)
     {
@@ -667,7 +668,14 @@ public sealed partial class MessageViewModel : ObservableObject
         var key = $"prev_{Item.MediaId}";
         if (ImageCache.Get(key) is { } ready) { Preview = ready; return; } // уже декодировано (тот же снимок в другом месте) — сразу
         var bytes = await media.GetMessagePreviewAsync(Item).ConfigureAwait(false);
-        Preview = ImageCache.Put(key, Images.FromBytesMax(bytes, 760));
+        Preview = ImageCache.Put(key, Images.FromBytesMax(bytes, 1280));
+        // Не загрузилось (ещё нет связи, сбой сети) — пробуем ещё, иначе снимок так и оставался серым.
+        if (Preview is null && ++_previewAttempts < 4)
+        {
+            await Task.Delay(4000 * _previewAttempts).ConfigureAwait(false);
+            _previewRequested = false;
+            EnsurePreview(media);
+        }
     }
 
     public async void EnsureSenderAvatar(MediaService media)
