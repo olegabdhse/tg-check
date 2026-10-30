@@ -82,7 +82,7 @@ public sealed class GifView : Grid
         _preview.Source = null; // превью прошлого видео (слайда) не должно закрывать новое
         if (Media is not { } media || AppServices.Media is not { } service) return;
         var bytes = await service.GetMessagePreviewAsync(media);
-        var image = bytes is null ? null : await Task.Run(() => Images.FromBytes(bytes)); // декодируем не в потоке интерфейса
+        var image = bytes is null ? null : await Task.Run(() => Images.FromBytesMax(bytes, 760)); // декодируем не в потоке интерфейса
         if (version != _version) return;
         _preview.Source = image;
         UpdatePlayback();
@@ -226,7 +226,7 @@ public sealed class VideoNoteView : Grid
         _time.Text = Fmt.Duration(media.DurationSeconds);
         _fileRequested = false;
         var bytes = await service.GetMessagePreviewAsync(media);
-        var image = bytes is null ? null : await Task.Run(() => Images.FromBytes(bytes)); // декодируем не в потоке интерфейса
+        var image = bytes is null ? null : await Task.Run(() => Images.FromBytesMax(bytes, 480)); // декодируем не в потоке интерфейса
         if (version != _version) return;
         _preview.Source = image;
         UpdateViewport();

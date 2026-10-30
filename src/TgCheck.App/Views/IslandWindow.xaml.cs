@@ -56,6 +56,7 @@ public partial class IslandWindow : Window
         _press.Tick += (_, _) => StartDrag();
         _shell.IslandChanged += OnIslandChanged;
         _shell.Incoming += OnIncoming;
+        IslandPlayer.HideRequested += () => SetMusicOpen(false);
         Closed += (_, _) =>
         {
             _mini?.Close();
@@ -100,18 +101,24 @@ public partial class IslandWindow : Window
 
     private bool IsSide => _edge is "Left" or "Right";
 
-    // Мини-плеер музыки: управление всплывает со стороны экрана, противоположной краю островка.
+    // Мини-плеер музыки: клик по обложке — управление плавно разворачивается прямо в островке, крестик — сворачивает
+    // (музыка при этом играет дальше).
+    private bool _musicOpen;
+
     private void MusicButton_Click(object sender, RoutedEventArgs e)
     {
         if (_dragged) return;
-        MusicPopup.Placement = _edge switch
+        SetMusicOpen(!_musicOpen);
+    }
+
+    private void SetMusicOpen(bool open)
+    {
+        _musicOpen = open;
+        var anim = new DoubleAnimation(open ? 338 : 0, TimeSpan.FromMilliseconds(open ? 240 : 180))
         {
-            "Bottom" => System.Windows.Controls.Primitives.PlacementMode.Top,
-            "Left" => System.Windows.Controls.Primitives.PlacementMode.Right,
-            "Right" => System.Windows.Controls.Primitives.PlacementMode.Left,
-            _ => System.Windows.Controls.Primitives.PlacementMode.Bottom,
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
         };
-        MusicPopup.IsOpen = !MusicPopup.IsOpen;
+        MusicPanel.BeginAnimation(WidthProperty, anim);
     }
 
     private void ApplyEdge()
@@ -203,6 +210,8 @@ public partial class IslandWindow : Window
 
     private void Island_MouseDown(object sender, MouseButtonEventArgs e)
     {
+        // В развёрнутом плеере (перемотка и кнопки) удержание не тащит островок.
+        if (e.OriginalSource is DependencyObject d && IslandPlayer.IsAncestorOf(d)) { _dragged = false; return; }
         _dragged = false;
         _press.Start();
     }

@@ -1472,6 +1472,17 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             }
             m.IsLoadingAudio = true;
             NowPlaying.Instance.RequestedAudio = m.AudioKey;
+            if (m.IsAudio)
+            {
+                // Песня играет сразу, пока качается (не ждём весь файл).
+                var stream = await _tg.Media.OpenMediaStreamAsync(m.Item);
+                m.IsLoadingAudio = false;
+                if (stream is null) throw new IOException("Не удалось загрузить аудио.");
+                if (NowPlaying.Instance.RequestedAudio != m.AudioKey) { stream.Dispose(); return; }
+                await Task.Run(() => AudioPlayer.Instance.PlayStream(m.AudioKey, stream));
+                NowPlaying.Instance.StartMusic(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush);
+                return;
+            }
             var path = await _tg.Media.GetMediaFileAsync(m.Item, new Progress<double>(p => m.DownloadProgress = p));
             m.DownloadProgress = -1;
             m.IsLoadingAudio = false;

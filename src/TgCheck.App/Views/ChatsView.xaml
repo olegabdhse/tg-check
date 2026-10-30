@@ -349,7 +349,7 @@
                 <Border Grid.Row="4" Margin="8,4,8,8" Padding="10,8,6,8" CornerRadius="18" Background="{StaticResource Surface2Brush}"
                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Visibility="Collapsed"
                         DataContext="{x:Static vm:NowPlaying.Instance}"
-                        helpers:Anim.Mode="SlideUp" helpers:Anim.Show="{Binding IsMusicActive}">
+                        helpers:Anim.Mode="SlideUp" helpers:Anim.Show="{Binding ShowMusicBar}">
                     <views:MusicPlayerBar />
                 </Border>
 

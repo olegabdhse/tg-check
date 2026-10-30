@@ -6,11 +6,13 @@
              DataContext="{x:Static vm:NowPlaying.Instance}">
     <!-- Плеер музыки: обложка с волнами, название и исполнитель, перемотка, повтор, пауза, закрыть -->
     <DockPanel>
-        <controls:MusicWaves DockPanel.Dock="Left" Width="58" Height="58" Margin="0,0,10,0" CoverRatio="0.7"
+        <controls:MusicWaves DockPanel.Dock="Left" Width="58" Height="58" Margin="0,0,10,0" CoverRatio="0.7" BassPulse="True"
                              Cover="{Binding Cover}" CoverBrush="{Binding CoverBrush}" Level="{Binding Level}"
                              Progress="{Binding Progress}" IsPlaying="{Binding IsPlaying}" />
-        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="12" Padding="8" VerticalAlignment="Center"
-                Command="{Binding CloseCommand}" ToolTip="Закрыть" />
+        <Button x:Name="CloseButton" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="12" Padding="8" VerticalAlignment="Center"
+                Click="Close_Click" ToolTip="Закрыть" />
+        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE893;" FontSize="13" Padding="7" VerticalAlignment="Center"
+                Command="{Binding SeekEndCommand}" ToolTip="В конец" />
         <Button DockPanel.Dock="Right" Style="{StaticResource RoundButton}" Width="38" Height="38" Margin="4,0,2,0" VerticalAlignment="Center"
                 Command="{Binding ToggleCommand}" ToolTip="Играть / пауза">
             <TextBlock FontSize="14" Foreground="White">
@@ -26,6 +28,8 @@
                 </TextBlock.Style>
             </TextBlock>
         </Button>
+        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE892;" FontSize="13" Padding="7" VerticalAlignment="Center"
+                Command="{Binding SeekStartCommand}" ToolTip="В начало" />
         <!-- Повтор: подсвечен, когда включён -->
         <Button DockPanel.Dock="Right" Content="&#xE8EE;" FontSize="15" Padding="8" VerticalAlignment="Center"
                 Command="{Binding ToggleLoopCommand}" ToolTip="Повторять">

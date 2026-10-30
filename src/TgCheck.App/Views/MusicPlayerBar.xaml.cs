@@ -8,6 +8,18 @@ public partial class MusicPlayerBar : UserControl
 {
     public MusicPlayerBar() => InitializeComponent();
 
+    /// <summary>Крестик только сворачивает плеер (в островке): музыка играет дальше. Иначе — закрыть плеер.</summary>
+    public bool HideOnly { get; set; }
+
+    /// <summary>Нажат крестик при HideOnly.</summary>
+    public event Action? HideRequested;
+
+    private void Close_Click(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (HideOnly) HideRequested?.Invoke();
+        else NowPlaying.Instance.CloseMusic();
+    }
+
     private void SeekTo(MouseEventArgs e) =>
         NowPlaying.Instance.Seek(Math.Clamp(e.GetPosition(Seek).X / Math.Max(1, Seek.ActualWidth), 0, 1));
 

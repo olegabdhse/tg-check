@@ -268,9 +268,17 @@
                                 Command="{Binding DataContext.PlayMusicCommand, ElementName=Root}"
                                 Visibility="{Binding Converter={StaticResource NullToVis}}" ToolTip="Слушать">
                             <Grid helpers:RoundClip.Radius="18" Height="92">
+                                <!-- Фон — сама обложка: увеличенная часть, размытая и затемнённая (нет обложки — градиент песни) -->
                                 <Border Background="{Binding CoverBrush}" />
-                                <Border Background="#66000000" />
-                                <Border Background="{Binding CardBrush}" />
+                                <Image Source="{Binding Preview}" Stretch="UniformToFill" RenderTransformOrigin="0.3,0.4" IsHitTestVisible="False">
+                                    <Image.RenderTransform>
+                                        <ScaleTransform ScaleX="1.6" ScaleY="1.6" />
+                                    </Image.RenderTransform>
+                                    <Image.Effect>
+                                        <BlurEffect Radius="26" KernelType="Gaussian" />
+                                    </Image.Effect>
+                                </Image>
+                                <Border Background="#73000000" />
                                 <DockPanel Margin="14,12">
                                     <Grid DockPanel.Dock="Left" Width="68" Height="68" Margin="0,0,16,0">
                                         <Grid helpers:RoundClip.Radius="10">

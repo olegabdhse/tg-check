@@ -610,6 +610,30 @@ public sealed class MediaService
     }
 
     private readonly ConcurrentDictionary<long, bool> _cancelledFiles = new();
+    // Файлы, которые качаются прямо сейчас (путь к .part) — их можно читать на ходу.
+    private readonly ConcurrentDictionary<long, string> _partPaths = new();
+
+    /// <summary>
+    /// Песня для воспроизведения сразу, не дожидаясь полной загрузки: поток читает файл по мере скачивания
+    /// (если плеер догнал загрузку — ждёт). Уже скачанное — обычный файл.
+    /// </summary>
+    public async Task<Stream?> OpenMediaStreamAsync(MediaHolder media)
+    {
+        if (media.Document is not { } doc) return null;
+        var done = GetMediaFileAsync(media);
+        // Ждём начала загрузки и первых ~64 КБ (заголовок файла), либо конца загрузки.
+        for (var i = 0; i < 400 && !done.IsCompleted; i++)
+        {
+            if (_partPaths.TryGetValue(doc.id, out var part) && File.Exists(part) && new FileInfo(part).Length >= Math.Min(65536, doc.size))
+            {
+                try { return new GrowingFileStream(part, doc.size, done); }
+                catch (IOException) { break; } // файл успели переименовать — значит, докачан
+            }
+            await Task.Delay(50);
+        }
+        var path = await done;
+        return path is null ? null : new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+    }
 
     /// <summary>Остановить загрузку файла (крестик на ободке). Следующий запрос начнёт заново.</summary>
     public void CancelMediaFile(MediaHolder media)
@@ -707,17 +731,22 @@ public sealed class MediaService
             if (!priority) await _backgroundFiles.WaitAsync();
             try
             {
-                await using (var fs = File.Create(part))
-                    await _client().DownloadFileAsync(doc, fs, (PhotoSizeBase?)null,
+                // Файл открыт для чтения другими (песня играет, пока качается); запись строго по порядку — без «дыр».
+                await using (var fs = new FileStream(part, FileMode.Create, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
+                await using (var ordered = new SequentialStream(fs))
+                {
+                    _partPaths[doc.id] = part;
+                    await _client().DownloadFileAsync(doc, ordered, (PhotoSizeBase?)null,
                         (done, total) =>
                         {
                             // Крестик на ободке загрузки — остановить (исключение из обратного вызова прерывает загрузку).
                             if (_cancelledFiles.ContainsKey(doc.id)) throw new OperationCanceledException();
                             progress?.Report(total > 0 ? (double)done / total : 0);
                         });
+                }
                 await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
             }
-            finally { if (!priority) _backgroundFiles.Release(); }
+            finally { if (!priority) _backgroundFiles.Release(); _partPaths.TryRemove(doc.id, out _); }
             File.Move(part, path, overwrite: true);
             return path;
         }

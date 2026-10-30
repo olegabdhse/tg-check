@@ -54,6 +54,23 @@ public static class Images
         }
     }
 
+    /// <summary>
+    /// Картинка не шире maxWidth (меньшие — как есть): превью в ленте декодируются под экран, а не в полный размер —
+    /// фото 1280 px занимало в памяти ~5 МБ, хотя на экране оно до 360 px (отсюда сотни мегабайт на чатах с фото).
+    /// </summary>
+    public static BitmapImage? FromBytesMax(byte[]? bytes, int maxWidth)
+    {
+        if (bytes is null || bytes.Length == 0) return null;
+        int width;
+        try
+        {
+            using var ms = new MemoryStream(bytes);
+            width = BitmapDecoder.Create(ms, BitmapCreateOptions.DelayCreation | BitmapCreateOptions.IgnoreColorProfile, BitmapCacheOption.None).Frames[0].PixelWidth;
+        }
+        catch { width = 0; }
+        return FromBytes(bytes, width > maxWidth ? maxWidth : null);
+    }
+
     public static BitmapImage? Qr(string text)
     {
         using var generator = new QRCodeGenerator();

@@ -657,7 +657,7 @@ public sealed partial class MessageViewModel : ObservableObject
         if (!(Item.Media is MediaKind.Photo or MediaKind.Video)) return;
         _previewRequested = true;
         var bytes = await media.GetMessagePreviewAsync(Item).ConfigureAwait(false);
-        Preview = Images.FromBytes(bytes);
+        Preview = Images.FromBytesMax(bytes, 760);
     }
 
     public async void EnsureSenderAvatar(MediaService media)

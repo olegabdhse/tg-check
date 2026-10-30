@@ -385,11 +385,12 @@ public sealed partial class ProfileViewModel : ObservableObject
             if (AudioPlayer.Instance.Key == m.AudioKey) { AudioPlayer.Instance.Toggle(m.AudioKey, ""); return; }
             m.IsLoadingAudio = true;
             NowPlaying.Instance.RequestedAudio = m.AudioKey;
-            var path = await _tg.Media.GetMediaFileAsync(m.Item);
+            // Играет сразу, пока песня качается (не ждём весь файл).
+            var stream = await _tg.Media.OpenMediaStreamAsync(m.Item);
             m.IsLoadingAudio = false;
-            if (path is null) throw new IOException("Не удалось загрузить песню.");
-            if (NowPlaying.Instance.RequestedAudio != m.AudioKey) return;
-            AudioPlayer.Instance.Play(m.AudioKey, path);
+            if (stream is null) throw new IOException("Не удалось загрузить песню.");
+            if (NowPlaying.Instance.RequestedAudio != m.AudioKey) { stream.Dispose(); return; }
+            await Task.Run(() => AudioPlayer.Instance.PlayStream(m.AudioKey, stream));
             NowPlaying.Instance.StartMusic(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush);
         }
         catch (Exception ex)

@@ -30,6 +30,10 @@ public sealed class MusicWaves : FrameworkElement
     /// <summary>Доля размера под обложку (остальное — место для волн).</summary>
     public double CoverRatio { get; set; } = 0.62;
 
+    /// <summary>Обложка слегка увеличивается на басах (плеер под списком чатов).</summary>
+    public bool BassPulse { get; set; }
+    private double _bass, _bassPeak = 0.2;
+
     private const int Rays = 40;
     private double _amp;
     private bool _hooked;
@@ -61,14 +65,32 @@ public sealed class MusicWaves : FrameworkElement
         CompositionTarget.Rendering -= OnFrame;
     }
 
+    // История громкости: каждый кадр — новый замер; лучи показывают последние замеры, и волна «бежит» вокруг обложки в такт музыке.
+    private readonly double[] _history = new double[Rays / 2];
+    private int _head;
+    private double _peak = 0.3;
+
     private void OnFrame(object? sender, EventArgs e)
     {
         var now = (e as RenderingEventArgs)?.RenderingTime ?? TimeSpan.Zero;
         if ((now - _last).TotalMilliseconds < 1000.0 / 40) return; // ~40 кадров/с
         _last = now;
+        // Громкость прямо из плеера (не через привязку — без задержки), нормированная по недавнему пику: тихие песни тоже «качают».
+        var level = IsPlaying ? Core.Media.AudioPlayer.Instance.Level : 0;
+        _peak = Math.Max(level, _peak * 0.995);
+        var norm = _peak > 0.02 ? Math.Min(1, level / _peak) : 0;
         // Быстро растут, плавно спадают — как у эквалайзера.
-        var target = Math.Min(1, Level * 1.6);
-        _amp += (target - _amp) * (target > _amp ? 0.5 : 0.12);
+        _amp += (norm - _amp) * (norm > _amp ? 0.65 : 0.18);
+        _head = (_head + 1) % _history.Length;
+        _history[_head] = _amp;
+        if (BassPulse)
+        {
+            var bass = IsPlaying ? Core.Media.AudioPlayer.Instance.Bass : 0;
+            _bassPeak = Math.Max(bass, _bassPeak * 0.995);
+            var b = _bassPeak > 0.02 ? Math.Min(1, bass / _bassPeak) : 0;
+            b = b > 0.55 ? (b - 0.55) / 0.45 : 0; // только удары, а не фон
+            _bass += (b - _bass) * (b > _bass ? 0.7 : 0.15);
+        }
         InvalidateVisual();
     }
 
@@ -78,6 +100,7 @@ public sealed class MusicWaves : FrameworkElement
         if (size <= 0) return;
         var c = new Point(ActualWidth / 2, ActualHeight / 2);
         var r = size * CoverRatio / 2;
+        if (BassPulse) r *= 1 + 0.07 * _bass; // «толчок» на басах
 
         // Лучи вокруг обложки.
         var t = Environment.TickCount64 / 1000.0;
@@ -87,8 +110,10 @@ public sealed class MusicWaves : FrameworkElement
             for (var i = 0; i < Rays; i++)
             {
                 var a = 2 * Math.PI * i / Rays;
-                var wobble = 0.55 + 0.45 * Math.Sin(t * (2.3 + i % 5 * 0.4) + i * 1.7);
-                var len = 1.5 + maxLen * _amp * wobble;
+                // Луч i — замер i кадров назад (симметрично по двум половинам круга): удар в музыке расходится волной.
+                var k = i < Rays / 2 ? i : Rays - 1 - i;
+                var v = _history[(_head - k + _history.Length) % _history.Length];
+                var len = 1.5 + maxLen * v * (0.85 + 0.15 * Math.Sin(t * 3 + i));
                 var from = new Point(c.X + Math.Cos(a) * (r + 3), c.Y + Math.Sin(a) * (r + 3));
                 var to = new Point(c.X + Math.Cos(a) * (r + 3 + len), c.Y + Math.Sin(a) * (r + 3 + len));
                 dc.DrawLine(RayPen(size), from, to);
@@ -96,7 +121,7 @@ public sealed class MusicWaves : FrameworkElement
         }
 
         // Обложка (или градиент песни) кругом.
-        var fill = Cover is { } img ? new ImageBrush(img) { Stretch = Stretch.UniformToFill } : CoverBrush ?? Brushes.SteelBlue;
+        var fill = CoverFill();
         dc.DrawEllipse(fill, null, c, r, r);
 
         // Кольцо прогресса по краю обложки.
@@ -113,6 +138,22 @@ public sealed class MusicWaves : FrameworkElement
         }
         g.Freeze();
         dc.DrawGeometry(null, Ring, g);
+    }
+
+    // Кисть обложки — одна на картинку (раньше создавалась заново на каждом кадре).
+    private ImageSource? _fillFor;
+    private Brush? _fill;
+
+    private Brush CoverFill()
+    {
+        if (Cover is not { } img) return CoverBrush ?? Brushes.SteelBlue;
+        if (!ReferenceEquals(img, _fillFor) || _fill is null)
+        {
+            _fillFor = img;
+            _fill = new ImageBrush(img) { Stretch = Stretch.UniformToFill };
+            _fill.Freeze();
+        }
+        return _fill;
     }
 
     private Pen? _rayPen;

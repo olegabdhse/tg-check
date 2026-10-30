@@ -15,19 +15,40 @@ public sealed partial class NowPlaying : ObservableObject
 {
     public static NowPlaying Instance { get; } = new();
 
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsActive), nameof(IsMusicActive), nameof(ShowTopBar))] private string? _title;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsActive), nameof(IsMusicActive), nameof(ShowTopBar), nameof(ShowMusicBar))] private string? _title;
     [ObservableProperty] private string _subtitle = "";
     [ObservableProperty] private bool _isPlaying;
     [ObservableProperty] private double _progress;
     [ObservableProperty] private string _timeText = "";
     /// <summary>Музыка (песня), а не голосовое / кружок: для неё — отдельный плеер под списком чатов и в островке.</summary>
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsMusicActive), nameof(ShowTopBar))] private bool _isMusic;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsMusicActive), nameof(ShowTopBar), nameof(ShowMusicBar))] private bool _isMusic;
     [ObservableProperty] private ImageSource? _cover;
     [ObservableProperty] private Brush? _coverBrush;
     /// <summary>Громкость сейчас (0..1) — для волн вокруг обложки.</summary>
     [ObservableProperty] private double _level;
     [ObservableProperty] private bool _loop;
     public bool IsMusicActive => IsMusic && IsActive;
+    /// <summary>Плеер музыки на экране (при закрытии сначала уезжает он, а песня останавливается следом).</summary>
+    public bool ShowMusicBar => IsMusicActive && !_closingMusic;
+    private bool _closingMusic;
+
+    /// <summary>Закрыть плеер музыки: убрать его с экрана и только потом остановить песню.</summary>
+    public async void CloseMusic()
+    {
+        if (_closingMusic) return;
+        _closingMusic = true;
+        OnPropertyChanged(nameof(ShowMusicBar));
+        await Task.Delay(260);
+        _closingMusic = false;
+        Close();
+        OnPropertyChanged(nameof(ShowMusicBar));
+    }
+
+    [RelayCommand]
+    private void SeekStart() => Seek(0);
+
+    [RelayCommand]
+    private void SeekEnd() => Seek(0.999);
     /// <summary>Панель над лентой чата — для голосовых и кружков (у музыки свой плеер под чатами и в островке).</summary>
     public bool ShowTopBar => IsActive && !IsMusic;
 
