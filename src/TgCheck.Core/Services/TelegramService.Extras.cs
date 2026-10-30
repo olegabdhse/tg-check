@@ -51,7 +51,7 @@ public sealed partial class TelegramService
         foreach (var ps in all.peer_stories)
         {
             if (IsIgnored(ps.peer) || PeerOf(ps.peer) is not { } peer) continue;
-            var stories = ps.stories.OfType<StoryItem>().Select(MapStory).OfType<StoryInfo>()
+            var stories = ps.stories.OfType<StoryItem>().Select(MapStory).OfType<StoryInfo>().Select(s => { s.Owner = peer; return s; })
                 .Where(s => !onlyFresh || s.DateUtc > DateTime.UtcNow.AddHours(-24)) // из кэша — только ещё не истёкшие
                 .OrderBy(s => s.Id).ToList();
             if (stories.Count > 0) result.Add(new StoryPeer { Peer = peer, Stories = stories, MaxReadId = ps.max_read_id });
@@ -102,7 +102,7 @@ public sealed partial class TelegramService
             await Task.Yield(); // ответ получен — дальше в пуле потоков, а не в сетевом потоке библиотеки (иначе обновления ждут)
             foreach (var (k, v) in res.users) _users[k] = v;
             foreach (var (k, v) in res.chats) _chats[k] = v;
-            return res.stories.OfType<StoryItem>().Select(MapStory).OfType<StoryInfo>().OrderByDescending(s => s.Id).ToList();
+            return res.stories.OfType<StoryItem>().Select(MapStory).OfType<StoryInfo>().Select(s => { s.Owner = peer; return s; }).OrderByDescending(s => s.Id).ToList();
         }
         catch (Exception ex)
         {

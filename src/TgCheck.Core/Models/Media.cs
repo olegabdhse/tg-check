@@ -99,6 +99,8 @@ public sealed class StoryInfo : MediaHolder
     public int ReactionsCount { get; init; }
     /// <summary>Мой лайк (реакция) на эту историю.</summary>
     public bool Liked { get; set; }
+    /// <summary>Чья история (чтобы при устаревшей ссылке на видео запросить её заново).</summary>
+    internal PeerRef? Owner { get; set; }
 }
 
 /// <summary>Истории одного пользователя/канала.</summary>

@@ -9,6 +9,14 @@ public sealed partial class TelegramService
 {
     private async Task<Document?> RefreshDocumentAsync(MediaHolder holder)
     {
+        // История: запросить её заново (истории из кэша — с устаревшими ссылками на видео).
+        if (holder is StoryInfo { Owner: { } owner } story)
+        {
+            var stories = await _client.Stories_GetStoriesByID(owner.Info.ToInputPeer(), story.Id).ConfigureAwait(false);
+            await Task.Yield();
+            return stories.stories.OfType<StoryItem>().Select(s => s.media).OfType<MessageMediaDocument>()
+                .Select(m => m.document).OfType<Document>().FirstOrDefault(d => d.id == story.MediaId);
+        }
         if (holder is not MessageItem item) return null;
         var mediaId = item.MediaId;
 
