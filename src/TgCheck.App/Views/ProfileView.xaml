@@ -262,6 +262,45 @@
                             </Border>
                         </WrapPanel>
 
+                        <!-- Музыка в профиле — карточка как в Telegram: обложка, название, исполнитель; фон — цвет обложки.
+                             Нажатие — играть в плеере музыки (под списком чатов и в островке) -->
+                        <Button Style="{StaticResource BareButton}" Margin="0,4,0,10" Cursor="Hand" DataContext="{Binding Music}"
+                                Command="{Binding DataContext.PlayMusicCommand, ElementName=Root}"
+                                Visibility="{Binding Converter={StaticResource NullToVis}}" ToolTip="Слушать">
+                            <Grid helpers:RoundClip.Radius="18" Height="92">
+                                <Border Background="{Binding CoverBrush}" />
+                                <Border Background="#66000000" />
+                                <Border Background="{Binding CardBrush}" />
+                                <DockPanel Margin="14,12">
+                                    <Grid DockPanel.Dock="Left" Width="68" Height="68" Margin="0,0,16,0">
+                                        <Grid helpers:RoundClip.Radius="10">
+                                            <Border Background="{Binding CoverBrush}" />
+                                            <Image Source="{Binding Preview}" Stretch="UniformToFill" />
+                                        </Grid>
+                                        <Border Width="30" Height="30" CornerRadius="15" Background="#88000000">
+                                            <Grid>
+                                                <TextBlock Text="{Binding PlayIcon}" Style="{StaticResource Icon}" FontSize="12" Foreground="White"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                           Visibility="{Binding IsLoadingAudio, Converter={StaticResource InvBoolToVis}}" />
+                                                <views:Spinner Width="16" Height="16" Visibility="{Binding IsLoadingAudio, Converter={StaticResource BoolToVis}}" />
+                                            </Grid>
+                                        </Border>
+                                    </Grid>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding SongTitle}" FontSize="17" FontWeight="SemiBold" Foreground="White" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding SongPerformer}" FontSize="14" Foreground="#B3FFFFFF" TextTrimming="CharacterEllipsis" Margin="0,3,0,0"
+                                                   Visibility="{Binding SongPerformer, Converter={StaticResource NullToVis}}" />
+                                    </StackPanel>
+                                </DockPanel>
+                                <!-- Сколько проиграно -->
+                                <Border Height="3" VerticalAlignment="Bottom" Background="#CCFFFFFF" RenderTransformOrigin="0,0.5">
+                                    <Border.RenderTransform>
+                                        <ScaleTransform ScaleX="{Binding PlayProgress}" />
+                                    </Border.RenderTransform>
+                                </Border>
+                            </Grid>
+                        </Button>
+
                         <!-- Информация -->
                         <TextBlock Text="Информация" FontSize="15" FontWeight="SemiBold" Margin="2,10,0,8" />
                         <ItemsControl ItemsSource="{Binding InfoRows}">

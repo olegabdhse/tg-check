@@ -122,7 +122,9 @@ public partial class MainWindow : Window
 
     private void OnIncoming(ChatItemViewModel chat) => Dispatcher.BeginInvoke(() =>
     {
-        if (!UiSettings.Notifications || (chat.IsArchived && !UiSettings.NotifyArchived)) return;
+        // Личные переписки с людьми (не боты) уведомляют всегда, даже из архива, — молчат, только если звук у чата выключен.
+        // Архив без уведомлений — для групп, каналов и ботов (настройка «Уведомления из архива»).
+        if (!UiSettings.Notifications || (chat.IsArchived && chat.Peer.Kind != PeerKind.User && !UiSettings.NotifyArchived)) return;
         // Как в Telegram: уведомление приходит и при развёрнутом окне — не нужно только для чата, который сейчас открыт на экране
         // (раньше при открытом окне уведомлений не было вовсе, и сообщения легко пропустить).
         if (_notifyShell?.IsOnScreen(chat.Key) == true && (IsActive || Application.Current.Windows.OfType<MiniChatWindow>().Any(w => w.IsActive))) return;

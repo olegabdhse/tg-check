@@ -1,3 +1,5 @@
+using System.IO;
+using TgCheck.Core.Media;
 using System.Collections;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -361,9 +363,46 @@ public sealed partial class ProfileViewModel : ObservableObject
             SetGifts(gifts);
     }
 
+    // ---- музыка в профиле: карточка песни (обложка, название, исполнитель), по нажатию играет в плеере музыки
+    [ObservableProperty] private MessageViewModel? _music;
+
+    private void SetMusic(ProfileInfo profile)
+    {
+        if (profile.Music is not { } song || profile.Peer is not { } owner) { Music = null; return; }
+        if (Music?.Item.MediaId == song.MediaId) return;
+        var vm = new MessageViewModel(song, owner);
+        vm.EnsurePreview(_tg.Media);
+        VoicePlayback.Attach(vm);
+        Music = vm;
+    }
+
+    [RelayCommand]
+    private async Task PlayMusic()
+    {
+        if (Music is not { } m) return;
+        try
+        {
+            if (AudioPlayer.Instance.Key == m.AudioKey) { AudioPlayer.Instance.Toggle(m.AudioKey, ""); return; }
+            m.IsLoadingAudio = true;
+            NowPlaying.Instance.RequestedAudio = m.AudioKey;
+            var path = await _tg.Media.GetMediaFileAsync(m.Item);
+            m.IsLoadingAudio = false;
+            if (path is null) throw new IOException("Не удалось загрузить песню.");
+            if (NowPlaying.Instance.RequestedAudio != m.AudioKey) return;
+            AudioPlayer.Instance.Play(m.AudioKey, path);
+            NowPlaying.Instance.StartMusic(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush);
+        }
+        catch (Exception ex)
+        {
+            m.IsLoadingAudio = false;
+            _shell.ShowToast(TgErrors.Describe(ex), true);
+        }
+    }
+
     private void ApplyProfile(ProfileInfo profile, ImageSource? avatar)
     {
         Profile = profile;
+        SetMusic(profile);
         StarsBalance = profile.StarsBalance;
         if (avatar is not null) Avatar = avatar;
         BuildInfoRows(profile);

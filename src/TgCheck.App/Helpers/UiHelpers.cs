@@ -12,6 +12,26 @@ namespace TgCheck.App.Helpers;
 
 public static class Images
 {
+    /// <summary>Средний цвет картинки (по уменьшенной копии) — для фона под обложкой.</summary>
+    public static Color? AverageColor(BitmapSource source)
+    {
+        try
+        {
+            var small = new TransformedBitmap(new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0),
+                new ScaleTransform(16.0 / Math.Max(1, source.PixelWidth), 16.0 / Math.Max(1, source.PixelHeight)));
+            int w = small.PixelWidth, h = small.PixelHeight;
+            var px = new byte[w * h * 4];
+            small.CopyPixels(px, w * 4, 0);
+            long r = 0, g = 0, b = 0, n = 0;
+            for (var i = 0; i < px.Length; i += 4)
+            {
+                b += px[i]; g += px[i + 1]; r += px[i + 2]; n++;
+            }
+            return n == 0 ? null : Color.FromRgb((byte)(r / n), (byte)(g / n), (byte)(b / n));
+        }
+        catch { return null; }
+    }
+
     /// <summary>Декодирует jpeg/png в замороженный BitmapImage (можно вызывать из фонового потока).</summary>
     public static BitmapImage? FromBytes(byte[]? bytes, int? decodeWidth = null)
     {

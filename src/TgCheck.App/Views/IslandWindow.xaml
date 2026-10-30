@@ -4,6 +4,7 @@
         xmlns:vm="clr-namespace:TgCheck.App.ViewModels"
         xmlns:controls="clr-namespace:TgCheck.App.Controls"
         xmlns:helpers="clr-namespace:TgCheck.App.Helpers"
+        xmlns:views="clr-namespace:TgCheck.App.Views"
         Title="TG Check" WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize"
         SizeToContent="WidthAndHeight" FontFamily="{StaticResource UiFont}" Foreground="{StaticResource TextBrush}"
@@ -111,6 +112,25 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+
+                <!-- Играет песня — после чатов обложка с волнами; клик — управление (перемотка, пауза, повтор) -->
+                <StackPanel x:Name="MusicSlot" Orientation="{Binding IslandOrientation, RelativeSource={RelativeSource AncestorType=Window}}"
+                            DataContext="{x:Static vm:NowPlaying.Instance}" Visibility="{Binding IsMusicActive, Converter={StaticResource BoolToVis}}">
+                    <Border Width="1" Height="26" Background="#33FFFFFF" Margin="6,0,4,0" x:Name="MusicDivider" />
+                    <Button x:Name="MusicButton" Width="50" Height="50" Cursor="Hand" ToolTip="Музыка" Click="MusicButton_Click" Style="{StaticResource BareButton}">
+                        <controls:MusicWaves Width="50" Height="50" CoverRatio="0.64" Cover="{Binding Cover}" CoverBrush="{Binding CoverBrush}"
+                                             Level="{Binding Level}" Progress="{Binding Progress}" IsPlaying="{Binding IsPlaying}" />
+                    </Button>
+                    <Popup x:Name="MusicPopup" PlacementTarget="{Binding ElementName=MusicButton}" Placement="Bottom" StaysOpen="False"
+                           AllowsTransparency="True" PopupAnimation="Fade" VerticalOffset="8">
+                        <Border Width="340" Padding="12,10,8,10" CornerRadius="18" Background="#F20B1016" BorderBrush="#26FFFFFF" BorderThickness="1" Margin="0,0,14,14">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.5" />
+                            </Border.Effect>
+                            <views:MusicPlayerBar />
+                        </Border>
+                    </Popup>
+                </StackPanel>
             </StackPanel>
         </Border>
     </Grid>

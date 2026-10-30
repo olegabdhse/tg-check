@@ -22,6 +22,10 @@ public sealed class AudioPlayer : IDisposable
     public bool IsPlaying => _output?.PlaybackState == PlaybackState.Playing;
     public TimeSpan Position => _stream?.CurrentTime ?? TimeSpan.Zero;
     public TimeSpan Duration => _stream?.TotalTime ?? TimeSpan.Zero;
+    /// <summary>Текущая громкость 0..1 (для волн в плеере).</summary>
+    public float Level { get; private set; }
+    /// <summary>Повторять трек по кругу.</summary>
+    public bool Loop { get; set; }
 
     /// <summary>Вызывается ~20 раз в секунду во время воспроизведения и при смене состояния (из фонового потока).</summary>
     public event Action? Changed;
@@ -49,7 +53,10 @@ public sealed class AudioPlayer : IDisposable
             {
                 _stream = Open(path);
                 _output = new WaveOutEvent { DesiredLatency = 120 };
-                _output.Init(_stream);
+                // Громкость на лету — для «живых» волн у обложки в плеере.
+                var meter = new NAudio.Wave.SampleProviders.MeteringSampleProvider(new NAudio.Wave.SampleProviders.SampleChannel(_stream, true), _stream.WaveFormat.SampleRate / 25);
+                meter.StreamVolume += (_, e) => Level = e.MaxSampleValues.Length == 0 ? 0 : e.MaxSampleValues.Max();
+                _output.Init(meter);
                 var playingKey = key;
                 _output.PlaybackStopped += (_, _) =>
                 {
@@ -60,7 +67,10 @@ public sealed class AudioPlayer : IDisposable
                         {
                             _stream.Position = 0;
                             finished = Key == playingKey;
+                            // Повтор: доиграло — сначала (плеер не закрывается).
+                            if (finished && Loop && _output is { } o) { o.Play(); finished = false; }
                         }
+                        Level = 0;
                     }
                     Notify();
                     if (finished) Ended?.Invoke(playingKey);

@@ -9,6 +9,8 @@ public sealed class ProfileInfo
 {
     /// <summary>Чей профиль (для открытия чата, загрузки подарков и фото).</summary>
     public PeerRef? Peer { get; init; }
+    /// <summary>Музыка в профиле (закреплённая песня); null — нет.</summary>
+    public MessageItem? Music { get; init; }
     public bool IsSelf { get; init; } = true;
     public PeerKind Kind { get; init; } = PeerKind.User;
     /// <summary>Участников/подписчиков (для групп и каналов).</summary>

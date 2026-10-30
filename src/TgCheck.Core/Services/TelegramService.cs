@@ -388,7 +388,31 @@ public sealed partial class TelegramService : IAsyncDisposable
             EmojiStatusUntilUtc = me.emoji_status?.Until is { } until && until > DateTime.UnixEpoch ? until : null,
             BusinessAddress = NullIfEmpty(f.business_location?.address),
             Avatar = avatar,
+            Music = f.saved_music is Document song ? MapSong(song, me.id) : null,
         };
+    }
+
+    /// <summary>Песня-документ (музыка профиля) как сообщение-аудио: так её играет тот же плеер, что и музыку из чатов.</summary>
+    internal static MessageItem MapSong(Document d, long ownerKey)
+    {
+        var audio = d.attributes?.OfType<DocumentAttributeAudio>().FirstOrDefault();
+        var name = d.attributes?.OfType<DocumentAttributeFilename>().FirstOrDefault()?.file_name;
+        var title = string.IsNullOrWhiteSpace(audio?.title) ? name ?? "Аудио" : audio!.title;
+        var performer = string.IsNullOrWhiteSpace(audio?.performer) ? null : audio!.performer;
+        return new MessageItem
+        {
+            Id = 0, PeerKey = ownerKey, DateUtc = d.date, Media = MediaKind.Audio, Document = d, MediaSize = d.size,
+            DurationSeconds = audio?.duration ?? 0, MediaTitle = Names.Join(performer, title), SongTitle = title, SongPerformer = performer,
+        };
+    }
+
+    /// <summary>Вся музыка профиля (песни, которые человек добавил себе в профиль).</summary>
+    public async Task<IReadOnlyList<MessageItem>> GetProfileMusicAsync(PeerRef peer)
+    {
+        if (peer.Info is not User u) return [];
+        var res = await _client.Users_GetSavedMusic(u, 0, 100, 0).ConfigureAwait(false);
+        await Task.Yield();
+        return res is Users_SavedMusic list ? list.documents.OfType<Document>().Select(d => MapSong(d, u.id)).ToList() : [];
     }
 
     /// <summary>Все фото профиля (текущее — первое).</summary>

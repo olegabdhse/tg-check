@@ -15,11 +15,23 @@ public sealed partial class NowPlaying : ObservableObject
 {
     public static NowPlaying Instance { get; } = new();
 
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsActive))] private string? _title;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsActive), nameof(IsMusicActive), nameof(ShowTopBar))] private string? _title;
     [ObservableProperty] private string _subtitle = "";
     [ObservableProperty] private bool _isPlaying;
     [ObservableProperty] private double _progress;
     [ObservableProperty] private string _timeText = "";
+    /// <summary>Музыка (песня), а не голосовое / кружок: для неё — отдельный плеер под списком чатов и в островке.</summary>
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsMusicActive), nameof(ShowTopBar))] private bool _isMusic;
+    [ObservableProperty] private ImageSource? _cover;
+    [ObservableProperty] private Brush? _coverBrush;
+    /// <summary>Громкость сейчас (0..1) — для волн вокруг обложки.</summary>
+    [ObservableProperty] private double _level;
+    [ObservableProperty] private bool _loop;
+    public bool IsMusicActive => IsMusic && IsActive;
+    /// <summary>Панель над лентой чата — для голосовых и кружков (у музыки свой плеер под чатами и в островке).</summary>
+    public bool ShowTopBar => IsActive && !IsMusic;
+
+    partial void OnLoopChanged(bool value) => AudioPlayer.Instance.Loop = value;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowFloatingRound))] private Brush? _roundBrush;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowFloatingRound))] private bool _roundOutOfView;
 
@@ -36,13 +48,30 @@ public sealed partial class NowPlaying : ObservableObject
     private NowPlaying()
     {
         AudioPlayer.Instance.Changed += () => Anim.Ui(SyncAudio);
+        // Голосовое / кружок доиграли и больше играть нечего — панель убирается; музыка остаётся (можно включить снова).
+        AudioPlayer.Instance.Ended += key => Anim.Ui(async () =>
+        {
+            await Task.Delay(400); // за это время чат может включить следующее голосовое
+            if (_audioKey == key && !IsMusic && !AudioPlayer.Instance.IsPlaying) Close();
+        });
     }
 
     // ---- голосовые и аудио (NAudio)
     private string? _audioKey;
 
+    /// <summary>Песня: обложка (или градиент песни), название и исполнитель — для плеера музыки.</summary>
+    public void StartMusic(string key, string title, string? performer, ImageSource? cover, Brush coverBrush)
+    {
+        StartAudio(key, title, performer ?? "");
+        IsMusic = true;
+        Cover = cover;
+        CoverBrush = coverBrush;
+    }
+
     public void StartAudio(string key, string title, string subtitle)
     {
+        IsMusic = false;
+        Cover = null;
         // Играл кружок со звуком — выключаем его звук (одновременно играет что-то одно).
         if (RoundBrush is not null) _stop?.Invoke();
         _audioKey = key;
@@ -65,6 +94,7 @@ public sealed partial class NowPlaying : ObservableObject
             return;
         }
         IsPlaying = player.IsPlaying;
+        Level = player.IsPlaying ? player.Level : 0;
         var total = player.Duration.TotalSeconds;
         Progress = total > 0 ? player.Position.TotalSeconds / total : 0;
         TimeText = $"{Fmt.Duration(player.Position.TotalSeconds)} / {Fmt.Duration(total)}";
@@ -114,6 +144,9 @@ public sealed partial class NowPlaying : ObservableObject
         RoundBrush = null;
         RoundOutOfView = false;
         Title = null;
+        IsMusic = false;
+        Cover = null;
+        Level = 0;
         IsPlaying = false;
         Progress = 0;
     }
@@ -130,4 +163,7 @@ public sealed partial class NowPlaying : ObservableObject
     }
 
     public void Seek(double fraction) => _seek?.Invoke(fraction);
+
+    [RelayCommand]
+    private void ToggleLoop() => Loop = !Loop;
 }

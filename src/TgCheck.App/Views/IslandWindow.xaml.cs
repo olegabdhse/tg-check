@@ -100,12 +100,29 @@ public partial class IslandWindow : Window
 
     private bool IsSide => _edge is "Left" or "Right";
 
+    // Мини-плеер музыки: управление всплывает со стороны экрана, противоположной краю островка.
+    private void MusicButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_dragged) return;
+        MusicPopup.Placement = _edge switch
+        {
+            "Bottom" => System.Windows.Controls.Primitives.PlacementMode.Top,
+            "Left" => System.Windows.Controls.Primitives.PlacementMode.Right,
+            "Right" => System.Windows.Controls.Primitives.PlacementMode.Left,
+            _ => System.Windows.Controls.Primitives.PlacementMode.Bottom,
+        };
+        MusicPopup.IsOpen = !MusicPopup.IsOpen;
+    }
+
     private void ApplyEdge()
     {
         IslandOrientation = IsSide ? Orientation.Vertical : Orientation.Horizontal;
         Divider.Width = IsSide ? 26 : 1;
         Divider.Height = IsSide ? 1 : 26;
         Divider.Margin = IsSide ? new Thickness(0, 10, 0, 6) : new Thickness(10, 0, 6, 0);
+        MusicDivider.Width = IsSide ? 26 : 1;
+        MusicDivider.Height = IsSide ? 1 : 26;
+        MusicDivider.Margin = IsSide ? new Thickness(0, 6, 0, 4) : new Thickness(6, 0, 4, 0);
         // Капсула «растёт» от своей стороны экрана.
         Pill.RenderTransformOrigin = _edge switch
         {

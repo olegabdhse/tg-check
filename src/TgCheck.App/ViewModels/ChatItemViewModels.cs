@@ -285,6 +285,24 @@ public sealed partial class MessageViewModel : ObservableObject
     [ObservableProperty] private bool _isRead;
     [ObservableProperty] private bool _isNew;
     [ObservableProperty] private ImageSource? _preview;
+
+    /// <summary>Фон карточки песни (музыка профиля): средний цвет обложки, затемнённый, — как в Telegram.</summary>
+    [ObservableProperty] private Brush? _cardBrush;
+
+    partial void OnPreviewChanged(ImageSource? value)
+    {
+        if (!IsAudio) return;
+        CardBrush = value is System.Windows.Media.Imaging.BitmapSource b && Images.AverageColor(b) is { } c
+            ? FrozenBrush(Color.FromRgb((byte)(c.R * 0.45), (byte)(c.G * 0.45), (byte)(c.B * 0.45)))
+            : null;
+    }
+
+    private static Brush FrozenBrush(Color c)
+    {
+        var b = new SolidColorBrush(c);
+        b.Freeze();
+        return b;
+    }
     [ObservableProperty] private ImageSource? _senderAvatar;
     [ObservableProperty] private string? _replySender;
     [ObservableProperty] private string? _replyText;
@@ -301,7 +319,7 @@ public sealed partial class MessageViewModel : ObservableObject
 
     public string PlayIcon => IsPlaying ? "" : "";
     public string VoiceDurationText => PositionText ?? Fmt.Duration(Item.DurationSeconds);
-    public string AudioKey => $"{Chat.Key}:{Item.Id}";
+    public string AudioKey => Item.Id == 0 ? $"song:{Item.MediaId}" : $"{Chat.Key}:{Item.Id}"; // музыка профиля — без сообщения
 
     /// <summary>Столбики волны голосового (высоты 3..26 px).</summary>
     public IReadOnlyList<double> WaveBars { get; private set; } = [];

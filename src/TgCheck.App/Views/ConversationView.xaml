@@ -1253,7 +1253,7 @@
                 <StackPanel x:Name="FeedTop" VerticalAlignment="Top">
                     <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1"
                             DataContext="{x:Static vm:NowPlaying.Instance}" Visibility="Collapsed"
-                            helpers:Anim.Mode="SlideDown" helpers:Anim.Show="{Binding IsActive}">
+                            helpers:Anim.Mode="SlideDown" helpers:Anim.Show="{Binding ShowTopBar}">
                         <Grid>
                             <DockPanel Margin="10,5,8,5">
                                 <Button DockPanel.Dock="Left" FontSize="15" Padding="8"

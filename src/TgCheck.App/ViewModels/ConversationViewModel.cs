@@ -1480,7 +1480,8 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             if (NowPlaying.Instance.RequestedAudio != m.AudioKey) return;
             AudioPlayer.Instance.Play(m.AudioKey, path);
             MarkListened(m);
-            NowPlaying.Instance.StartAudio(m.AudioKey, m.IsOut ? "Вы" : (m.SenderName is { Length: > 0 } s ? s : Title),
+            if (m.IsAudio) NowPlaying.Instance.StartMusic(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush); // песня — плеер музыки
+            else NowPlaying.Instance.StartAudio(m.AudioKey, m.IsOut ? "Вы" : (m.SenderName is { Length: > 0 } s ? s : Title),
                 m.IsVoice ? "Голосовое сообщение" : (m.FileTitle ?? "Аудио"));
         }
         catch (Exception ex)
