@@ -36,10 +36,11 @@ public sealed class VoiceWave : FrameworkElement
     public event Action<double>? SeekRequested;
 
     private static readonly Brush Kept = Frozen(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF));
-    private static readonly Brush Cut = Frozen(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF));
-    private static readonly Brush Played = Frozen(Color.FromRgb(0x8C, 0xCB, 0xFF));
+    private static readonly Brush Cut = Frozen(Color.FromArgb(0x55, 0x9A, 0xA4, 0xAE));
+    private static readonly Brush Played = Frozen(Colors.White);
     private static readonly Brush HandleFill = Frozen(Color.FromRgb(0x3E, 0x9B, 0xF0));
-    private static readonly Brush Shade = Frozen(Color.FromArgb(0x30, 0x3E, 0x9B, 0xF0));
+    private static readonly Brush Shade = Frozen(Color.FromArgb(0x55, 0x3E, 0x9B, 0xF0));
+    private static readonly Brush CutShade = Frozen(Color.FromArgb(0x1C, 0xFF, 0xFF, 0xFF));
 
     private static Brush Frozen(Color c)
     {
@@ -80,7 +81,13 @@ public sealed class VoiceWave : FrameworkElement
             return;
         }
 
-        // Вся запись: столбик — максимум своего отрезка.
+        // Фон: то, что уйдёт, — голубоватое, отрезаемое по краям — серое.
+        var x0 = Left + TrimStart * Span;
+        var x1 = Left + TrimEnd * Span;
+        dc.DrawRoundedRectangle(CutShade, null, new Rect(Left, 2, Span, h - 4), 5, 5);
+        dc.DrawRectangle(Shade, null, new Rect(x0, 0, Math.Max(0, x1 - x0), h));
+
+        // Вся запись: столбик — максимум своего отрезка; отрезаемые — серые.
         var bars = Math.Min(slots, Math.Max(1, peaks.Length));
         var step = Span / bars;
         for (var i = 0; i < bars; i++)
@@ -90,14 +97,17 @@ public sealed class VoiceWave : FrameworkElement
             var p = 0f;
             for (var j = from; j < to && j < peaks.Length; j++) p = Math.Max(p, peaks[j]);
             var t = (i + 0.5) / bars;
-            var brush = t < TrimStart || t > TrimEnd ? Cut : Position >= 0 && t <= Position ? Played : Kept;
-            DrawBar(dc, Left + i * step + (step - Bar) / 2, h, p / max, brush);
+            DrawBar(dc, Left + i * step + (step - Bar) / 2, h, p / max, t < TrimStart || t > TrimEnd ? Cut : Kept);
         }
 
-        // Оставляемая часть подсвечена, по краям — ручки.
-        var x0 = Left + TrimStart * Span;
-        var x1 = Left + TrimEnd * Span;
-        dc.DrawRoundedRectangle(Shade, null, new Rect(x0, 0, Math.Max(0, x1 - x0), h), 6, 6);
+        // Прослушивание — тонкая линия, идёт от левой границы к правой.
+        if (Position >= 0)
+        {
+            var px = Left + Math.Clamp(Position, TrimStart, TrimEnd) * Span;
+            dc.DrawRoundedRectangle(Played, null, new Rect(px - 1, 1, 2, h - 2), 1, 1);
+        }
+
+        // Границы обрезки — ручки.
         DrawHandle(dc, x0 - HandleWidth, h);
         DrawHandle(dc, x1, h);
     }

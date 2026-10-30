@@ -358,7 +358,7 @@ public partial class ConversationView : UserControl
     }
 
     // ---- запись голосового: логика кнопки микрофона Telegram Desktop
-    // Держите — запись; отпустили — отправка; потянули вверх — запись закрепляется (руки свободны);
+    // Держите — запись; отпустили — прослушивание и обрезка, затем «Отправить»; вверх — запись закрепляется (руки свободны);
     // увели влево и отпустили — отмена. Раньше отменой считался любой выход курсора за кнопку,
     // а она во время записи визуально больше, чем её область нажатия, — запись то и дело «путалась» и отменялась.
     private const double LockDistance = 60, CancelDistance = 110;
@@ -418,7 +418,9 @@ public partial class ConversationView : UserControl
         _micReleasing = true;
         SetCancelArmed(false);
         MicButton.ReleaseMouseCapture();
-        _ = _vm.FinishRecordingAsync(cancel);
+        // Отпустили — не отправляем сразу, а переходим к прослушиванию и обрезке; отправит кнопка «Отправить».
+        if (cancel) _ = _vm.FinishRecordingAsync(cancel: true);
+        else _vm.StopRecordingCommand.Execute(null);
     }
 
     // Захват потерян не по нашей воле (Alt+Tab и т.п.) — запись отменяется.
