@@ -49,9 +49,14 @@ public static partial class RichText
             tb.Inlines.Add(new InlineUIContainer(new FrameworkElement { Width = trailing, Height = 1 }) { BaselineAlignment = BaselineAlignment.Bottom });
     }
 
+    // Анимация эмодзи (один раз при появлении) — только в сообщениях: у их текста есть место под время (TrailingSpace),
+    // а крупные эмодзи-сообщения — без него, но с большим размером. В списке чатов, шапках, уведомлениях — статично.
+    private static bool _animate;
+
     private static void Build(TextBlock tb)
     {
         tb.Inlines.Clear();
+        _animate = GetTrailingSpace(tb) > 0 || GetEmojiSize(tb) >= 28;
         var text = GetText(tb) ?? "";
         var size = GetEmojiSize(tb) is > 0 and var s ? s : tb.FontSize * 1.3;
 
@@ -64,7 +69,7 @@ public static partial class RichText
             {
                 if (span.Offset < cursor) continue;
                 if (span.Offset > cursor) AddLinked(tb.Inlines, text[cursor..span.Offset], size);
-                var sticker = new TgCheck.App.Controls.StickerView { CustomEmojiId = span.DocumentId, Width = size, Height = size, ToolTip = text.Substring(span.Offset, span.Length) };
+                var sticker = new TgCheck.App.Controls.StickerView { Once = true, Animate = _animate, CustomEmojiId = span.DocumentId, Width = size, Height = size, ToolTip = text.Substring(span.Offset, span.Length) };
                 tb.Inlines.Add(new InlineUIContainer(sticker) { BaselineAlignment = BaselineAlignment.Center });
                 cursor = span.Offset + span.Length;
             }
@@ -97,7 +102,10 @@ public static partial class RichText
         {
             if (isEmoji && EmojiImages.Get(part) is { } img)
             {
-                var image = new Image { Source = img, Width = emojiSize, Height = emojiSize, ToolTip = part };
+                // Эмодзи Telegram при появлении проигрывает анимацию один раз (как в Telegram), до этого — общая статичная картинка.
+                Image image = _animate && EmojiImages.Sticker(part) is { } sticker
+                    ? new TgCheck.App.Controls.StickerView { Source = img, Once = true, Width = emojiSize, Height = emojiSize, ToolTip = part, Media = sticker }
+                    : new Image { Source = img, Width = emojiSize, Height = emojiSize, ToolTip = part };
                 RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
                 inlines.Add(new InlineUIContainer(image) { BaselineAlignment = BaselineAlignment.Center });
             }

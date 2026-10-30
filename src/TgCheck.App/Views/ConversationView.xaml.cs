@@ -85,6 +85,8 @@ public partial class ConversationView : UserControl
         _vm.InsertTextRequested += InsertText;
         _vm.PropertyChanged += OnVmPropertyChanged;
         _vm.IsAtBottom = () => IsNearBottom(Scroller.VerticalOffset);
+        _vm.VisibleMaxId = VisibleMaxId;
+        _vm.Items.CollectionChanged += OnItemsChanged;
         UpdateBack();
         // В теме форума справа островок тем — лента не должна уходить под него.
         Scroller.Padding = _vm.ShowTopicRail ? new Thickness(18, 6, 80, 10) : new Thickness(18, 6, 12, 10);
@@ -105,6 +107,8 @@ public partial class ConversationView : UserControl
         _vm.InsertTextRequested -= InsertText;
         _vm.PropertyChanged -= OnVmPropertyChanged;
         _vm.IsAtBottom = null;
+        _vm.VisibleMaxId = null;
+        _vm.Items.CollectionChanged -= OnItemsChanged;
         _vm = null;
     }
 
@@ -147,6 +151,83 @@ public partial class ConversationView : UserControl
         // Без анимации: при переключении с другого чата лента просто появляется уже на месте.
         Scroller.BeginAnimation(OpacityProperty, null);
         Scroller.Opacity = 1;
+        MarkReadSoon();
+    }
+
+    // ---- якорь прокрутки: что бы ни менялось выше экрана (подгрузка истории, удаление, вторая часть ленты),
+    // видимое сообщение остаётся на месте — сдвиг применяется до отрисовки кадра, без рывка.
+    private readonly List<(FrameworkElement El, double Top)> _anchors = [];
+    private bool _anchorPending;
+
+    private void OnItemsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        if (_anchorPending || _feedHidden || _stickToBottom || !Scroller.IsLoaded) return;
+        _anchors.Clear();
+        foreach (var (el, top) in VisibleContainers(fromEnd: false))
+        {
+            _anchors.Add((el, top));
+            if (_anchors.Count == 3) break;
+        }
+        if (_anchors.Count == 0) return;
+        _anchorPending = true;
+        Feed.LayoutUpdated += RestoreAnchor;
+    }
+
+    private void RestoreAnchor(object? sender, EventArgs e)
+    {
+        Feed.LayoutUpdated -= RestoreAnchor;
+        _anchorPending = false;
+        if (_feedHidden || _stickToBottom) return;
+        foreach (var (el, top) in _anchors)
+        {
+            // Якорь удалён из ленты — берём следующий.
+            if (Feed.ItemContainerGenerator.ItemFromContainer(el) == DependencyProperty.UnsetValue || !el.IsVisible) continue;
+            var delta = el.TransformToAncestor(Scroller).Transform(new Point(0, 0)).Y - top;
+            if (Math.Abs(delta) > 0.5) SmoothScroll.ShiftBy(Scroller, delta);
+            break;
+        }
+        _anchors.Clear();
+    }
+
+    /// <summary>Сообщения на экране (верх относительно окна прокрутки): сверху вниз или снизу вверх.</summary>
+    private IEnumerable<(FrameworkElement El, double Top)> VisibleContainers(bool fromEnd)
+    {
+        var count = Feed.Items.Count;
+        var view = Scroller.ViewportHeight;
+        for (var n = 0; n < count; n++)
+        {
+            var i = fromEnd ? count - 1 - n : n;
+            if (Feed.ItemContainerGenerator.ContainerFromIndex(i) is not FrameworkElement el || !el.IsVisible) continue;
+            var top = el.TransformToAncestor(Scroller).Transform(new Point(0, 0)).Y;
+            var bottom = top + el.ActualHeight;
+            if (fromEnd ? top >= view : bottom <= 0) continue; // ещё не дошли до экрана
+            if (fromEnd ? bottom <= 0 : top >= view) yield break; // экран пройден
+            yield return (el, top);
+        }
+    }
+
+    // id последнего сообщения, которое видно на экране: читаются только они (пришедшие ниже — нет, пока не прокрутите).
+    private int VisibleMaxId()
+    {
+        if (_vm is null || _feedHidden || !IsVisible) return 0;
+        if (IsNearBottom(Scroller.VerticalOffset)) return int.MaxValue;
+        foreach (var (el, top) in VisibleContainers(fromEnd: true))
+            if (el.DataContext is MessageViewModel m && top < Scroller.ViewportHeight - 24) return m.AllIds.Max();
+        return 0;
+    }
+
+    private DispatcherTimer? _readTimer;
+
+    // Прочтение по мере прокрутки — не на каждый пиксель, а когда прокрутка остановилась.
+    private void MarkReadSoon()
+    {
+        if (_readTimer is null)
+        {
+            _readTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+            _readTimer.Tick += (_, _) => { _readTimer.Stop(); _vm?.MarkRead(); };
+        }
+        _readTimer.Stop();
+        _readTimer.Start();
     }
 
     // Переход к сообщению (закреп, ответ): сообщение — по центру экрана.
@@ -209,31 +290,15 @@ public partial class ConversationView : UserControl
         var atBottom = IsNearBottom(Scroller.VerticalOffset);
         var showJump = (!atBottom && Scroller.ScrollableHeight > 1) || _vm.IsDetached;
         if (Anim.GetShow(JumpButton) != showJump) Anim.SetShow(JumpButton, showJump);
-        if (atBottom && _vm.PendingNewCount > 0)
-        {
-            _vm.PendingNewCount = 0;
-            _vm.MarkRead();
-        }
+        if (e.VerticalChange != 0 || e.ExtentHeightChange != 0) MarkReadSoon();
 
-        // Фоновая подгрузка истории заранее (за ~1500 px до верха), позиция сохраняется — незаметно для глаза.
+        // Фоновая подгрузка истории заранее (за ~1500 px до верха): позицию держит якорь прокрутки — незаметно для глаза.
         if (!_loadingOlder && !_feedHidden && Scroller.VerticalOffset < 1500 && e.VerticalChange < 0 && _vm.HasMoreHistory)
         {
             _loadingOlder = true;
             _stickToBottom = false;
-            try
-            {
-                var extentBefore = Scroller.ExtentHeight;
-                if (await _vm.LoadOlderAsync())
-                {
-                    Scroller.UpdateLayout();
-                    var delta = Scroller.ExtentHeight - extentBefore;
-                    if (delta > 0) SmoothScroll.ShiftBy(Scroller, delta);
-                }
-            }
-            finally
-            {
-                _loadingOlder = false;
-            }
+            try { await _vm.LoadOlderAsync(); }
+            finally { _loadingOlder = false; }
         }
     }
 

@@ -67,12 +67,16 @@ public sealed partial class ChatItemViewModel : PeerAvatarViewModel
         Unread = s.UnreadCount;
         Mentions = s.UnreadMentions;
         ReadOutboxMaxId = Math.Max(ReadOutboxMaxId, s.ReadOutboxMaxId);
+        ReadInboxMaxId = Math.Max(ReadInboxMaxId, s.ReadInboxMaxId);
         IsPinned = s.IsPinned;
         IsMuted = s.IsMuted;
         IsArchived = s.IsArchived;
         IsMarkedUnread = s.IsMarkedUnread;
         return moved;
     }
+
+    /// <summary>До какого входящего сообщения чат прочитан (сервер).</summary>
+    public int ReadInboxMaxId { get; set; }
 
     /// <summary>Исходный порядок из Telegram (важен для закреплённых).</summary>
     public int Order { get; set; }
@@ -352,7 +356,7 @@ public sealed partial class MessageViewModel : ObservableObject
 
     private void NotifyAlbum()
     {
-        foreach (var name in new[] { nameof(Layout), nameof(TextMaxWidth), nameof(IsAlbum), nameof(IsVisualAlbum), nameof(IsFileAlbum), nameof(AlbumColumns),
+        foreach (var name in new[] { nameof(Layout), nameof(TextMaxWidth), nameof(ContentMaxWidth), nameof(IsAlbum), nameof(IsVisualAlbum), nameof(IsFileAlbum), nameof(AlbumColumns),
                      nameof(AlbumCellWidth), nameof(AlbumCellHeight), nameof(IsVisualMedia), nameof(IsFileRow), nameof(IsBubbleless),
                      nameof(IsPhoto), nameof(IsVideo), nameof(IsGif), nameof(IsVoice), nameof(IsRound), nameof(IsSticker) })
             OnPropertyChanged(name);
@@ -409,6 +413,12 @@ public sealed partial class MessageViewModel : ObservableObject
     /// <summary>Подпись к фото/альбому не шире самого медиа (как в Telegram).</summary>
     public double TextMaxWidth => IsVisualAlbum ? MaxMediaWidth - 12
         : Item.Media is MediaKind.Photo or MediaKind.Video or MediaKind.Gif ? Math.Max(140, MediaWidth - 12) : 496;
+
+    /// <summary>
+    /// Весь пузырь с фото/альбомом не шире самого медиа: длинная цитата ответа или имя обрезаются многоточием,
+    /// а не растягивают пузырь с пустым местом справа от коллажа (как в Telegram).
+    /// </summary>
+    public double ContentMaxWidth => IsVisualAlbum || Item.Media is MediaKind.Photo or MediaKind.Video or MediaKind.Gif ? TextMaxWidth : double.PositiveInfinity;
 
     // ---- кнопки ботов и комментарии
     private IReadOnlyList<IReadOnlyList<InlineButtonViewModel>>? _inlineRows;

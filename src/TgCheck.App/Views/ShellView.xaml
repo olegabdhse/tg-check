@@ -67,15 +67,15 @@
                         HorizontalAlignment="Center" Margin="0,0,0,8" ToolTip="Настройки" Command="{Binding ToggleSettingsCommand}" />
                 <!-- Соединение: щит с галочкой — через прокси, полоски сигнала — напрямую; клик — свой прокси -->
                 <Button DockPanel.Dock="Bottom" Style="{StaticResource IconButton}" Padding="10" HorizontalAlignment="Center" Margin="0,0,0,2"
-                        ToolTip="{Binding ProxyTip}" Command="{Binding ToggleProxyCommand}">
+                        ToolTip="{Binding Proxy.Tip}" Command="{Binding Proxy.ToggleCommand}">
                     <Grid Width="20" Height="20">
-                        <Grid Visibility="{Binding UsesProxy, Converter={StaticResource BoolToVis}}">
+                        <Grid Visibility="{Binding Proxy.UsesProxy, Converter={StaticResource BoolToVis}}">
                             <Path Data="M10,1.6 L16.8,4.3 V9.4 C16.8,13.6 14,16.9 10,18.4 C6,16.9 3.2,13.6 3.2,9.4 V4.3 Z"
                                   Stroke="{StaticResource AccentBrush}" StrokeThickness="1.6" StrokeLineJoin="Round" />
                             <Path Data="M6.7,10 L9,12.3 L13.4,7.7" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.7"
                                   StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
                         </Grid>
-                        <Canvas Visibility="{Binding UsesProxy, Converter={StaticResource InvBoolToVis}}">
+                        <Canvas Visibility="{Binding Proxy.UsesProxy, Converter={StaticResource InvBoolToVis}}">
                             <Rectangle Canvas.Left="2" Canvas.Top="12" Width="3" Height="5" RadiusX="1" RadiusY="1"
                                        Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                             <Rectangle Canvas.Left="6.5" Canvas.Top="9" Width="3" Height="8" RadiusX="1" RadiusY="1"
@@ -151,10 +151,10 @@
         </Grid>
 
         <!-- ================================================= Прокси -->
-        <Grid Grid.ColumnSpan="2" Visibility="Collapsed" helpers:Anim.Mode="Fade" helpers:Anim.Show="{Binding IsProxyOpen}">
+        <Grid Grid.ColumnSpan="2" Visibility="Collapsed" helpers:Anim.Mode="Fade" helpers:Anim.Show="{Binding IsOpen}" DataContext="{Binding Proxy}">
             <Border Background="{StaticResource OverlayBrush}">
                 <Border.InputBindings>
-                    <MouseBinding MouseAction="LeftClick" Command="{Binding ToggleProxyCommand}" />
+                    <MouseBinding MouseAction="LeftClick" Command="{Binding ToggleCommand}" />
                 </Border.InputBindings>
             </Border>
             <Border Width="420" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="16" Padding="20,14,20,18"
@@ -162,22 +162,10 @@
                 <StackPanel>
                     <DockPanel Margin="0,0,0,8">
                         <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" ToolTip="Закрыть (Esc)"
-                                Command="{Binding ToggleProxyCommand}" />
+                                Command="{Binding ToggleCommand}" />
                         <TextBlock Text="Прокси" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
                     </DockPanel>
-                    <TextBlock Text="{Binding ProxyTip}" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="13" />
-                    <TextBlock Text="Свой прокси: ссылка https://t.me/proxy?… или socks5://… — переподключимся через него."
-                               Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,4,0,10" />
-                    <TextBox Style="{StaticResource InputBox}" Text="{Binding ProxyText, UpdateSourceTrigger=PropertyChanged}" Tag="https://t.me/proxy?server=…" />
-                    <TextBlock Text="{Binding ProxyError}" Foreground="{StaticResource DangerBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"
-                               Visibility="{Binding ProxyError, Converter={StaticResource NullToVis}}" />
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
-                        <Button Content="Встроенный" Style="{StaticResource SecondaryButton}" Margin="0,0,10,0" Command="{Binding BuiltInProxyCommand}"
-                                Visibility="{Binding CanUseBuiltIn, Converter={StaticResource BoolToVis}}" />
-                        <Button Content="Без прокси" Style="{StaticResource SecondaryButton}" Margin="0,0,10,0" Command="{Binding NoProxyCommand}"
-                                Visibility="{Binding UsesProxy, Converter={StaticResource BoolToVis}}" />
-                        <Button Content="Подключиться" Style="{StaticResource PrimaryButton}" Command="{Binding ApplyProxyCommand}" />
-                    </StackPanel>
+                    <views:ProxyPanel />
                 </StackPanel>
             </Border>
         </Grid>

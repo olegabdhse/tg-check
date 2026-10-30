@@ -345,7 +345,30 @@
                                 Visibility="{Binding QrFailed, Converter={StaticResource BoolToVis}}" />
                     </StackPanel>
 
-                    <TextBlock Style="{StaticResource Caption}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,24,0,0"
+                    <!-- Подключение: встроенный прокси, свой или напрямую -->
+                    <StackPanel DataContext="{Binding Proxy}" Margin="0,22,0,0"
+                                Visibility="{Binding Converter={StaticResource NullToVis}}">
+                        <Button HorizontalAlignment="Center" Command="{Binding ToggleCommand}" Cursor="Hand" ToolTip="{Binding Tip}">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="Transparent" Padding="10,6" CornerRadius="8">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="Подключение: " Foreground="{StaticResource TextSecondaryBrush}" FontSize="13" />
+                                            <TextBlock Text="{Binding Summary}" Foreground="{StaticResource AccentBrush}" FontSize="13" FontWeight="SemiBold" />
+                                            <TextBlock Text="&#xE70D;" Style="{StaticResource Icon}" FontSize="10" Margin="6,2,0,0"
+                                                       Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Border>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                        <Border Margin="0,8,0,0" Padding="16" CornerRadius="10" Background="{StaticResource Surface2Brush}"
+                                Visibility="{Binding IsOpen, Converter={StaticResource BoolToVis}}">
+                            <views:ProxyPanel />
+                        </Border>
+                    </StackPanel>
+
+                    <TextBlock Style="{StaticResource Caption}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,18,0,0"
                                Text="Вход выполняется напрямую через официальный API Telegram. Сессия хранится только на этом компьютере в зашифрованном виде." />
                 </StackPanel>
             </Border>

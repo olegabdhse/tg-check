@@ -22,6 +22,7 @@ public static class UiSettings
         public string? IslandEdge { get; set; }
         public List<long>? RecentSearch { get; set; }
         public double? IslandAlong { get; set; }
+        public string? IslandScreen { get; set; }
         public Dictionary<long, int>? ForumUnread { get; set; }
     }
 
@@ -59,6 +60,13 @@ public static class UiSettings
     {
         get => (_data.IslandEdge ?? "Top", _data.IslandAlong ?? 0.5);
         set { _data.IslandEdge = value.Edge; _data.IslandAlong = value.Along; Save(); }
+    }
+
+    /// <summary>Монитор островка (имя устройства Windows); null — основной.</summary>
+    public static string? IslandScreen
+    {
+        get => _data.IslandScreen;
+        set { _data.IslandScreen = value; Save(); }
     }
 
     /// <summary>История поиска: чаты, открытые из поиска (новые первыми).</summary>

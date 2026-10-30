@@ -207,6 +207,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     {
         if (_conversations.TryGetValue(peer.Key, out var conv)) return conv;
         conv = new ConversationViewModel(_tg, this, peer, readOutboxMaxId);
+        if (_byKey.TryGetValue(peer.Key, out var chat)) conv.SetReadInbox(chat.ReadInboxMaxId);
         conv.EnsureAvatar(_tg.Media);
         _conversations[peer.Key] = conv;
         // Держим в памяти несколько последних чатов — быстрое переключение.
@@ -803,7 +804,8 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         }
         if (chat.Last is null || m.Id >= chat.Last.Id) chat.Last = m;
         chat.TypingText = null;
-        var isOpen = Shell.IsOnScreen(m.PeerKey);
+        // Открыт, но лента прокручена выше — новое не видно, значит не прочитано.
+        var isOpen = Shell.IsOnScreen(m.PeerKey) && (_conversations.GetValueOrDefault(m.PeerKey)?.IsAtBottom?.Invoke() ?? true);
         if (!m.IsOut && !isOpen && m.ServiceText is null)
         {
             chat.Unread++;
@@ -856,6 +858,11 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     private void OnHistoryRead(long peerKey, int maxId, bool outbox, int stillUnread) => Anim.Ui(() =>
     {
         if (!_byKey.TryGetValue(peerKey, out var chat)) return;
+        if (!outbox)
+        {
+            chat.ReadInboxMaxId = Math.Max(chat.ReadInboxMaxId, maxId);
+            if (_conversations.TryGetValue(peerKey, out var c)) c.SetReadInbox(maxId); // прочитали на другом устройстве
+        }
         if (outbox)
         {
             chat.ReadOutboxMaxId = Math.Max(chat.ReadOutboxMaxId, maxId);
@@ -876,10 +883,11 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         }
     });
 
-    public void OnChatRead(long peerKey)
+    /// <summary>Чат прочитан до видимого места; stillUnread — сколько входящих осталось ниже.</summary>
+    public void OnChatRead(long peerKey, int stillUnread = 0)
     {
         if (!_byKey.TryGetValue(peerKey, out var chat)) return;
-        chat.Unread = 0;
+        chat.Unread = Math.Min(chat.Unread, stillUnread);
         chat.IsMarkedUnread = false;
         NotifyArchive();
     }

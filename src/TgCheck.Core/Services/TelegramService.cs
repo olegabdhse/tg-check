@@ -52,6 +52,7 @@ public sealed partial class TelegramService : IAsyncDisposable
         var client = new Client(Config, _session.Load(), _session.Save);
         client.OnUpdates += OnUpdatesAsync;
         client.OnOwnUpdates += OnUpdatesAsync;
+        client.OnOther += OnOtherAsync;
         if (_env.Proxy is { } proxy)
         {
             if (AppEnv.IsMtProxy(proxy)) client.MTProxyUrl = proxy;
@@ -164,13 +165,19 @@ public sealed partial class TelegramService : IAsyncDisposable
     private bool _restoringBackup;
 
     /// <summary>Вход подтверждён (после логина) — запомнить сессию как рабочую.</summary>
-    public void MarkSessionGood() { if (_client.UserId != 0) _session.MarkGood(); }
+    public void MarkSessionGood()
+    {
+        if (_client.UserId == 0) return;
+        _session.MarkGood();
+        StartWatchdog();
+    }
 
     /// <summary>Сбрасывает незавершённый вход (например, при переключении номер ↔ QR).</summary>
     public Task ResetLoginAsync() => ResetClientAsync(deleteSession: false);
 
     public async Task LogoutAsync()
     {
+        _online = false;
         try { await _client.Auth_LogOut(); }
         catch { /* сессия могла быть уже завершена на сервере */ }
         await ResetClientAsync(deleteSession: true);
@@ -646,6 +653,7 @@ public sealed partial class TelegramService : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        StopWatchdog();
         await _client.DisposeAsync();
         _clientLock.Dispose();
     }

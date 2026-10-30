@@ -18,9 +18,9 @@ public sealed class MediaService
 {
     private readonly Func<Client> _client;
     private readonly string _cacheDir;
-    private readonly SemaphoreSlim _downloads = new(8, 8); // превью фото/GIF/документов: 4 было мало для экрана картинок
+    private readonly LifoGate _downloads = new(8); // превью фото/GIF/документов: 4 было мало для экрана картинок
     // Аватарки маленькие и нужны сразу (первый вход — десятки строк) — своя, более широкая очередь, не за картинками сообщений.
-    private readonly SemaphoreSlim _avatarDownloads = new(8, 8);
+    private readonly LifoGate _avatarDownloads = new(8);
     // Загрузчики запускаются в пуле потоков: даже чтение с диска не должно идти в UI-потоке (в группах это десятки файлов разом).
     private readonly ConcurrentDictionary<string, Task<byte[]?>> _inflight = new();
 
@@ -125,7 +125,7 @@ public sealed class MediaService
 
     private async Task<SKImage?> LoadStickerAsync(Document doc, int size)
     {
-        var (bytes, mime) = await DownloadDocumentAsync(doc);
+        var (bytes, mime) = await DownloadDocumentAsync(doc, _stickerDownloads);
         if (bytes is null) return null;
 
         if (mime == "application/x-tgsticker" || IsGzip(bytes))
@@ -145,7 +145,7 @@ public sealed class MediaService
         try
         {
             using var ms = new MemoryStream();
-            await _client().DownloadFileAsync(doc, ms, thumb);
+            await Timed(_client().DownloadFileAsync(doc, ms, thumb));
             await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
             return SKImage.FromEncodedData(ms.ToArray());
         }
@@ -153,10 +153,12 @@ public sealed class MediaService
     }
 
     // Эмодзи — маленькие и нужны сразу десятками: своя широкая очередь и отрисовка сразу в нужном размере.
-    private readonly SemaphoreSlim _emojiDownloads = new(12, 12);
+    private readonly LifoGate _emojiDownloads = new(12);
+    private readonly LifoGate _emojiPrefetch = new(2);
 
     /// <summary>Картинка эмодзи Telegram (PNG нужного размера) с кэшем на диске.</summary>
-    public Task<byte[]?> GetEmojiImageAsync(MediaHolder emoji, int px)
+    /// <param name="background">Фоновая предзагрузка набора: своя узкая очередь, не обгоняет эмодзи на экране.</param>
+    public Task<byte[]?> GetEmojiImageAsync(MediaHolder emoji, int px, bool background = false)
     {
         if (emoji.Document is not { } doc) return Task.FromResult<byte[]?>(null);
         var key = $"emo_{doc.id}_{px}";
@@ -166,7 +168,7 @@ public sealed class MediaService
             try
             {
                 if (File.Exists(path)) return await File.ReadAllBytesAsync(path);
-                var (bytes, mime) = await DownloadDocumentAsync(doc, _emojiDownloads);
+                var (bytes, mime) = await DownloadDocumentAsync(doc, background ? _emojiPrefetch : _emojiDownloads);
                 if (bytes is null) return null;
                 using var image = mime == "application/x-tgsticker" || IsGzip(bytes) ? RenderLottie(bytes, px) : SKImage.FromEncodedData(bytes);
                 if (image is null) return null;
@@ -175,7 +177,7 @@ public sealed class MediaService
                 await File.WriteAllBytesAsync(path, png);
                 return png;
             }
-            catch (Exception ex) { Logging.Write($"emoji {doc.id}: {ex.Message}"); return null; }
+            catch (Exception ex) { Logging.Write($"emoji {doc.id}: {ex.Message}"); _inflight.TryRemove(key, out var _); return null; }
         }));
     }
 
@@ -198,8 +200,20 @@ public sealed class MediaService
         }
     }
 
+    // Стикеры — своя очередь: раньше стояли за фото и превью видео (общие 8 мест) и появлялись с опозданием.
+    private readonly LifoGate _stickerDownloads = new(8);
+    // Один и тот же документ (превью и анимация стикера) качается один раз, даже если его просят одновременно.
+    private readonly ConcurrentDictionary<long, Task<(byte[]? Bytes, string? Mime)>> _docInflight = new();
+
+    private Task<(byte[]? Bytes, string? Mime)> DownloadDocumentAsync(Document doc, LifoGate? gate = null)
+    {
+        var task = _docInflight.GetOrAdd(doc.id, _ => DownloadDocumentCoreAsync(doc, gate));
+        _ = task.ContinueWith(_ => _docInflight.TryRemove(doc.id, out var _gone), TaskScheduler.Default);
+        return task;
+    }
+
     // Исходные файлы документов тоже кэшируются: узоры и модели повторяются у многих подарков.
-    private async Task<(byte[]? Bytes, string? Mime)> DownloadDocumentAsync(Document doc, SemaphoreSlim? gate = null)
+    private async Task<(byte[]? Bytes, string? Mime)> DownloadDocumentCoreAsync(Document doc, LifoGate? gate)
     {
         var path = Path.Combine(_cacheDir, $"doc_{doc.id}.bin");
         if (File.Exists(path)) return (await File.ReadAllBytesAsync(path), doc.mime_type);
@@ -210,7 +224,7 @@ public sealed class MediaService
         {
             if (File.Exists(path)) return (await File.ReadAllBytesAsync(path), doc.mime_type);
             using var ms = new MemoryStream();
-            var mime = await _client().DownloadFileAsync(doc, ms);
+            var mime = await Timed(_client().DownloadFileAsync(doc, ms));
             await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
             var bytes = ms.ToArray();
             var tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -219,6 +233,25 @@ public sealed class MediaService
             return (bytes, mime ?? doc.mime_type);
         }
         finally { gate.Release(); }
+    }
+
+    // Мелкие загрузки (превью, стикеры, аватары, эмодзи) не ждут вечно: после обрыва связи зависшая загрузка держала
+    // место в очереди навсегда, и новые стикеры и картинки переставали грузиться. Ошибка — повтор при следующем показе.
+    private static async Task<T> Timed<T>(Task<T> download, int seconds = 60)
+    {
+        if (await Task.WhenAny(download, Task.Delay(TimeSpan.FromSeconds(seconds))) != download)
+        {
+            _ = download.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+            throw new TimeoutException("загрузка не ответила за " + seconds + " с");
+        }
+        return await download;
+    }
+
+    /// <summary>Связь переподключена: незавершённые загрузки старого соединения не ждём — следующий показ скачает заново.</summary>
+    public void ForgetPending()
+    {
+        foreach (var (key, task) in _inflight)
+            if (!task.IsCompleted) _inflight.TryRemove(key, out _);
     }
 
     private static bool IsGzip(byte[] b) => b.Length > 2 && b[0] == 0x1F && b[1] == 0x8B;
@@ -252,7 +285,7 @@ public sealed class MediaService
             try
             {
                 using var ms = new MemoryStream();
-                await _client().DownloadProfilePhotoAsync(peer, ms, big: big);
+                await Timed(_client().DownloadProfilePhotoAsync(peer, ms, big: big));
                 await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
                 if (ms.Length == 0) return null;
                 var bytes = ms.ToArray();
@@ -264,6 +297,7 @@ public sealed class MediaService
         catch (Exception ex)
         {
             Logging.Write($"avatar {peer.ID}: {ex.Message}");
+            _inflight.TryRemove(key, out _);
             return null;
         }
     }
@@ -326,7 +360,7 @@ public sealed class MediaService
                 try
                 {
                     using var ms = new MemoryStream();
-                    await _client().DownloadFileAsync(photo, ms, size);
+                    await Timed(_client().DownloadFileAsync(photo, ms, size));
                     await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
                     bytes = ms.ToArray();
                 }
@@ -349,7 +383,7 @@ public sealed class MediaService
                     try
                     {
                         using var ms = new MemoryStream();
-                        await _client().DownloadFileAsync(doc, ms, thumb);
+                        await Timed(_client().DownloadFileAsync(doc, ms, thumb));
                         await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
                         bytes = ms.ToArray();
                     }
@@ -485,7 +519,7 @@ public sealed class MediaService
             try
             {
                 using var ms = new MemoryStream();
-                await _client().DownloadFileAsync(photo, ms, photo.LargestPhotoSize);
+                await Timed(_client().DownloadFileAsync(photo, ms, photo.LargestPhotoSize));
                 await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
                 var bytes = ms.ToArray();
                 await File.WriteAllBytesAsync(path, bytes);
@@ -553,7 +587,7 @@ public sealed class MediaService
     public async Task<byte[]?> GetDocumentBytesAsync(MediaHolder media)
     {
         if (media.Document is not { } doc) return null;
-        var (bytes, _) = await Task.Run(() => DownloadDocumentAsync(doc));
+        var (bytes, _) = await Task.Run(() => DownloadDocumentAsync(doc, _stickerDownloads));
         return bytes;
     }
 
@@ -586,7 +620,7 @@ public sealed class MediaService
             try
             {
                 using var ms = new MemoryStream();
-                await _client().DownloadFileAsync(photo.Photo, ms, photo.Photo.LargestPhotoSize);
+                await Timed(_client().DownloadFileAsync(photo.Photo, ms, photo.Photo.LargestPhotoSize));
                 await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
                 var bytes = ms.ToArray();
                 await File.WriteAllBytesAsync(path, bytes);

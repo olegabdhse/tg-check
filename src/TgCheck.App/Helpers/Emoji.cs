@@ -48,6 +48,10 @@ public static class EmojiImages
         return entry?.Bitmap;
     }
 
+    /// <summary>Анимированный эмодзи Telegram для символа (null — набор ещё не загружен или такого нет).</summary>
+    public static Core.Models.StickerItem? Sticker(string emoji) =>
+        _telegram is not null && _telegram.TryGetValue(emoji.Replace("️", ""), out var s) ? s : null;
+
     /// <summary>Набор эмодзи Telegram загружен — уже показанные эмодзи заменяются на телеграмные.</summary>
     public static void SetTelegramSet(IReadOnlyDictionary<string, Core.Models.StickerItem> set)
     {
@@ -69,8 +73,8 @@ public static class EmojiImages
         _ = Task.Run(async () =>
         {
             await Task.Delay(3000); // не мешать запуску
-            await Parallel.ForEachAsync(stickers, new ParallelOptions { MaxDegreeOfParallelism = 4 },
-                async (s, _) => { try { await media.GetEmojiImageAsync(s, Px); } catch { } });
+            await Parallel.ForEachAsync(stickers, new ParallelOptions { MaxDegreeOfParallelism = 2 },
+                async (s, _) => { try { await media.GetEmojiImageAsync(s, Px, background: true); } catch { } });
         });
     }
 

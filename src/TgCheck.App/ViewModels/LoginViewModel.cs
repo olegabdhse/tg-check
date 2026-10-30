@@ -56,6 +56,9 @@ public sealed partial class LoginViewModel : ObservableObject
 
     public ImageSource? Logo => Images.AppLogo;
 
+    /// <summary>Подключение для входа: встроенный прокси, свой или напрямую.</summary>
+    public ProxyChoiceViewModel? Proxy { get; init; }
+
     [ObservableProperty] private LoginMode _mode = LoginMode.Phone;
     [ObservableProperty] private PhoneStage _stage = PhoneStage.Phone;
     [ObservableProperty] private string _code = "";

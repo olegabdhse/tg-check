@@ -57,6 +57,10 @@ public sealed class StickerView : Image
         set => SetValue(AnimateProperty, value);
     }
 
+    /// <summary>Эмодзи в тексте: при появлении анимация проигрывается один раз и замирает (как в Telegram), а не крутится.
+    /// Задавать до Media; уже показанная статичная картинка (Source) остаётся, пока грузится анимация.</summary>
+    public bool Once { get; set; }
+
     /// <summary>Проиграть анимацию один раз и скрыться (эффект при постановке реакции).</summary>
     public bool PlayOnce { get; set; }
 
@@ -82,13 +86,15 @@ public sealed class StickerView : Image
         Active.Remove(this);
         _animation?.Dispose();
         _animation = null;
-        Source = null;
+        var still = Once ? Source : null; // общая статичная картинка эмодзи уже на месте — без мигания
+        Source = still;
         var media = Media;
         if (media is null || AppServices.Media is not { } service) return;
 
         // Сначала статичный кадр — чтобы не было пустого места, пока грузится анимация.
         // Готовые картинки общие для всех копий (строки списка, сетки) — при прокрутке не декодируем заново.
         var px = (int)Math.Max(64, Math.Min(256, (double.IsNaN(Width) ? 180 : Width) * 1.5));
+        if (still is not null) goto animation;
         if (!Animate && FrameCache.Get((media.MediaId, px)) is { } ready)
         {
             Source = ready;
@@ -113,6 +119,8 @@ public sealed class StickerView : Image
             FrameCache.Put((media.MediaId, px), image);
             return;
         }
+    animation:
+        if (media.StickerFormat != StickerFormat.Animated) return;
         var json = await LoadJsonAsync(media, service);
         if (version != _version || json is null) return;
         var anim = await Task.Run(() => Animation.TryParse(json, out var a) ? a : null); // разбор Lottie — тоже не в потоке интерфейса
@@ -213,9 +221,24 @@ public sealed class StickerView : Image
             Finished?.Invoke(this, EventArgs.Empty);
             return;
         }
+        if (Once && elapsed >= duration)
+        {
+            // Доиграла один раз — последний кадр остаётся, анимация больше не нужна.
+            _animation.SeekFrameTime(Math.Max(0, duration - 0.001), null);
+            Draw();
+            Active.Remove(this);
+            _animation.Dispose();
+            _animation = null;
+            return;
+        }
         var t = duration > 0 ? elapsed % duration : 0;
         _animation.SeekFrameTime(t, null);
+        Draw();
+    }
 
+    private void Draw()
+    {
+        if (_animation is null || _bitmap is null) return;
         _bitmap.Lock();
         try
         {

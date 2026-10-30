@@ -230,6 +230,23 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     public event Action<string>? InsertTextRequested;
     /// <summary>View: сейчас пользователь внизу ленты?</summary>
     public Func<bool>? IsAtBottom { get; set; }
+    /// <summary>View: id последнего видимого на экране сообщения (int.MaxValue — лента внизу). null — вида нет, читаем всё.</summary>
+    public Func<int>? VisibleMaxId { get; set; }
+
+    /// <summary>До какого сообщения чат уже прочитан на сервере (из списка чатов).</summary>
+    public void SetReadInbox(int maxId)
+    {
+        if (maxId <= _lastMarkedRead) return;
+        _lastMarkedRead = maxId;
+        UpdatePendingNew();
+    }
+
+    // Счётчик на стрелке «вниз»: входящие ниже прочитанного (пришли, пока смотрели выше, или не дочитаны).
+    private void UpdatePendingNew()
+    {
+        if (_detached) return; // у далёкого сообщения считаем пришедшие в сохранённый конец
+        PendingNewCount = _byId.Values.Distinct().Count(v => !v.IsOut && v.Id > _lastMarkedRead);
+    }
 
     public int LastMessageId => _byId.Count == 0 ? 0 : _byId.Keys.Max();
 
@@ -503,15 +520,10 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         _ = ResolveRepliesAsync([m]);
         IsTypingNow = false;
         UpdateStatus();
-        if (atBottom || m.IsOut)
-        {
-            ScrollToBottomRequested?.Invoke(true);
-            MarkRead();
-        }
-        else if (!m.IsOut)
-        {
-            PendingNewCount++;
-        }
+        // Внизу — лента доезжает до нового (прочтётся, когда оно окажется на экране); выше — новое тихо
+        // дописывается снизу, лента не двигается, а число на стрелке «вниз» растёт.
+        if (atBottom || m.IsOut) ScrollToBottomRequested?.Invoke(true);
+        else UpdatePendingNew();
     }
 
     public void OnMessageEdited(MessageItem m)
@@ -612,22 +624,24 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     {
         // Чат в памяти, но не на экране (быстрый ответ закрыт, окно свёрнуто) — сообщения не прочитаны.
         if (!_owner.Shell.IsOnScreen(Peer.Key)) return;
+        // Читается только то, что видно: пришедшее ниже экрана остаётся непрочитанным, пока до него не прокрутят.
+        var max = Math.Min(LastMessageId, VisibleMaxId?.Invoke() ?? int.MaxValue);
         if (IsThread)
         {
             // Тема форума отмечается прочитанной отдельно; ветки комментариев — нет.
-            if (IsTopic && !_generalTopic && ThreadTopId is { } topic && LastMessageId > _lastMarkedRead)
+            if (IsTopic && !_generalTopic && ThreadTopId is { } topic && max > _lastMarkedRead)
             {
-                _lastMarkedRead = LastMessageId;
-                _ = _tg.ReadTopicAsync(Peer, topic, LastMessageId);
+                _lastMarkedRead = max;
+                _ = _tg.ReadTopicAsync(Peer, topic, max);
             }
-            if (!_generalTopic) return;
+            if (!_generalTopic) { UpdatePendingNew(); return; }
             // «Общее»: Telegram ведёт прочтение тем отдельно — отмечаем и тему (id 1), и историю группы.
-            if (LastMessageId > _lastMarkedRead) _ = _tg.ReadTopicAsync(Peer, 1, LastMessageId);
+            if (max > _lastMarkedRead) _ = _tg.ReadTopicAsync(Peer, 1, max);
         }
-        var max = LastMessageId;
-        if (max <= _lastMarkedRead || max == 0) return;
+        if (max <= _lastMarkedRead || max <= 0) { UpdatePendingNew(); return; }
         _lastMarkedRead = max;
-        _owner.OnChatRead(Peer.Key);
+        UpdatePendingNew();
+        _owner.OnChatRead(Peer.Key, IsThread ? 0 : PendingNewCount);
         _ = _tg.MarkReadAsync(Peer, max);
     }
 

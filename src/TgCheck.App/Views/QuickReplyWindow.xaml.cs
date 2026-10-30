@@ -66,7 +66,7 @@ public partial class QuickReplyWindow : Window
     // Рядом с чатом в островке: снизу от верхнего островка, сверху от нижнего, сбоку от боковых.
     private void Place()
     {
-        var area = SystemParameters.WorkArea;
+        var area = Helpers.Monitors.WorkAreaAt(new Point(_anchor.Left + _anchor.Width / 2, _anchor.Top + _anchor.Height / 2), this); // монитор островка
         var w = ActualWidth > 0 ? ActualWidth : Width;
         var h = ActualHeight;
         const double gap = 12;

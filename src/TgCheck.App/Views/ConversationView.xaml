@@ -682,7 +682,7 @@
                             </ContextMenu>
                         </Border.ContextMenu>
 
-                        <StackPanel>
+                        <StackPanel MaxWidth="{Binding ContentMaxWidth}">
                             <TextBlock Text="{Binding SenderName}" Foreground="{Binding SenderBrush}" FontWeight="SemiBold" FontSize="13"
                                        Margin="0,0,0,2" Cursor="Hand" TextTrimming="CharacterEllipsis"
                                        Visibility="{Binding ShowSenderName, Converter={StaticResource BoolToVis}}">
@@ -1064,12 +1064,11 @@
             <Grid Grid.Row="1" Background="{StaticResource ChatBg}">
                 <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto" Padding="18,6,12,10"
                               helpers:SmoothScroll.IsEnabled="True" ScrollChanged="Scroller_ScrollChanged">
-                    <StackPanel>
-                        <views:Spinner Width="22" Height="22" Margin="0,8" HorizontalAlignment="Center"
-                                       Visibility="{Binding IsLoadingOlder, Converter={StaticResource BoolToVis}}" />
-                        <ItemsControl x:Name="Feed" ItemsSource="{Binding Items}" Focusable="False" ItemTemplateSelector="{StaticResource MessageSelector}" />
-                    </StackPanel>
+                    <ItemsControl x:Name="Feed" ItemsSource="{Binding Items}" Focusable="False" ItemTemplateSelector="{StaticResource MessageSelector}" />
                 </ScrollViewer>
+                <!-- Подгрузка истории — поверх ленты: индикатор не сдвигает сообщения (раньше лента дёргалась на его высоту) -->
+                <views:Spinner Width="22" Height="22" Margin="0,10,0,0" HorizontalAlignment="Center" VerticalAlignment="Top" IsHitTestVisible="False"
+                               Visibility="{Binding IsLoadingOlder, Converter={StaticResource BoolToVis}}" />
 
                 <!-- Верх ленты: панель плеера (голосовые, аудио, кружки) и закреплённые -->
                 <StackPanel x:Name="FeedTop" VerticalAlignment="Top">

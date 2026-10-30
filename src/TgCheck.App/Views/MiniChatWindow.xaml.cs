@@ -49,7 +49,7 @@ public partial class MiniChatWindow : Window
             return;
         }
 
-        var area = SystemParameters.WorkArea;
+        var area = Helpers.Monitors.WorkAreaAtCursor(this); // монитор, где нажали на островок
         // Открываем там, где окно оставили в прошлый раз (если это место ещё на экране).
         if (Helpers.UiSettings.MiniChatPosition is { } saved)
         {

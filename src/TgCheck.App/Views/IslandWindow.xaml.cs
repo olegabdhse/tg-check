@@ -117,57 +117,72 @@ public partial class IslandWindow : Window
     }
 
     /// <summary>Поставить островок к своей стороне экрана, в запомненное место вдоль неё.</summary>
+    // Островок живёт на своём мониторе (куда его перетащили): всё считаем в пикселях экрана по рабочей области
+    // этого монитора — раньше бралась только основная, и на другой монитор островок не переносился.
+    private string? _screen = UiSettings.IslandScreen;
+
+    private IntPtr Hwnd => new System.Windows.Interop.WindowInteropHelper(this).Handle;
+    private double Scale => VisualTreeHelper.GetDpi(this).DpiScaleX;
+
     private void PlaceAtEdge()
     {
-        var area = SystemParameters.WorkArea;
-        var w = ActualWidth;
-        var h = ActualHeight;
-        if (w <= 0 || h <= 0) return;
+        if (Hwnd == IntPtr.Zero || ActualWidth <= 0 || ActualHeight <= 0) return;
+        var s = Scale;
+        int w = (int)Math.Round(ActualWidth * s), h = (int)Math.Round(ActualHeight * s), gap = (int)Math.Round(Gap * s);
+        var a = Monitors.WorkArea(_screen);
+        int x, y;
         switch (_edge)
         {
             case "Left":
-                Left = area.Left + Gap - ShadowLeft;
-                Top = area.Top + (area.Height - h) * _along;
+                x = a.Left + gap - (int)Math.Round(ShadowLeft * s);
+                y = a.Top + (int)((a.Bottom - a.Top - h) * _along);
                 break;
             case "Right":
-                Left = area.Right - w + ShadowRight - Gap;
-                Top = area.Top + (area.Height - h) * _along;
+                x = a.Right - w + (int)Math.Round(ShadowRight * s) - gap;
+                y = a.Top + (int)((a.Bottom - a.Top - h) * _along);
                 break;
             case "Bottom":
-                Left = area.Left + (area.Width - w) * _along;
-                Top = area.Bottom - h + ShadowBottom - Gap;
+                x = a.Left + (int)((a.Right - a.Left - w) * _along);
+                y = a.Bottom - h + (int)Math.Round(ShadowBottom * s) - gap;
                 break;
             default:
-                Left = area.Left + (area.Width - w) * _along;
-                Top = area.Top + Gap - ShadowTop;
+                x = a.Left + (int)((a.Right - a.Left - w) * _along);
+                y = a.Top + gap - (int)Math.Round(ShadowTop * s);
                 break;
         }
+        const uint SWP_NOSIZE = 0x1, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10;
+        SetWindowPos(Hwnd, IntPtr.Zero, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
-    // После перетаскивания — к ближайшей стороне; место вдоль неё — где отпустили.
+    // После перетаскивания — к ближайшей стороне того монитора, где отпустили; место вдоль неё — где отпустили.
     private void SnapToNearestEdge()
     {
-        var area = SystemParameters.WorkArea;
-        var cx = Left + ActualWidth / 2;
-        var cy = Top + ActualHeight / 2;
+        GetWindowRect(Hwnd, out var r);
+        var center = new PointPx { X = (r.Left + r.Right) / 2, Y = (r.Top + r.Bottom) / 2 };
+        var (a, device) = Monitors.At(center.X, center.Y);
+        _screen = device;
+        double cx = center.X, cy = center.Y;
         var distances = new Dictionary<string, double>
         {
-            ["Top"] = cy - area.Top,
-            ["Bottom"] = area.Bottom - cy,
-            ["Left"] = cx - area.Left,
-            ["Right"] = area.Right - cx,
+            ["Top"] = cy - a.Top,
+            ["Bottom"] = a.Bottom - cy,
+            ["Left"] = cx - a.Left,
+            ["Right"] = a.Right - cx,
         };
         _edge = distances.MinBy(d => d.Value).Key;
         ApplyEdge();
         UpdateLayout();
-        var w = ActualWidth;
-        var h = ActualHeight;
+        var s = Scale;
+        var w = ActualWidth * s;
+        var h = ActualHeight * s;
         _along = IsSide
-            ? Math.Clamp((cy - h / 2 - area.Top) / Math.Max(1, area.Height - h), 0, 1)
-            : Math.Clamp((cx - w / 2 - area.Left) / Math.Max(1, area.Width - w), 0, 1);
+            ? Math.Clamp((cy - h / 2 - a.Top) / Math.Max(1, a.Bottom - a.Top - h), 0, 1)
+            : Math.Clamp((cx - w / 2 - a.Left) / Math.Max(1, a.Right - a.Left - w), 0, 1);
         PlaceAtEdge();
         UiSettings.IslandPlace = (_edge, _along);
+        UiSettings.IslandScreen = _screen;
     }
+
 
     private void Island_MouseDown(object sender, MouseButtonEventArgs e)
     {

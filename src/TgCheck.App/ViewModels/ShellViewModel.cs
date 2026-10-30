@@ -24,9 +24,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         _tg = tg;
         _onLoggedOut = onLoggedOut;
-        _changeProxy = changeProxy;
-        _proxyText = env.UserProxy ?? ""; // встроенный прокси не показываем
-        _env = env;
+        Proxy = new ProxyChoiceViewModel(env, changeProxy ?? (_ => Task.CompletedTask));
         Picker = new MediaPickerViewModel(tg, env.DataDirectory);
         Chats = new ChatsViewModel(tg, this);
         MyProfile = new ProfileViewModel(tg, null, LogoutAsync, this);
@@ -34,6 +32,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         Controls.AppServices.Tg = tg;
         _ = Task.Run(() => tg.Media.TrimMediaCache()); // обход папки кэша — не в потоке интерфейса
         if (env.UpdateRepo is { } repo) _updates = new UpdateService(repo);
+        tg.ConnectionChanged += OnConnectionChanged;
         _currentPage = Chats;
     }
 
@@ -48,50 +47,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     public string VersionText => "v" + BuildInfo.VersionText;
 
-    // ---- прокси: значок над настройками (щит — через прокси, «антенна» — напрямую) и окно смены
-    private readonly Func<string?, Task>? _changeProxy;
-    private readonly AppEnv _env;
-    public bool UsesProxy => _tg.UsesProxy;
-    public bool CanUseBuiltIn => _env.HasBuiltInProxy && !_env.UsesBuiltInProxy;
-    public string ProxyTip => _env.UsesBuiltInProxy ? "Подключено через встроенный прокси"
-        : UsesProxy ? "Подключено через свой прокси" : "Подключено напрямую — без прокси";
-
-    [RelayCommand]
-    private Task BuiltInProxy()
-    {
-        IsProxyOpen = false;
-        return _changeProxy?.Invoke(AppEnv.BuiltInProxy) ?? Task.CompletedTask;
-    }
-    [ObservableProperty] private bool _isProxyOpen;
-    [ObservableProperty] private string _proxyText;
-    [ObservableProperty] private string? _proxyError;
-
-    [RelayCommand]
-    private void ToggleProxy()
-    {
-        ProxyError = null;
-        IsProxyOpen = !IsProxyOpen;
-    }
-
-    [RelayCommand]
-    private Task ApplyProxy()
-    {
-        var link = ProxyText.Trim();
-        if (!AppEnv.IsValidProxy(link))
-        {
-            ProxyError = "Нужна ссылка вида https://t.me/proxy?server=…&port=…&secret=… или socks5://хост:порт";
-            return Task.CompletedTask;
-        }
-        IsProxyOpen = false;
-        return _changeProxy?.Invoke(link) ?? Task.CompletedTask;
-    }
-
-    [RelayCommand]
-    private Task NoProxy()
-    {
-        IsProxyOpen = false;
-        return _changeProxy?.Invoke(null) ?? Task.CompletedTask;
-    }
+    /// <summary>Значок соединения над настройками (щит — через прокси, «антенна» — напрямую) и окно смены прокси.</summary>
+    public ProxyChoiceViewModel Proxy { get; }
 
     [ObservableProperty] private object _currentPage;
     [ObservableProperty] private Section _section = Section.Chats;
@@ -102,6 +59,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     /// <summary>«Соединение…» — пока чаты показаны из кэша, а связь с Telegram ещё устанавливается.</summary>
     [ObservableProperty] private string? _connectionStatus;
+
+    // Обрыв связи: в шапке списка «Соединение…»; связь вернулась — открытый чат догружает пропущенное (список сверится сам).
+    private void OnConnectionChanged(bool connected) => Anim.Ui(() =>
+    {
+        ConnectionStatus = connected ? null : "Соединение…";
+        if (connected) _ = Chats.Conversation?.LoadAsync();
+    });
 
     [ObservableProperty] private string? _updateText;
     [ObservableProperty] private bool _isUpdating;
@@ -177,7 +141,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         if (StoryViewer is { } stories) { stories.Close(); return true; }
         if (IsSettingsOpen) { IsSettingsOpen = false; return true; }
-        if (IsProxyOpen) { IsProxyOpen = false; return true; }
+        if (Proxy.IsOpen) { Proxy.IsOpen = false; return true; }
         if (CurrentPage is ChatsViewModel chats) return chats.HandleEscape();
         if (CurrentPage is ProfileViewModel profile)
         {
@@ -380,6 +344,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _updateTimer.Stop();
+        _tg.ConnectionChanged -= OnConnectionChanged;
         Chats.Dispose();
     }
 }

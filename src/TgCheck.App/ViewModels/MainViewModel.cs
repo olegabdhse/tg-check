@@ -64,7 +64,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         catch (Exception ex)
         {
             early?.Dispose();
-            CurrentPage = StatusViewModel.ConnectionError("Не удалось подключиться", TgErrors.Describe(ex), InitializeAsync, _env!);
+            CurrentPage = StatusViewModel.ConnectionError("Не удалось подключиться", TgErrors.Describe(ex), InitializeAsync,
+                new ProxyChoiceViewModel(_env!, ChangeProxyAsync));
             return;
         }
 
@@ -78,13 +79,17 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (_env is null) return Task.CompletedTask;
         AppEnv.SaveUserProxy(_env.DataDirectory, proxy);
         if (CurrentPage is ShellViewModel shell) shell.Dispose();
+        if (CurrentPage is LoginViewModel login) login.Cancel();
         return InitializeAsync();
     }
 
     private void ShowLogin()
     {
         if (_tg is null) return;
-        CurrentPage = new LoginViewModel(_tg, _env?.DefaultPhone, ShowProfile);
+        CurrentPage = new LoginViewModel(_tg, _env?.DefaultPhone, ShowProfile)
+        {
+            Proxy = _env is null ? null : new ProxyChoiceViewModel(_env, ChangeProxyAsync),
+        };
     }
 
     private void ShowProfile() => ShowProfile(null);
