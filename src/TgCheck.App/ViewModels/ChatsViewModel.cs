@@ -518,6 +518,8 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
             if (_byKey.TryGetValue(d.Peer.Key, out var existing))
             {
                 var moved = existing.Update(d);
+                existing.RefreshPeer(d.Peer, _tg.Media); // новое имя, фото, статус — сразу, а не после перезапуска
+                if (_conversations.TryGetValue(d.Peer.Key, out var openConv)) openConv.RefreshPeer(d.Peer, _tg.Media);
                 if (_forumUnread.TryGetValue(d.Peer.Key, out var forumUnread)) existing.Unread = forumUnread;
                 moved |= existing.IsPinned && existing.Order != order; // порядок закреплённых
                 existing.Order = order++;

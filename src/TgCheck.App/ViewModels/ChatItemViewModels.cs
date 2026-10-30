@@ -35,6 +35,24 @@ public partial class PeerAvatarViewModel : ObservableObject
 
     public bool HasStoryRing => HasStories;
 
+    /// <summary>
+    /// Свежие данные пира с сервера (имя, фото, статус): раньше строка навсегда оставалась с данными из кэша —
+    /// новое имя и аватар появлялись только после перезапуска. Фото сменилось — аватар перекачивается.
+    /// </summary>
+    public void RefreshPeer(PeerRef fresh, MediaService? media)
+    {
+        if (ReferenceEquals(Peer, fresh) || fresh.Key != Peer.Key) return;
+        var photoChanged = fresh.PhotoId != Peer.PhotoId;
+        var changed = photoChanged || fresh.Title != Peer.Title || fresh.EmojiStatusId != Peer.EmojiStatusId || fresh.Username != Peer.Username;
+        Peer = fresh;
+        if (!changed) return;
+        OnPropertyChanged(string.Empty); // имя, инициалы, статус — всё, что зависит от пира
+        if (!photoChanged) return;
+        _requested = false;
+        if (!fresh.HasPhoto) { Avatar = null; return; }
+        if (media is not null && Avatar is not null) EnsureAvatar(media); // показанный аватар — заменить новым
+    }
+
     public async void EnsureAvatar(MediaService media)
     {
         if (_requested || !Peer.HasPhoto || Peer.IsSelf) return;

@@ -19,6 +19,7 @@ public sealed class PeerRef
                 Title = Names.Join(u.first_name, u.last_name);
                 IsSelf = u.id == selfId;
                 HasPhoto = u.photo is not null;
+                PhotoId = u.photo?.photo_id ?? 0;
                 IsPremium = u.flags.HasFlag(User.Flags.premium);
                 IsVerified = u.flags.HasFlag(User.Flags.verified);
                 break;
@@ -30,6 +31,7 @@ public sealed class PeerRef
                 IsBasicGroup = false;
                 Title = c.title ?? "";
                 HasPhoto = c.photo is ChatPhoto;
+                PhotoId = (c.photo as ChatPhoto)?.photo_id ?? 0;
                 IsVerified = c.flags.HasFlag(Channel.Flags.verified);
                 break;
             case ChatBase c:
@@ -39,6 +41,7 @@ public sealed class PeerRef
                 CanDeleteOthers = c is Chat bc && (bc.flags.HasFlag(Chat.Flags.creator) || bc.admin_rights is not null);
                 Title = c.Title ?? "";
                 HasPhoto = (c as Chat)?.photo is ChatPhoto;
+                PhotoId = ((c as Chat)?.photo as ChatPhoto)?.photo_id ?? 0;
                 break;
         }
         Username = info.MainUsername;
@@ -57,6 +60,8 @@ public sealed class PeerRef
     public string Title { get; } = "";
     public string? Username { get; }
     public bool HasPhoto { get; }
+    /// <summary>Id текущего фото (сменилось — аватар нужно перекачать).</summary>
+    public long PhotoId { get; }
     public bool IsSelf { get; }
     public bool IsPremium { get; }
     public bool IsVerified { get; }
