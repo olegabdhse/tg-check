@@ -25,11 +25,11 @@ public sealed class MediaService
     private readonly ConcurrentDictionary<string, Task<byte[]?>> _inflight = new();
 
     // Общий запрос на время загрузки: одновременные просьбы одной картинки ждут одну загрузку. Готовые картинки
-    // держим в памяти в ограниченном кэше (последние, до 64 МБ): повторный показ мгновенный, как раньше, но память
+    // держим в памяти в ограниченном кэше (последние, до 128 МБ, вместе с «нет картинки»): повторный показ мгновенный, как раньше, но память
     // не растёт без конца (раньше хранилось всё за сессию — сотни МБ).
     private Task<byte[]?> Shared(string key, Func<Task<byte[]?>> start)
     {
-        if (_recent.Get(key) is { } ready) return Task.FromResult<byte[]?>(ready);
+        if (_recent.Get(key) is { } ready) return Task.FromResult<byte[]?>(ready.Length == 0 ? null : ready); // пустой — «нет картинки», запомнено
         var task = _inflight.GetOrAdd(key, _ => start());
         if (task.IsCompleted) Done(task);
         else _ = task.ContinueWith(Done, TaskScheduler.Default);
@@ -37,12 +37,14 @@ public sealed class MediaService
 
         void Done(Task<byte[]?> t)
         {
-            _inflight.TryRemove(new KeyValuePair<string, Task<byte[]?>>(key, t));
-            if (t.IsCompletedSuccessfully && t.Result is { } bytes) _recent.Put(key, bytes);
+            // Сбой загрузки (сеть, таймаут) сам убирает запись из _inflight — такой ответ не запоминаем, повторим при показе.
+            var normal = _inflight.TryRemove(new KeyValuePair<string, Task<byte[]?>>(key, t));
+            // Запоминаем и «нет картинки» (как раньше): иначе такие файлы запрашивались заново при каждом показе.
+            if (normal && t.IsCompletedSuccessfully) _recent.Put(key, t.Result ?? []);
         }
     }
 
-    private readonly BytesCache _recent = new(64L * 1024 * 1024);
+    private readonly BytesCache _recent = new(128L * 1024 * 1024);
 
     internal MediaService(Func<Client> client, string cacheDir)
     {
