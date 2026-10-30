@@ -7,59 +7,26 @@ using TgCheck.Core.Media;
 namespace TgCheck.App.ViewModels;
 
 /// <summary>
-/// Что сейчас играет (голосовое, аудио или кружок со звуком) — для панели плеера над лентой, как в Telegram Desktop.
+/// Что сейчас играет из сообщений (голосовое или кружок со звуком) — для панели над лентой, как в Telegram Desktop.
 /// Кружок, ушедший за край экрана, показывается закреплённым сверху (через VisualBrush того же видео),
-/// так что его можно смотреть дальше и листать чат.
+/// так что его можно смотреть дальше и листать чат. Музыка — отдельно (<see cref="MusicNow"/>): на время голосового
+/// или кружка она встаёт на паузу и потом продолжается.
 /// </summary>
 public sealed partial class NowPlaying : ObservableObject
 {
     public static NowPlaying Instance { get; } = new();
 
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsActive), nameof(IsMusicActive), nameof(ShowTopBar), nameof(ShowMusicBar), nameof(ShowIslandMusic))] private string? _title;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsActive), nameof(ShowTopBar))] private string? _title;
     [ObservableProperty] private string _subtitle = "";
     [ObservableProperty] private bool _isPlaying;
     [ObservableProperty] private double _progress;
     [ObservableProperty] private string _timeText = "";
-    /// <summary>Музыка (песня), а не голосовое / кружок: для неё — отдельный плеер под списком чатов и в островке.</summary>
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsMusicActive), nameof(ShowTopBar), nameof(ShowMusicBar), nameof(ShowIslandMusic))] private bool _isMusic;
-    [ObservableProperty] private ImageSource? _cover;
-    [ObservableProperty] private Brush? _coverBrush;
-    /// <summary>Громкость сейчас (0..1) — для волн вокруг обложки.</summary>
-    [ObservableProperty] private double _level;
-    [ObservableProperty] private bool _loop;
-    public bool IsMusicActive => IsMusic && IsActive;
-    /// <summary>Плеер музыки на экране (при закрытии сначала уезжает он, а песня останавливается следом).</summary>
-    public bool ShowMusicBar => IsMusicActive && !_closingMusic;
-    /// <summary>Плеер музыки в островке включён в настройках.</summary>
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowIslandMusic))] private bool _islandMusicEnabled = UiSettings.ShowIslandMusic;
-    public bool ShowIslandMusic => ShowMusicBar && IslandMusicEnabled;
-    private bool _closingMusic;
-
-    /// <summary>Закрыть плеер музыки: убрать его с экрана и только потом остановить песню.</summary>
-    public async void CloseMusic()
-    {
-        if (_closingMusic) return;
-        _closingMusic = true;
-        OnPropertyChanged(nameof(ShowMusicBar)); OnPropertyChanged(nameof(ShowIslandMusic));
-        await Task.Delay(260);
-        _closingMusic = false;
-        Close();
-        OnPropertyChanged(nameof(ShowMusicBar)); OnPropertyChanged(nameof(ShowIslandMusic));
-    }
-
-    [RelayCommand]
-    private void SeekStart() => Seek(0);
-
-    [RelayCommand]
-    private void SeekEnd() => Seek(0.999);
-    /// <summary>Панель над лентой чата — для голосовых и кружков (у музыки свой плеер под чатами и в островке).</summary>
-    public bool ShowTopBar => IsActive && !IsMusic;
-
-    partial void OnLoopChanged(bool value) => AudioPlayer.Instance.Loop = value;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowFloatingRound))] private Brush? _roundBrush;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowFloatingRound))] private bool _roundOutOfView;
 
     public bool IsActive => Title is not null;
+    /// <summary>Панель над лентой чата (голосовые и кружки).</summary>
+    public bool ShowTopBar => IsActive;
 
     /// <summary>Голосовое, которое выбрали последним (пока файл качается, могли выбрать другое).</summary>
     public string? RequestedAudio { get; set; }
@@ -72,53 +39,19 @@ public sealed partial class NowPlaying : ObservableObject
     private NowPlaying()
     {
         AudioPlayer.Instance.Changed += () => Anim.Ui(SyncAudio);
-        // Голосовое / кружок доиграли и больше играть нечего — панель убирается; музыка остаётся (можно включить снова).
+        // Голосовое доиграло и больше играть нечего — панель убирается.
         AudioPlayer.Instance.Ended += key => Anim.Ui(async () =>
         {
             await Task.Delay(400); // за это время чат может включить следующее голосовое
-            if (_audioKey == key && !IsMusic && !AudioPlayer.Instance.IsPlaying) Close();
+            if (_audioKey == key && !AudioPlayer.Instance.IsPlaying) Close();
         });
     }
 
-    // ---- голосовые и аудио (NAudio)
+    // ---- голосовые (NAudio)
     private string? _audioKey;
-
-    // Выбрали песню, а она ещё открывается (качается начало): плеер уже показывает её, старая сразу остановлена.
-    private string? _pendingKey;
-
-    /// <summary>Смена трека — сразу на экране, не дожидаясь загрузки.</summary>
-    public void ShowPendingMusic(string key, string title, string? performer, ImageSource? cover, Brush coverBrush)
-    {
-        _pendingKey = key;
-        StartMusic(key, title, performer, cover, coverBrush);
-        IsPlaying = false;
-        Progress = 0;
-        Level = 0;
-        TimeText = "Загрузка…";
-        AudioPlayer.Instance.Stop(); // прошлая песня замолкает сразу
-    }
-
-    /// <summary>Песня не открылась — убрать её из плеера.</summary>
-    public void CancelPending(string key)
-    {
-        if (_pendingKey != key) return;
-        _pendingKey = null;
-        if (_audioKey == key) Clear();
-    }
-
-    /// <summary>Песня: обложка (или градиент песни), название и исполнитель — для плеера музыки.</summary>
-    public void StartMusic(string key, string title, string? performer, ImageSource? cover, Brush coverBrush)
-    {
-        StartAudio(key, title, performer ?? "");
-        IsMusic = true;
-        Cover = cover;
-        CoverBrush = coverBrush;
-    }
 
     public void StartAudio(string key, string title, string subtitle)
     {
-        IsMusic = false;
-        Cover = null;
         // Играл кружок со звуком — выключаем его звук (одновременно играет что-то одно).
         if (RoundBrush is not null) _stop?.Invoke();
         _audioKey = key;
@@ -136,14 +69,11 @@ public sealed partial class NowPlaying : ObservableObject
         var player = AudioPlayer.Instance;
         if (player.Key != _audioKey)
         {
-            if (_audioKey == _pendingKey) return; // новая песня ещё открывается — она уже на экране
             // Плеер остановлен или переключился на другое сообщение без нас.
             if (player.Key is null) Clear();
             return;
         }
-        if (_pendingKey == _audioKey) _pendingKey = null;
         IsPlaying = player.IsPlaying;
-        Level = player.IsPlaying ? player.Level : 0;
         var total = player.Duration.TotalSeconds;
         Progress = total > 0 ? player.Position.TotalSeconds / total : 0;
         TimeText = $"{Fmt.Duration(player.Position.TotalSeconds)} / {Fmt.Duration(total)}";
@@ -160,6 +90,7 @@ public sealed partial class NowPlaying : ObservableObject
         Set(title, "Видеосообщение", toggle, stop, null);
         RoundBrush = video;
         IsPlaying = true;
+        MusicNow.Instance.Interrupt(MusicNow.Round); // музыка — на паузу, пока кружок звучит
     }
 
     public void UpdateRound(double position, double total, bool playing, bool outOfView)
@@ -187,17 +118,16 @@ public sealed partial class NowPlaying : ObservableObject
 
     private void Clear()
     {
+        var wasRound = RoundBrush is not null;
         _audioKey = null;
         _toggle = _stop = null;
         _seek = null;
         RoundBrush = null;
         RoundOutOfView = false;
         Title = null;
-        IsMusic = false;
-        Cover = null;
-        Level = 0;
         IsPlaying = false;
         Progress = 0;
+        if (wasRound) MusicNow.Instance.Resume(MusicNow.Round); // кружок кончился — музыка продолжается
     }
 
     [RelayCommand]
@@ -212,7 +142,4 @@ public sealed partial class NowPlaying : ObservableObject
     }
 
     public void Seek(double fraction) => _seek?.Invoke(fraction);
-
-    [RelayCommand]
-    private void ToggleLoop() => Loop = !Loop;
 }

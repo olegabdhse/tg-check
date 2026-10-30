@@ -12,6 +12,8 @@ namespace TgCheck.Core.Media;
 public sealed class AudioPlayer : IDisposable
 {
     public static AudioPlayer Instance { get; } = new();
+    /// <summary>Отдельный проигрыватель для песен: голосовые и видео его не останавливают, а только ставят на паузу.</summary>
+    public static AudioPlayer Music { get; } = new();
 
     private readonly object _lock = new();
     private WaveOutEvent? _output;
@@ -97,8 +99,23 @@ public sealed class AudioPlayer : IDisposable
         var meter = new LevelMeter(new NAudio.Wave.SampleProviders.SampleChannel(_stream, true), (level, bass) => { Level = level; Bass = bass; });
         _output.Init(meter);
         var playingKey = key;
-        _output.PlaybackStopped += (_, _) =>
+        var output = _output;
+        var restarts = 0;
+        _output.PlaybackStopped += (_, e) =>
         {
+            if (e.Exception is not null) Logging.Write($"audio stopped: {e.Exception.Message}");
+            // Остановилось не в конце: песня ещё качалась, и проигрыватель её «догнал» (или сбой вывода).
+            // Не считаем это концом — ждём данные и продолжаем с того же места (раньше песня запускалась и сразу вставала).
+            lock (_lock)
+            {
+                if (ReferenceEquals(_output, output) && _stream is not null && _stream.Position < _stream.Length - _stream.WaveFormat.AverageBytesPerSecond / 2
+                    && restarts++ < 40)
+                {
+                    Logging.Write($"audio: остановка не в конце ({_stream.Position}/{_stream.Length}) — продолжаем");
+                    _ = Task.Delay(400).ContinueWith(_ => { lock (_lock) if (ReferenceEquals(_output, output)) output.Play(); Notify(); });
+                    return;
+                }
+            }
             var finished = false;
             lock (_lock)
             {

@@ -26,7 +26,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnShowIslandMusicChanged(bool value)
     {
         UiSettings.ShowIslandMusic = value;
-        NowPlaying.Instance.IslandMusicEnabled = value;
+        MusicNow.Instance.IslandMusicEnabled = value;
     }
     partial void OnNotificationsChanged(bool value) => UiSettings.Notifications = value;
     partial void OnNotificationSoundChanged(bool value)

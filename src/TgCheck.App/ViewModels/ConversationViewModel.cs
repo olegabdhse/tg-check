@@ -778,6 +778,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     {
         if (IsRecording || !CanWrite) return;
         AudioPlayer.Instance.Stop();
+        MusicNow.Instance.Interrupt(MusicNow.Recording); // запись — музыка на паузу до отправки или отмены
         var recorder = _recorder = new VoiceRecorder();
         // Запись видна сразу, а микрофон открывается в фоне: открытие устройства занимает 0,2–0,5 с,
         // и раньше всё это время окно стояло, а анимация начиналась с опозданием.
@@ -791,6 +792,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             IsRecordLocked = false;
             RecordLevel = 0;
             RecordTime = "0:00,0";
+            MusicNow.Instance.Resume(MusicNow.Recording);
             _owner.ShowToast("Микрофон недоступен: " + TgErrors.Describe(t.Exception!.GetBaseException()), true);
         }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.FromCurrentSynchronizationContext());
         IsRecordLocked = false;
@@ -838,6 +840,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             recorder.Dispose();
             IsRecording = false;
             RecordPeaks = null;
+            MusicNow.Instance.Resume(MusicNow.Recording);
             _owner.ShowToast("Удерживайте кнопку, чтобы записать голосовое");
             return;
         }
@@ -898,6 +901,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
 
     private void ClosePreview()
     {
+        MusicNow.Instance.Resume(MusicNow.Recording);
         StopPreviewPlayback(rewind: true);
         _preview?.Dispose();
         _preview = null;
@@ -924,6 +928,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     {
         if (_recorder is not { } recorder) return;
         _recorder = null;
+        MusicNow.Instance.Resume(MusicNow.Recording); // запись закончилась — музыка продолжается
         _recordTimer?.Stop();
         IsRecording = false;
         IsRecordLocked = false;
@@ -1459,33 +1464,38 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     [RelayCommand]
     private void CancelDownload(MessageViewModel? m) => m?.CancelDownload(_tg.Media);
 
+    private static string? _songRequested;
+
     [RelayCommand(AllowConcurrentExecutions = true)] // иначе пока грузится одно голосовое, кнопки всех голосовых «выключались»
     private async Task PlayAudio(MessageViewModel? m)
     {
         if (m is null) return;
         try
         {
-            if (AudioPlayer.Instance.Key == m.AudioKey)
+            // Песни — в своём проигрывателе (музыка), голосовые — в общем.
+            var player = m.IsAudio ? AudioPlayer.Music : AudioPlayer.Instance;
+            if (player.Key == m.AudioKey)
             {
-                AudioPlayer.Instance.Toggle(m.AudioKey, "");
+                player.Toggle(m.AudioKey, "");
                 return;
             }
             m.IsLoadingAudio = true;
-            NowPlaying.Instance.RequestedAudio = m.AudioKey;
+            if (!m.IsAudio) NowPlaying.Instance.RequestedAudio = m.AudioKey;
             if (m.IsAudio)
             {
-                NowPlaying.Instance.ShowPendingMusic(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush); // смена трека — сразу на экране
+                _songRequested = m.AudioKey;
+                MusicNow.Instance.ShowPending(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush); // смена трека — сразу на экране
                 // Песня играет сразу, пока качается (не ждём весь файл).
                 var stream = await _tg.Media.OpenMediaStreamAsync(m.Item);
                 m.IsLoadingAudio = false;
                 if (stream is null)
                 {
-                    NowPlaying.Instance.CancelPending(m.AudioKey);
+                    MusicNow.Instance.CancelPending(m.AudioKey);
                     throw new IOException("Не удалось загрузить аудио.");
                 }
-                if (NowPlaying.Instance.RequestedAudio != m.AudioKey) { stream.Dispose(); return; }
-                await Task.Run(() => AudioPlayer.Instance.PlayStream(m.AudioKey, stream));
-                NowPlaying.Instance.StartMusic(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush);
+                if (_songRequested != m.AudioKey) { stream.Dispose(); return; } // пока открывалась, выбрали другую песню
+                await Task.Run(() => AudioPlayer.Music.PlayStream(m.AudioKey, stream));
+                MusicNow.Instance.Start(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush);
                 return;
             }
             var path = await _tg.Media.GetMediaFileAsync(m.Item, new Progress<double>(p => m.DownloadProgress = p));
@@ -1496,7 +1506,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             if (NowPlaying.Instance.RequestedAudio != m.AudioKey) return;
             AudioPlayer.Instance.Play(m.AudioKey, path);
             MarkListened(m);
-            if (m.IsAudio) NowPlaying.Instance.StartMusic(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush); // песня — плеер музыки
+            if (m.IsAudio) MusicNow.Instance.Start(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush); // песня — плеер музыки
             else NowPlaying.Instance.StartAudio(m.AudioKey, m.IsOut ? "Вы" : (m.SenderName is { Length: > 0 } s ? s : Title),
                 m.IsVoice ? "Голосовое сообщение" : (m.FileTitle ?? "Аудио"));
         }
@@ -1968,7 +1978,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             if (m.CanDownload) await Download(m);
             return;
         }
-        AudioPlayer.Instance.Stop();
+        // Просмотр фото ничего не останавливает (музыка и голосовое играют дальше); видео само поставит музыку на паузу.
         ViewerMessage = m;
         m.EnsurePreview(_tg.Media); // элемент из полного списка чата мог ещё не иметь превью
         OnPropertyChanged(nameof(ViewerCounter));

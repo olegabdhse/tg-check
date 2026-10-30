@@ -382,21 +382,20 @@ public sealed partial class ProfileViewModel : ObservableObject
         if (Music is not { } m) return;
         try
         {
-            if (AudioPlayer.Instance.Key == m.AudioKey) { AudioPlayer.Instance.Toggle(m.AudioKey, ""); return; }
+            if (AudioPlayer.Music.Key == m.AudioKey) { AudioPlayer.Music.Toggle(m.AudioKey, ""); return; }
             m.IsLoadingAudio = true;
-            NowPlaying.Instance.RequestedAudio = m.AudioKey;
-            NowPlaying.Instance.ShowPendingMusic(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush); // смена трека — сразу на экране
+            var requested = m.AudioKey;
+            MusicNow.Instance.ShowPending(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush); // смена трека — сразу на экране
             // Играет сразу, пока песня качается (не ждём весь файл).
             var stream = await _tg.Media.OpenMediaStreamAsync(m.Item);
             m.IsLoadingAudio = false;
             if (stream is null)
             {
-                NowPlaying.Instance.CancelPending(m.AudioKey);
+                MusicNow.Instance.CancelPending(m.AudioKey);
                 throw new IOException("Не удалось загрузить песню.");
             }
-            if (NowPlaying.Instance.RequestedAudio != m.AudioKey) { stream.Dispose(); return; }
-            await Task.Run(() => AudioPlayer.Instance.PlayStream(m.AudioKey, stream));
-            NowPlaying.Instance.StartMusic(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush);
+            await Task.Run(() => AudioPlayer.Music.PlayStream(requested, stream));
+            MusicNow.Instance.Start(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush);
         }
         catch (Exception ex)
         {

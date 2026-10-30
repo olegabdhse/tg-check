@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:TgCheck.App.ViewModels"
              xmlns:controls="clr-namespace:TgCheck.App.Controls"
-             DataContext="{x:Static vm:NowPlaying.Instance}">
+             DataContext="{x:Static vm:MusicNow.Instance}">
     <!-- Плеер музыки: обложка с волнами, название и исполнитель, перемотка, повтор, пауза, закрыть -->
     <DockPanel>
         <controls:MusicWaves x:Name="Waves" DockPanel.Dock="Left" Width="58" Height="58" Margin="0,0,10,0" CoverRatio="0.7" BassPulse="True"

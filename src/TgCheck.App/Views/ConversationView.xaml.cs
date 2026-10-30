@@ -62,7 +62,7 @@ public partial class ConversationView : UserControl
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
-        Unloaded += (_, _) => { Detach(); VideoPlayer.Stop(); _videoTimer.Stop(); };
+        Unloaded += (_, _) => { Detach(); VideoPlayer.Stop(); _videoTimer.Stop(); MusicNow.Instance.Resume(MusicNow.Video); };
         Loaded += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.Input, () => Composer.Focus());
         _videoTimer.Tick += (_, _) => UpdateVideoTime();
         // Кружок начали слушать — отмечаем прослушанным (точка пропадает и у собеседника).
@@ -507,7 +507,8 @@ public partial class ConversationView : UserControl
     {
         if (sender is not FrameworkElement { DataContext: MessageViewModel m } wave || _vm is null) return;
         var fraction = e.GetPosition(wave).X / wave.ActualWidth;
-        if (AudioPlayer.Instance.Key == m.AudioKey) AudioPlayer.Instance.Seek(fraction);
+        var player = m.IsAudio ? AudioPlayer.Music : AudioPlayer.Instance; // песни — в своём проигрывателе
+        if (player.Key == m.AudioKey) player.Seek(fraction);
         else _vm.PlayAudioCommand.Execute(m);
         e.Handled = true;
     }
@@ -564,7 +565,7 @@ public partial class ConversationView : UserControl
             return;
         }
         if (e.PropertyName != nameof(ConversationViewModel.ViewerVideoPath)) return;
-        if (_vm.ViewerVideoPath is null) { VideoPlayer.Stop(); _videoTimer.Stop(); return; }
+        if (_vm.ViewerVideoPath is null) { VideoPlayer.Stop(); _videoTimer.Stop(); MusicNow.Instance.Resume(MusicNow.Video); return; }
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
             VideoPlayer.Play();
@@ -576,6 +577,7 @@ public partial class ConversationView : UserControl
     private void VideoPlayer_MediaOpened(object? sender, EventArgs e)
     {
         AudioPlayer.Instance.Stop();
+        MusicNow.Instance.Interrupt(MusicNow.Video); // видео со звуком — музыка на паузу (продолжится, когда закроют)
         VideoPlayer.Play();
         _videoPlaying = true;
         PlayPauseButton.Content = "";

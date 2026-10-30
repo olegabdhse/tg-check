@@ -348,7 +348,7 @@
                 <!-- Играет песня — плеер музыки островком под списком чатов (голосовые и кружки — в панели над чатом) -->
                 <Border Grid.Row="4" Margin="8,4,8,8" Padding="10,8,6,8" CornerRadius="18" Background="{StaticResource Surface2Brush}"
                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Visibility="Collapsed"
-                        DataContext="{x:Static vm:NowPlaying.Instance}"
+                        DataContext="{x:Static vm:MusicNow.Instance}"
                         helpers:Anim.Mode="SlideUp" helpers:Anim.Show="{Binding ShowMusicBar}">
                     <views:MusicPlayerBar />
                 </Border>

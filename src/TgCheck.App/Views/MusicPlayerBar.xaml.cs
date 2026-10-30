@@ -29,11 +29,11 @@ public partial class MusicPlayerBar : UserControl
     private void Close_Click(object sender, System.Windows.RoutedEventArgs e)
     {
         if (HideOnly) HideRequested?.Invoke();
-        else NowPlaying.Instance.CloseMusic();
+        else MusicNow.Instance.CloseMusic();
     }
 
     private void SeekTo(MouseEventArgs e) =>
-        NowPlaying.Instance.Seek(Math.Clamp(e.GetPosition(Seek).X / Math.Max(1, Seek.ActualWidth), 0, 1));
+        MusicNow.Instance.Seek(Math.Clamp(e.GetPosition(Seek).X / Math.Max(1, Seek.ActualWidth), 0, 1));
 
     private void Seek_Down(object sender, MouseButtonEventArgs e)
     {

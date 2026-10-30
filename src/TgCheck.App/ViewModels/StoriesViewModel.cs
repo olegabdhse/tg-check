@@ -229,6 +229,7 @@ public sealed partial class StoriesViewModel : ObservableObject
     {
         _timerCts?.Cancel();
         AudioPlayer.Instance.Stop();
+        MusicNow.Instance.Resume(MusicNow.Story);
         _close();
     }
 

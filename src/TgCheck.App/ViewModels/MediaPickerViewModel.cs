@@ -11,38 +11,42 @@ using TgCheck.Core.Services;
 
 namespace TgCheck.App.ViewModels;
 
-/// <summary>Связывает единственный аудиоплеер с пузырём голосового, который сейчас играет.</summary>
+/// <summary>
+/// Связывает проигрыватели с пузырём, который сейчас играет: голосовые — общий проигрыватель, песни — свой (музыка),
+/// у каждого свой «текущий» пузырь.
+/// </summary>
 public static class VoicePlayback
 {
     private static readonly Dictionary<string, WeakReference<MessageViewModel>> Bubbles = [];
-    private static MessageViewModel? _current;
+    private static MessageViewModel? _currentVoice, _currentSong;
 
     static VoicePlayback()
     {
-        AudioPlayer.Instance.Changed += () => Anim.Ui(Update);
+        AudioPlayer.Instance.Changed += () => Anim.Ui(() => Update(AudioPlayer.Instance, ref _currentVoice));
+        AudioPlayer.Music.Changed += () => Anim.Ui(() => Update(AudioPlayer.Music, ref _currentSong));
     }
 
     public static void Attach(MessageViewModel vm)
     {
         if (!(vm.IsVoice || vm.IsAudio)) return;
         lock (Bubbles) Bubbles[vm.AudioKey] = new WeakReference<MessageViewModel>(vm);
-        if (AudioPlayer.Instance.Key == vm.AudioKey) Update();
+        if (AudioPlayer.Instance.Key == vm.AudioKey) Update(AudioPlayer.Instance, ref _currentVoice);
+        if (AudioPlayer.Music.Key == vm.AudioKey) Update(AudioPlayer.Music, ref _currentSong);
     }
 
-    private static void Update()
+    private static void Update(AudioPlayer player, ref MessageViewModel? current)
     {
-        var player = AudioPlayer.Instance;
         MessageViewModel? vm = null;
         lock (Bubbles)
             if (player.Key is { } key && Bubbles.TryGetValue(key, out var weak)) weak.TryGetTarget(out vm);
 
-        if (_current is not null && _current != vm)
+        if (current is not null && current != vm)
         {
-            _current.IsPlaying = false;
-            _current.PlayProgress = 0;
-            _current.PositionText = null;
+            current.IsPlaying = false;
+            current.PlayProgress = 0;
+            current.PositionText = null;
         }
-        _current = vm;
+        current = vm;
         if (vm is null) return;
         vm.IsPlaying = player.IsPlaying;
         var total = player.Duration.TotalSeconds;

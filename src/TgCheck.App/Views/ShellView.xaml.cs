@@ -126,6 +126,7 @@ public partial class ShellView : UserControl
     private void StoryVideo_MediaOpened(object sender, RoutedEventArgs e)
     {
         AudioPlayer.Instance.Stop();
+        MusicNow.Instance.Interrupt(MusicNow.Story); // видео в истории — музыка на паузу до закрытия историй
         StoryVideo.Play();
         _storyTimer.Start();
     }
