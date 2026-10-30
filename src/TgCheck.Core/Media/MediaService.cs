@@ -98,6 +98,46 @@ public sealed class MediaService
         return data.ToArray();
     }
 
+    /// <summary>
+    /// Фон уникального подарка для карточки в чате: градиент его цветов и кольца узора, без самой модели
+    /// (модель поверх — живым стикером). PNG size×size, кэш на диске.
+    /// </summary>
+    public Task<byte[]?> GetGiftBackdropAsync(GiftCard card, int size)
+    {
+        if (card.CenterColor is not { } center || card.EdgeColor is not { } edge) return Task.FromResult<byte[]?>(null);
+        var key = $"giftbg_{center:x6}_{edge:x6}_{card.PatternColor ?? 0:x6}_{card.Pattern?.id ?? 0}_{size}";
+        return _inflight.GetOrAdd(key, _ => Task.Run(async () =>
+        {
+            var path = Path.Combine(_cacheDir, key + ".png");
+            try
+            {
+                if (File.Exists(path)) return await File.ReadAllBytesAsync(path);
+                using var pattern = card.Pattern is { } p ? await LoadStickerAsync(p, (int)(size * 0.14) * 2) : null;
+                var info = new SKImageInfo(size, size, SKColorType.Rgba8888, SKAlphaType.Premul);
+                using var surface = SKSurface.Create(info);
+                var canvas = surface.Canvas;
+                using (var shader = SKShader.CreateRadialGradient(new SKPoint(size / 2f, size / 2f), size * 0.75f,
+                           new[] { Rgb(center), Rgb(edge) }, (float[]?)null, SKShaderTileMode.Clamp))
+                using (var bg = new SKPaint { Shader = shader, IsAntialias = true })
+                    canvas.DrawRect(0, 0, size, size, bg);
+                if (pattern is not null)
+                    DrawPatternRing(canvas, pattern, size, card.PatternColor is { } pc ? Rgb(pc) : SKColors.Black,
+                        new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
+                using var image = surface.Snapshot();
+                using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+                var png = data.ToArray();
+                await File.WriteAllBytesAsync(path, png);
+                return png;
+            }
+            catch (Exception ex)
+            {
+                Logging.Write($"gift backdrop: {ex.Message}");
+                _inflight.TryRemove(key, out var _gone);
+                return null;
+            }
+        }));
+    }
+
     // Узор вокруг модели: два кольца символов с затуханием к краю, как на карточках подарков в Telegram.
     private static void DrawPatternRing(SKCanvas canvas, SKImage pattern, int size, SKColor color, SKSamplingOptions sampling)
     {

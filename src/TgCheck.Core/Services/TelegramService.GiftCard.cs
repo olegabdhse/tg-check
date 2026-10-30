@@ -50,6 +50,8 @@ public sealed partial class TelegramService
                     IsUnique = true,
                     CenterColor = backdrop?.center_color,
                     EdgeColor = backdrop?.edge_color,
+                    Pattern = gift.attributes?.OfType<StarGiftAttributePattern>().FirstOrDefault()?.document as Document,
+                    PatternColor = backdrop?.pattern_color,
                 };
             }
             default:

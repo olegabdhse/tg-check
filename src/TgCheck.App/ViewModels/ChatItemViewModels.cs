@@ -470,8 +470,9 @@ public sealed partial class MessageViewModel : ObservableObject
     public GiftCard? Gift => Item.Gift;
     public bool HasGift => Item.Gift is not null;
     /// <summary>Фон карточки: у уникального подарка — его цвета, у обычного — как у служебных сообщений.</summary>
-    public Brush GiftBackground => Item.Gift is { CenterColor: { } c, EdgeColor: { } e }
-        ? Frozen(new RadialGradientBrush(Rgb(c), Rgb(e)) { RadiusX = 0.8, RadiusY = 0.8 })
+    // (у уникального: сверху — картинка фона с узором (Preview), ниже — цвет края, чтобы фон продолжался под текстом)
+    public Brush GiftBackground => Item.Gift is { EdgeColor: { } e }
+        ? Frozen(new SolidColorBrush(Rgb(e)))
         : Frozen(new SolidColorBrush(Color.FromArgb(0x99, 0x18, 0x25, 0x33)));
     private static Color Rgb(int v) => Color.FromRgb((byte)(v >> 16), (byte)(v >> 8), (byte)v);
     private static Brush Frozen(Brush b) { b.Freeze(); return b; }
@@ -545,6 +546,13 @@ public sealed partial class MessageViewModel : ObservableObject
     public async void EnsurePreview(MediaService media)
     {
         if (_previewRequested) return;
+        if (Item.Gift is { IsUnique: true } gift)
+        {
+            // Уникальный подарок: фон его цветов с кольцами узора — под живой моделью.
+            _previewRequested = true;
+            Preview = Images.FromBytes(await media.GetGiftBackdropAsync(gift, 500).ConfigureAwait(false));
+            return;
+        }
         if (Item.Media is MediaKind.Location && Item.Latitude is not null)
         {
             _previewRequested = true;

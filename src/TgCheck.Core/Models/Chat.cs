@@ -252,4 +252,7 @@ public sealed class GiftCard
     /// <summary>Фон уникального подарка (цвета узора), RGB.</summary>
     public int? CenterColor { get; init; }
     public int? EdgeColor { get; init; }
+    /// <summary>Узор уникального подарка (символ вокруг модели) и его цвет.</summary>
+    public TL.Document? Pattern { get; init; }
+    public int? PatternColor { get; init; }
 }
