@@ -286,11 +286,17 @@ public sealed partial class MessageViewModel : ObservableObject
     [ObservableProperty] private bool _isNew;
     [ObservableProperty] private ImageSource? _preview;
 
+    /// <summary>Размытая (крошечная, растянутая) копия превью — для фона карточки песни и полос слайд-шоу.</summary>
+    public ImageSource? BlurredPreview => _blurredPreview ??= Images.Tiny(Preview);
+    private ImageSource? _blurredPreview;
+
     /// <summary>Фон карточки песни (музыка профиля): средний цвет обложки, затемнённый, — как в Telegram.</summary>
     [ObservableProperty] private Brush? _cardBrush;
 
     partial void OnPreviewChanged(ImageSource? value)
     {
+        _blurredPreview = null;
+        OnPropertyChanged(nameof(BlurredPreview));
         if (!IsAudio) return;
         CardBrush = value is System.Windows.Media.Imaging.BitmapSource b && Images.AverageColor(b) is { } c
             ? FrozenBrush(Color.FromRgb((byte)(c.R * 0.45), (byte)(c.G * 0.45), (byte)(c.B * 0.45)))

@@ -276,12 +276,8 @@
                             <Grid helpers:RoundClip.Radius="18" Height="92">
                                 <!-- Фон — сама обложка: увеличенная часть, размытая и затемнённая (нет обложки — градиент песни) -->
                                 <Border Background="{Binding CoverBrush}" />
-                                <!-- Края размытия — за рамкой карточки (иначе по краям просвечивал цветной фон полосой) -->
-                                <Image Source="{Binding Preview}" Stretch="UniformToFill" Margin="-50" IsHitTestVisible="False">
-                                    <Image.Effect>
-                                        <BlurEffect Radius="26" KernelType="Gaussian" />
-                                    </Image.Effect>
-                                </Image>
+                                <!-- Крошечная копия обложки, растянутая на блок, — мягкое размытие без тяжёлого эффекта -->
+                                <Image Source="{Binding BlurredPreview}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" IsHitTestVisible="False" />
                                 <Border Background="#73000000" />
                                 <DockPanel Margin="14,12">
                                     <Grid DockPanel.Dock="Left" Width="68" Height="68" Margin="0,0,16,0">

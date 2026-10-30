@@ -528,11 +528,7 @@
                                                     <ColumnDefinition Width="40" />
                                                 </Grid.ColumnDefinitions>
                                                 <!-- Размытый снимок под всем окном — в полосах он и виден -->
-                                                <Image Grid.ColumnSpan="3" Source="{Binding Current.Preview}" Stretch="UniformToFill" IsHitTestVisible="False">
-                                                    <Image.Effect>
-                                                        <BlurEffect Radius="24" KernelType="Gaussian" />
-                                                    </Image.Effect>
-                                                </Image>
+                                                <Image Grid.ColumnSpan="3" Source="{Binding Current.BlurredPreview}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" IsHitTestVisible="False" />
                                                 <Border Grid.ColumnSpan="3" Background="#55000000" IsHitTestVisible="False" />
                                                 <Button Grid.Column="1" Style="{StaticResource BareButton}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                                                         Command="{Binding DataContext.OpenMediaCommand, ElementName=Root}" CommandParameter="{Binding Current}">

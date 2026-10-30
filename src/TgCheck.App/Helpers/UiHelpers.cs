@@ -12,6 +12,24 @@ namespace TgCheck.App.Helpers;
 
 public static class Images
 {
+    /// <summary>
+    /// Крошечная копия картинки (ширина px): растянутая на большой блок, она выглядит размытой — дешёвая замена
+    /// эффекту размытия (тот пересчитывался при каждой перерисовке и тормозил профиль и ленту).
+    /// </summary>
+    public static BitmapSource? Tiny(ImageSource? source, int width = 24)
+    {
+        if (source is not BitmapSource b || b.PixelWidth <= 0) return null;
+        try
+        {
+            var scale = Math.Min(1, (double)width / b.PixelWidth);
+            var tiny = new TransformedBitmap(b, new ScaleTransform(scale, scale));
+            var copy = new WriteableBitmap(tiny); // отвязываем от исходника (не держим его в памяти ради эффекта)
+            copy.Freeze();
+            return copy;
+        }
+        catch { return null; }
+    }
+
     /// <summary>Средний цвет картинки (по уменьшенной копии) — для фона под обложкой.</summary>
     public static Color? AverageColor(BitmapSource source)
     {

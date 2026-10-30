@@ -28,7 +28,7 @@ public partial class MainWindow : Window
         StateChanged += OnStateChanged;
         IsVisibleChanged += (_, e) => { UpdateOnScreen(); if (e.NewValue is false) TrimMemorySoon(); };
         Activated += (_, _) => { UpdateOnScreen(); if (WindowState != WindowState.Minimized) _island?.HideIsland(); };
-        Deactivated += (_, _) => { UpdateOnScreen(); ShowIslandIfAway(); TrimMemorySoon(); };
+        Deactivated += (_, _) => { UpdateOnScreen(); ShowIslandIfAway(); };
         // Кнопка на панели задач появляется при показе окна и берёт иконку exe через оболочку (у нас — пустой значок);
         // повторная установка иконки после показа заставляет панель её обновить.
         ContentRendered += (_, _) => WindowEffects.RefreshExeIconWhenIdle(this);
@@ -158,10 +158,10 @@ public partial class MainWindow : Window
         _trimCts?.Cancel();
         var cts = _trimCts = new CancellationTokenSource();
         try { await Task.Delay(3000, cts.Token); } catch (TaskCanceledException) { return; }
-        if (IsActive && IsVisible && WindowState != WindowState.Minimized) return; // вернулись в окно — не трогаем
+        if (IsVisible && WindowState != WindowState.Minimized) return; // окно снова на экране — не трогаем
         await Task.Run(() =>
         {
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
             GC.WaitForPendingFinalizers();
             try { SetProcessWorkingSetSize(System.Diagnostics.Process.GetCurrentProcess().Handle, -1, -1); } catch { }
         });

@@ -10,8 +10,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <!-- Память: без фоновой сборки мусора и с бережным режимом кучи — приложению не нужен запас на пиковую нагрузку. -->
-    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
     <AssemblyName>TgCheck</AssemblyName>
     <RootNamespace>TgCheck.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -77,7 +75,4 @@
 
   <Import Project="..\..\build\Logo.targets" />
 
-  <ItemGroup>
-    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="7" />
-  </ItemGroup>
 </Project>
