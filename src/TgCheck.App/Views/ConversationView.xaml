@@ -507,16 +507,30 @@
                                     <Setter.Value>
                                         <!-- Слайд-шоу одним окном: стрелки по краям, белые точки внизу — текущий слайд -->
                                         <DataTemplate>
-                                            <Grid x:Name="Slide" Width="363" Height="{Binding SlideHeight}" Margin="-6,3,-6,5" HorizontalAlignment="Left" helpers:RoundClip.Radius="8">
-                                                <Border Background="#22FFFFFF" />
-                                                <Button Style="{StaticResource BareButton}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                            <!-- Слайд-шоу шире обычного медиа: снимок целиком посередине, по бокам — полосы с размытым снимком
+                                                 и стрелками (полосы есть всегда, стрелка — где есть куда листать) -->
+                                            <Grid x:Name="Slide" Width="443" Height="{Binding SlideHeight}" Margin="-6,3,-6,5" HorizontalAlignment="Left" helpers:RoundClip.Radius="8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="40" />
+                                                    <ColumnDefinition Width="363" />
+                                                    <ColumnDefinition Width="40" />
+                                                </Grid.ColumnDefinitions>
+                                                <!-- Размытый снимок под всем окном — в полосах он и виден -->
+                                                <Image Grid.ColumnSpan="3" Source="{Binding Current.Preview}" Stretch="UniformToFill" IsHitTestVisible="False">
+                                                    <Image.Effect>
+                                                        <BlurEffect Radius="24" KernelType="Gaussian" />
+                                                    </Image.Effect>
+                                                </Image>
+                                                <Border Grid.ColumnSpan="3" Background="#55000000" IsHitTestVisible="False" />
+                                                <Button Grid.Column="1" Style="{StaticResource BareButton}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                                                         Command="{Binding DataContext.OpenMediaCommand, ElementName=Root}" CommandParameter="{Binding Current}">
                                                     <Grid>
+                                                        <Border Background="#22FFFFFF" />
                                                         <Image Source="{Binding Current.Preview}" Stretch="UniformToFill" />
                                                         <!-- Видео, уже скачанное, играет само (без звука, по кругу) -->
                                                         <controls:GifView Media="{Binding Current.Item}" OnlyIfCached="True" CornerRadius="0"
                                                                           Visibility="{Binding Current.IsVideo, Converter={StaticResource BoolToVis}}" />
-                                                        <Border Style="{StaticResource Pill}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="52,8,0,0"
+                                                        <Border Style="{StaticResource Pill}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8"
                                                                 Visibility="{Binding Current.IsVideo, Converter={StaticResource BoolToVis}}">
                                                             <StackPanel Orientation="Horizontal">
                                                                 <TextBlock Text="&#xE768;" Style="{StaticResource Icon}" FontSize="9" Foreground="White" Margin="0,0,5,0" VerticalAlignment="Center" />
@@ -525,41 +539,23 @@
                                                         </Border>
                                                     </Grid>
                                                 </Button>
-                                                <!-- По краям — полосы с размытым тем же снимком (слой на весь снимок, видны только края — совпадает
-                                                     с картинкой точь-в-точь); полосы есть всегда, стрелка — только где есть куда листать -->
-                                                <Grid IsHitTestVisible="False">
-                                                    <Grid.OpacityMask>
-                                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                                                            <GradientStop Color="Black" Offset="0" />
-                                                            <GradientStop Color="Black" Offset="0.121" />
-                                                            <GradientStop Color="Transparent" Offset="0.121" />
-                                                            <GradientStop Color="Transparent" Offset="0.879" />
-                                                            <GradientStop Color="Black" Offset="0.879" />
-                                                            <GradientStop Color="Black" Offset="1" />
-                                                        </LinearGradientBrush>
-                                                    </Grid.OpacityMask>
-                                                    <Image Source="{Binding Current.Preview}" Stretch="UniformToFill">
-                                                        <Image.Effect>
-                                                            <BlurEffect Radius="18" KernelType="Gaussian" />
-                                                        </Image.Effect>
-                                                    </Image>
-                                                    <Border Background="#40000000" />
-                                                </Grid>
-                                                <Button Style="{StaticResource BareButton}" HorizontalAlignment="Left" Width="44"
-                                                        Command="{Binding PrevSlideCommand}" ToolTip="Назад" Visibility="{Binding HasPrev, Converter={StaticResource BoolToVis}}">
+                                                <Button Grid.Column="0" Style="{StaticResource BareButton}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                                        Command="{Binding PrevSlideCommand}" ToolTip="Назад" IsEnabled="{Binding HasPrev}">
                                                     <Grid Background="Transparent">
                                                         <TextBlock Text="&#xE76B;" Style="{StaticResource Icon}" FontSize="15" Foreground="White"
-                                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                   Visibility="{Binding HasPrev, Converter={StaticResource BoolToVis}}" />
                                                     </Grid>
                                                 </Button>
-                                                <Button Style="{StaticResource BareButton}" HorizontalAlignment="Right" Width="44"
-                                                        Command="{Binding NextSlideCommand}" ToolTip="Дальше" Visibility="{Binding HasNext, Converter={StaticResource BoolToVis}}">
+                                                <Button Grid.Column="2" Style="{StaticResource BareButton}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                                        Command="{Binding NextSlideCommand}" ToolTip="Дальше" IsEnabled="{Binding HasNext}">
                                                     <Grid Background="Transparent">
                                                         <TextBlock Text="&#xE76C;" Style="{StaticResource Icon}" FontSize="15" Foreground="White"
-                                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                   Visibility="{Binding HasNext, Converter={StaticResource BoolToVis}}" />
                                                     </Grid>
                                                 </Button>
-                                                <Border HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,8" Padding="6,4" CornerRadius="8" Background="#55000000"
+                                                <Border Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,8" Padding="6,4" CornerRadius="8" Background="#55000000"
                                                         IsHitTestVisible="False">
                                                     <ItemsControl ItemsSource="{Binding Dots}">
                                                         <ItemsControl.ItemsPanel>
