@@ -220,6 +220,14 @@ public partial class ConversationView : UserControl
         return 0;
     }
 
+    // Голосовые и кружки на экране качаются сами (с ободком и крестиком) — к нажатию «играть» они уже готовы.
+    private void AutoDownloadVisible()
+    {
+        if (_vm is null || _feedHidden || Controls.AppServices.Media is not { } media) return;
+        foreach (var (el, _) in VisibleContainers(fromEnd: true))
+            if (el.DataContext is MessageViewModel { IsVoice: true } or MessageViewModel { IsRound: true }) ((MessageViewModel)el.DataContext).AutoDownload(media);
+    }
+
     private DispatcherTimer? _readTimer;
 
     // Прочтение по мере прокрутки — не на каждый пиксель, а когда прокрутка остановилась.
@@ -228,7 +236,7 @@ public partial class ConversationView : UserControl
         if (_readTimer is null)
         {
             _readTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-            _readTimer.Tick += (_, _) => { _readTimer.Stop(); _vm?.MarkRead(); };
+            _readTimer.Tick += (_, _) => { _readTimer.Stop(); _vm?.MarkRead(); AutoDownloadVisible(); };
         }
         _readTimer.Stop();
         _readTimer.Start();

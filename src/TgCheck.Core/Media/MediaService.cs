@@ -567,6 +567,14 @@ public sealed class MediaService
         return Directory.EnumerateFiles(dir, $"{doc.id}.*").Any(f => !f.EndsWith(".part") && new FileInfo(f).Length == doc.size);
     }
 
+    private readonly ConcurrentDictionary<long, bool> _cancelledFiles = new();
+
+    /// <summary>Остановить загрузку файла (крестик на ободке). Следующий запрос начнёт заново.</summary>
+    public void CancelMediaFile(MediaHolder media)
+    {
+        if (media.Document is { } doc) _cancelledFiles[doc.id] = true;
+    }
+
     public Task<string?> GetMediaFileAsync(MediaHolder media, IProgress<double>? progress = null, bool priority = true)
     {
         if (media.Document is not { } doc) return Task.FromResult<string?>(null);
@@ -652,13 +660,19 @@ public sealed class MediaService
                 File.SetLastAccessTimeUtc(path, DateTime.UtcNow);
                 return path;
             }
+            _cancelledFiles.TryRemove(doc.id, out _);
             var part = path + "." + Guid.NewGuid().ToString("N")[..8] + ".part";
             if (!priority) await _backgroundFiles.WaitAsync();
             try
             {
                 await using (var fs = File.Create(part))
                     await _client().DownloadFileAsync(doc, fs, (PhotoSizeBase?)null,
-                        (done, total) => progress?.Report(total > 0 ? (double)done / total : 0));
+                        (done, total) =>
+                        {
+                            // Крестик на ободке загрузки — остановить (исключение из обратного вызова прерывает загрузку).
+                            if (_cancelledFiles.ContainsKey(doc.id)) throw new OperationCanceledException();
+                            progress?.Report(total > 0 ? (double)done / total : 0);
+                        });
                 await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
             }
             finally { if (!priority) _backgroundFiles.Release(); }
@@ -669,6 +683,7 @@ public sealed class MediaService
         {
             Logging.Write($"media file {doc.id}: {ex.Message}");
             _files.TryRemove(doc.id, out _);
+            foreach (var leftover in Directory.EnumerateFiles(Path.GetDirectoryName(path)!, $"{doc.id}*.part")) try { File.Delete(leftover); } catch { }
             return null;
         }
     }

@@ -1455,6 +1455,10 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         string.Concat(name.Select(c => System.IO.Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
 
     // ---- голосовые и аудио
+    /// <summary>Крестик на ободке загрузки голосового / кружка — остановить загрузку.</summary>
+    [RelayCommand]
+    private void CancelDownload(MessageViewModel? m) => m?.CancelDownload(_tg.Media);
+
     [RelayCommand(AllowConcurrentExecutions = true)] // иначе пока грузится одно голосовое, кнопки всех голосовых «выключались»
     private async Task PlayAudio(MessageViewModel? m)
     {

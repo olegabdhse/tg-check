@@ -163,8 +163,15 @@
         </DataTemplate>
 
         <DataTemplate x:Key="MediaRound" DataType="{x:Type vm:MessageViewModel}">
-            <controls:VideoNoteView Media="{Binding Item}" Title="{Binding SenderName}" Width="{Binding MediaWidth}" Height="{Binding MediaHeight}"
+            <Grid>
+                <controls:VideoNoteView Media="{Binding Item}" Title="{Binding SenderName}" Width="{Binding MediaWidth}" Height="{Binding MediaHeight}"
                                     IsUnlistened="{Binding IsMediaUnread}" />
+                <Button Style="{StaticResource BareButton}" Width="52" Height="52" Cursor="Hand" ToolTip="Остановить загрузку"
+                        Command="{Binding DataContext.CancelDownloadCommand, ElementName=Root}" CommandParameter="{Binding}"
+                        Visibility="{Binding IsFileDownloading, Converter={StaticResource BoolToVis}}">
+                    <controls:ProgressArc Width="52" Height="52" Progress="{Binding FileProgress}" />
+                </Button>
+            </Grid>
         </DataTemplate>
 
         <!-- Песня: обложка с кнопкой, название и исполнитель, тонкая полоска прогресса (без волны), как в Telegram -->
@@ -208,7 +215,8 @@
         <!-- Голосовое -->
         <DataTemplate x:Key="MediaVoice" DataType="{x:Type vm:MessageViewModel}">
             <DockPanel Margin="0,2,0,2" MinWidth="250">
-                <Button DockPanel.Dock="Left" Width="44" Height="44" Margin="0,0,10,0" Style="{StaticResource RoundButton}"
+                <Grid DockPanel.Dock="Left" Width="44" Height="44" Margin="0,0,10,0">
+                <Button Style="{StaticResource RoundButton}"
                         Command="{Binding DataContext.PlayAudioCommand, ElementName=Root}" CommandParameter="{Binding}">
                     <Grid>
                         <TextBlock Text="{Binding PlayIcon}" Style="{StaticResource Icon}" FontSize="16" Foreground="White"
@@ -216,6 +224,13 @@
                         <views:Spinner Width="20" Height="20" Visibility="{Binding IsLoadingAudio, Converter={StaticResource BoolToVis}}" />
                     </Grid>
                 </Button>
+                <!-- Загружается само (на экране): белый ободок с крестиком, как при отправке; крестик — остановить -->
+                <Button Style="{StaticResource BareButton}" Cursor="Hand" ToolTip="Остановить загрузку"
+                        Command="{Binding DataContext.CancelDownloadCommand, ElementName=Root}" CommandParameter="{Binding}"
+                        Visibility="{Binding IsFileDownloading, Converter={StaticResource BoolToVis}}">
+                    <controls:ProgressArc Width="44" Height="44" Progress="{Binding FileProgress}" Fill="{StaticResource AccentBrush}" />
+                </Button>
+                </Grid>
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="{Binding FileTitle}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" MaxWidth="260"
                                Visibility="{Binding IsAudio, Converter={StaticResource BoolToVis}}" />

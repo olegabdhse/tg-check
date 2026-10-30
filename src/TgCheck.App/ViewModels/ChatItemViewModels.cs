@@ -484,6 +484,29 @@ public sealed partial class MessageViewModel : ObservableObject
     /// <summary>Можно удалить: своё — всегда; чужое — в личке и с ботом, в группах и каналах — с правом удаления.</summary>
     public bool CanDelete => !IsService && (IsOut || Chat.Kind is PeerKind.User or PeerKind.Bot || Chat.CanDeleteOthers);
     public bool IsService => Item.ServiceText is not null;
+    // ---- автозагрузка голосовых и кружков, как только они на экране: тот же белый ободок с крестиком, что при отправке
+    /// <summary>Сколько скачано (0..1); меньше 0 — не качается.</summary>
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsFileDownloading))] private double _fileProgress = -1;
+    public bool IsFileDownloading => FileProgress >= 0;
+    private bool _autoRequested;
+
+    public async void AutoDownload(MediaService media)
+    {
+        if (_autoRequested || !(IsVoice || IsRound)) return;
+        _autoRequested = true;
+        if (await Task.Run(() => media.IsMediaFileCached(Item))) return;
+        FileProgress = 0;
+        await media.GetMediaFileAsync(Item, new Progress<double>(p => { if (IsFileDownloading) FileProgress = p; }), priority: false);
+        FileProgress = -1;
+    }
+
+    /// <summary>Крестик на ободке: остановить загрузку (сама больше не начнётся — только по нажатию «играть»).</summary>
+    public void CancelDownload(MediaService media)
+    {
+        media.CancelMediaFile(Item);
+        FileProgress = -1;
+    }
+
     /// <summary>Подарок: карточка вместо строки служебного сообщения.</summary>
     public GiftCard? Gift => Item.Gift;
     public bool HasGift => Item.Gift is not null;
