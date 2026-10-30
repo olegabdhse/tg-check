@@ -43,6 +43,14 @@ public sealed class AudioPlayer : IDisposable
     /// <summary>Играть из потока (песня, которая ещё качается).</summary>
     public void PlayStream(string key, Stream source)
     {
+        // Готовый файл — по пути, как раньше: из потока системный декодер его не играл (вставал на нуле).
+        if (source is FileStream file)
+        {
+            var path = file.Name;
+            file.Dispose();
+            Play(key, path);
+            return;
+        }
         lock (_lock)
         {
             StopInternal();
