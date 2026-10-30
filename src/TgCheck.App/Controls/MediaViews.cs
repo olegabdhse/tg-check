@@ -39,6 +39,8 @@ public sealed class GifView : Grid
     private int _version;
     private bool _hasSource;
     private readonly DispatcherTimer _viewportTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
+    private readonly DispatcherTimer _firstFrame = new() { Interval = TimeSpan.FromMilliseconds(40) };
+    private int _firstFrameTicks;
 
     public GifView()
     {
@@ -46,8 +48,17 @@ public sealed class GifView : Grid
         Background = new SolidColorBrush(Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF));
         Children.Add(_preview);
         Children.Add(_player);
-        _player.MediaEnded += (_, _) => { _player.Position = TimeSpan.Zero; _player.Play(); };
-        _player.MediaOpened += (_, _) => _player.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(180)));
+        // По кругу без чёрной вспышки: перемотка на самое начало (ровно 0) показывала пустой кадр.
+        _player.MediaEnded += (_, _) => { _player.Position = TimeSpan.FromMilliseconds(1); _player.Play(); };
+        // Видео проявляется только когда реально пошли кадры: сразу после открытия плеер ещё чёрный — отсюда мерцание.
+        _player.MediaOpened += (_, _) => _firstFrame.Start();
+        _firstFrame.Tick += (_, _) =>
+        {
+            if (_player.Position < TimeSpan.FromMilliseconds(80) && ++_firstFrameTicks < 40) return;
+            _firstFrame.Stop();
+            _firstFrameTicks = 0;
+            _player.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(180)));
+        };
         Loaded += (_, _) => { _viewportTimer.Start(); UpdatePlayback(); };
         Unloaded += (_, _) => { _viewportTimer.Stop(); _player.Stop(); };
         IsVisibleChanged += (_, _) => UpdatePlayback();
@@ -64,7 +75,11 @@ public sealed class GifView : Grid
         _fileRequested = false;
         _player.Stop();
         _player.Source = null;
+        _firstFrame.Stop();
+        _firstFrameTicks = 0;
+        _player.BeginAnimation(OpacityProperty, null); // иначе прошлое «проявление» держит 1 — и пока открывается новое видео, виден чёрный плеер
         _player.Opacity = 0;
+        _preview.Source = null; // превью прошлого видео (слайда) не должно закрывать новое
         if (Media is not { } media || AppServices.Media is not { } service) return;
         var bytes = await service.GetMessagePreviewAsync(media);
         var image = bytes is null ? null : await Task.Run(() => Images.FromBytes(bytes)); // декодируем не в потоке интерфейса
