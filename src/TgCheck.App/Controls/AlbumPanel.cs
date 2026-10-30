@@ -43,6 +43,7 @@ public sealed class AlbumPanel : Panel
     // Пропорции (ширина/высота) снимка; без размеров — квадрат. Слишком вытянутые ограничены, иначе плитки-«нитки».
     private static double AspectOf(UIElement child)
     {
+        if ((child as FrameworkElement)?.DataContext is UploadPart part) return Math.Clamp(part.Aspect, 0.5, 2.2); // отправляемое — та же сетка
         var item = (child as FrameworkElement)?.DataContext is MessageViewModel m ? m.Item : null;
         var ar = item is { MediaWidth: > 0, MediaHeight: > 0 } ? (double)item.MediaWidth / item.MediaHeight : 1;
         return Math.Clamp(ar, 0.5, 2.2);

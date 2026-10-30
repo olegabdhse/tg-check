@@ -61,6 +61,7 @@ public sealed class StickerView : Image
     /// Задавать до Media; уже показанная статичная картинка (Source) остаётся, пока грузится анимация.</summary>
     public bool Once { get; set; }
     private bool _onceDone;
+    private long _shownId;
 
     /// <summary>Проиграть анимацию один раз и скрыться (эффект при постановке реакции).</summary>
     public bool PlayOnce { get; set; }
@@ -92,9 +93,12 @@ public sealed class StickerView : Image
         Active.Remove(this);
         _animation?.Dispose();
         _animation = null;
-        var still = Once ? Source : null; // общая статичная картинка эмодзи уже на месте — без мигания
-        Source = still;
         var media = Media;
+        // Уже показанная статичная картинка того же стикера (общая картинка эмодзи, последний кадр) остаётся — без мигания;
+        // у переиспользованной ячейки сетки картинка чужая — её убираем.
+        var still = Once && (_shownId == 0 || _shownId == media?.MediaId) ? Source : null;
+        _shownId = media?.MediaId ?? 0;
+        Source = still;
         if (media is null || AppServices.Media is not { } service) return;
 
         // Сначала статичный кадр — чтобы не было пустого места, пока грузится анимация.

@@ -26,6 +26,7 @@ public sealed class PeerRef
                 Kind = c.IsChannel ? PeerKind.Channel : PeerKind.Group;
                 MembersCount = c.participants_count;
                 CanWrite = !c.IsChannel || c.flags.HasFlag(Channel.Flags.creator) || c.admin_rights is not null;
+                CanDeleteOthers = c.flags.HasFlag(Channel.Flags.creator) || c.admin_rights?.flags.HasFlag(ChatAdminRights.Flags.delete_messages) == true;
                 IsBasicGroup = false;
                 Title = c.title ?? "";
                 HasPhoto = c.photo is ChatPhoto;
@@ -35,6 +36,7 @@ public sealed class PeerRef
                 Kind = PeerKind.Group;
                 MembersCount = (c as Chat)?.participants_count ?? 0;
                 IsBasicGroup = true;
+                CanDeleteOthers = c is Chat bc && (bc.flags.HasFlag(Chat.Flags.creator) || bc.admin_rights is not null);
                 Title = c.Title ?? "";
                 HasPhoto = (c as Chat)?.photo is ChatPhoto;
                 break;
@@ -64,6 +66,10 @@ public sealed class PeerRef
     public int MembersCount { get; }
     /// <summary>Можно ли писать (в каналах — только админам).</summary>
     public bool CanWrite { get; } = true;
+    /// <summary>Можно удалять чужие сообщения: в личке и с ботом — всегда, в группах и каналах — создателю или админу с правом удаления.</summary>
+    public bool CanDeleteOthers { get; } = true;
+    /// <summary>Удаление можно выбрать «только у меня» или «у всех» (личка, бот, обычная группа); в супергруппах и каналах — всегда у всех.</summary>
+    public bool CanRevoke => Info is not Channel;
     /// <summary>Обычная (не супер-) группа: id сообщений в ней глобальные, как в личке.</summary>
     public bool IsBasicGroup { get; }
     /// <summary>Группа с темами (форум): вместо одной ленты — список тем.</summary>
@@ -132,10 +138,15 @@ public sealed class MessageItem : MediaHolder
 
     /// <summary>Служебное сообщение («X вступил в группу» и т.п.).</summary>
     public string? ServiceText { get; init; }
+    /// <summary>Подарок (служебное сообщение «подарил / передал»): карточка как в Telegram.</summary>
+    public GiftCard? Gift { get; init; }
 
     public MediaKind Media { get; init; }
     /// <summary>Подпись медиа: имя файла, «Голосовое · 0:12», вопрос опроса и т.п.</summary>
     public string? MediaTitle { get; init; }
+    /// <summary>Песня: название и исполнитель (из тегов файла).</summary>
+    public string? SongTitle { get; init; }
+    public string? SongPerformer { get; init; }
     public long MediaSize { get; init; }
     public int MediaWidth { get; init; }
     public int MediaHeight { get; init; }
@@ -222,4 +233,23 @@ public static class Names
             _ => true,
         };
     }
+}
+
+/// <summary>Карточка подарка в чате (как в Telegram): стикер, заголовок, от кого, сообщение, цена.</summary>
+public sealed class GiftCard
+{
+    public StickerItem? Sticker { get; init; }
+    /// <summary>«Подарок от …», «Вы отправили подарок», «… передал(а) вам подарок».</summary>
+    public required string Caption { get; init; }
+    /// <summary>Название подарка (у уникального — с номером).</summary>
+    public string? Title { get; init; }
+    /// <summary>Сообщение от отправителя.</summary>
+    public string? Message { get; init; }
+    /// <summary>Пояснение мелким шрифтом (обмен на звёзды и т.п.).</summary>
+    public string? Note { get; init; }
+    public long Stars { get; init; }
+    public bool IsUnique { get; init; }
+    /// <summary>Фон уникального подарка (цвета узора), RGB.</summary>
+    public int? CenterColor { get; init; }
+    public int? EdgeColor { get; init; }
 }

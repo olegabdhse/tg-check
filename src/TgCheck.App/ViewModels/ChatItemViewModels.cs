@@ -22,7 +22,8 @@ public partial class PeerAvatarViewModel : ObservableObject
     public PeerRef Peer { get; protected set; }
     public string Title => Peer.DisplayTitle;
     public string Initials => Peer.IsSelf ? "★" : AvatarColors.Initials(Title);
-    public Brush AvatarBrush => AvatarColors.For(Peer.Id);
+    // «Избранное» — как в Telegram: синий круг с закладкой (не своё фото).
+    public Brush AvatarBrush => Peer.IsSelf ? (Brush)System.Windows.Application.Current.FindResource("AccentBrush") : AvatarColors.For(Peer.Id);
 
     [ObservableProperty] private ImageSource? _avatar;
     /// <summary>У пира есть истории (кольцо вокруг аватара).</summary>
@@ -36,7 +37,7 @@ public partial class PeerAvatarViewModel : ObservableObject
 
     public async void EnsureAvatar(MediaService media)
     {
-        if (_requested || !Peer.HasPhoto) return;
+        if (_requested || !Peer.HasPhoto || Peer.IsSelf) return;
         _requested = true;
         var bytes = await media.GetPeerAvatarAsync(Peer).ConfigureAwait(false);
         Avatar = Images.FromBytes(bytes, 128);
@@ -462,7 +463,18 @@ public sealed partial class MessageViewModel : ObservableObject
 
     public int Id => Item.Id;
     public bool IsOut => Item.IsOut;
+    /// <summary>Можно удалить: своё — всегда; чужое — в личке и с ботом, в группах и каналах — с правом удаления.</summary>
+    public bool CanDelete => !IsService && (IsOut || Chat.Kind is PeerKind.User or PeerKind.Bot || Chat.CanDeleteOthers);
     public bool IsService => Item.ServiceText is not null;
+    /// <summary>Подарок: карточка вместо строки служебного сообщения.</summary>
+    public GiftCard? Gift => Item.Gift;
+    public bool HasGift => Item.Gift is not null;
+    /// <summary>Фон карточки: у уникального подарка — его цвета, у обычного — как у служебных сообщений.</summary>
+    public Brush GiftBackground => Item.Gift is { CenterColor: { } c, EdgeColor: { } e }
+        ? Frozen(new RadialGradientBrush(Rgb(c), Rgb(e)) { RadiusX = 0.8, RadiusY = 0.8 })
+        : Frozen(new SolidColorBrush(Color.FromArgb(0x99, 0x18, 0x25, 0x33)));
+    private static Color Rgb(int v) => Color.FromRgb((byte)(v >> 16), (byte)(v >> 8), (byte)v);
+    private static Brush Frozen(Brush b) { b.Freeze(); return b; }
     public bool HasText => !string.IsNullOrEmpty(Text);
     public bool IsJumboEmoji => !IsAlbum && Item.Media is MediaKind.None or MediaKind.WebPage && RichText.IsEmojiOnly(Text) && !HasReply && !IsForwarded;
     public double TextEmojiSize => IsJumboEmoji ? 56 : 20;
@@ -503,6 +515,9 @@ public sealed partial class MessageViewModel : ObservableObject
         _ => "",
     };
     public string? FileTitle => Item.MediaTitle;
+    /// <summary>Песня: название (крупно) и исполнитель (мельче), как в Telegram.</summary>
+    public string SongTitle => Item.SongTitle ?? Item.MediaTitle ?? "Аудио";
+    public string? SongPerformer => Item.SongPerformer;
     public string? FileSubtitle => Item.Media is MediaKind.Audio ? Fmt.Duration(Item.DurationSeconds)
         : Item.MediaSize > 0 ? Fmt.FileSize(Item.MediaSize) : null;
     public bool IsBubbleless => IsSticker || IsRound || IsJumboEmoji ||
@@ -536,6 +551,15 @@ public sealed partial class MessageViewModel : ObservableObject
             Preview = Images.FromBytes(await media.GetMapAsync(Item).ConfigureAwait(false));
             return;
         }
+        if (Item.Media is MediaKind.Audio)
+        {
+            // Песня: обложка из файла, а если её нет — из каталога по названию и исполнителю.
+            _previewRequested = true;
+            var cover = await media.GetMessagePreviewAsync(Item).ConfigureAwait(false)
+                        ?? await media.GetSongCoverAsync(Item.SongPerformer, Item.SongTitle ?? Item.MediaTitle ?? "").ConfigureAwait(false);
+            Preview = Images.FromBytes(cover, 160);
+            return;
+        }
         if (!(Item.Media is MediaKind.Photo or MediaKind.Video)) return;
         _previewRequested = true;
         var bytes = await media.GetMessagePreviewAsync(Item).ConfigureAwait(false);
@@ -552,7 +576,7 @@ public sealed partial class MessageViewModel : ObservableObject
     public void BuildWave()
     {
         var wave = Item.Waveform;
-        const int bars = 40;
+        const int bars = 50;
         var result = new double[bars];
         for (var i = 0; i < bars; i++)
         {
@@ -633,16 +657,28 @@ public sealed partial class UploadViewModel(string title, string icon, ImageSour
     [RelayCommand]
     private void Cancel() => Cts.Cancel();
 
+    // ---- фото и видео: та же сетка, что будет после отправки; на каждой плитке — свой ободок загрузки
+    public IReadOnlyList<UploadPart> Tiles { get; init; } = [];
+    public bool IsMedia => Tiles.Count > 0;
+    public bool IsSingleTile => Tiles.Count == 1;
+    public bool IsAlbumTiles => Tiles.Count > 1;
+
+    // ---- файлы: строки как у отправленных файлов, вместо значка — ободок загрузки
+    public IReadOnlyList<UploadPart> Files { get; init; } = [];
+    public bool IsFiles => Files.Count > 0;
+    /// <summary>Старый вид (одна строка «Отправка… N%») — для остального.</summary>
+    public bool IsPlain => !IsVoice && !IsMedia && !IsFiles;
+
     // ---- голосовое: пузырь той же формы, что после отправки (волна и длительность)
     public string? VoiceDuration { get; init; }
     public IReadOnlyList<double>? WaveBars { get; init; }
     public bool IsVoice => VoiceDuration is not null;
     public string TimeText { get; } = DateTime.Now.ToString("HH:mm");
 
-    /// <summary>40 столбиков волны (высоты как у отправленного голосового) из громкости записи.</summary>
+    /// <summary>50 столбиков волны (высоты как у отправленного голосового) из громкости записи.</summary>
     public static IReadOnlyList<double> Bars(float[]? peaks)
     {
-        const int bars = 40;
+        const int bars = 50;
         var result = new double[bars];
         var max = peaks is { Length: > 0 } ? Math.Max(peaks.Max(), 0.05f) : 1;
         for (var i = 0; i < bars; i++)
@@ -710,4 +746,35 @@ public sealed partial class RichBlockViewModel : ObservableObject
 public sealed partial class SlideDot(bool active) : ObservableObject
 {
     [ObservableProperty] private bool _isActive = active;
+}
+
+/// <summary>Часть отправки: одна плитка сетки (фото/видео) или один файл — со своим процентом загрузки.</summary>
+public sealed partial class UploadPart : ObservableObject
+{
+    private const double MaxW = 360, MaxH = 400;
+
+    public UploadPart(string name, string size, ImageSource? preview, double aspect, bool isVideo)
+    {
+        Name = name;
+        Size = size;
+        Preview = preview;
+        Aspect = aspect;
+        IsVideo = isVideo;
+        // Одиночное медиа — того же размера, что пузырь после отправки (см. MessageViewModel.FitSize).
+        double w = aspect >= 1 ? 1000 : 1000 * aspect, h = aspect >= 1 ? 1000 / aspect : 1000;
+        var k = Math.Min(Math.Min(MaxW / w, MaxH / h), 1.5);
+        SingleWidth = Math.Max(w * k, 140);
+        SingleHeight = Math.Max(h * k, 90);
+    }
+
+    public string Name { get; }
+    public string Size { get; }
+    public ImageSource? Preview { get; }
+    /// <summary>Ширина / высота (для раскладки сетки).</summary>
+    public double Aspect { get; }
+    public bool IsVideo { get; }
+    public double SingleWidth { get; }
+    public double SingleHeight { get; }
+
+    [ObservableProperty] private double _progress;
 }

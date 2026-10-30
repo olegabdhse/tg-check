@@ -1043,7 +1043,16 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         ReplyTo = null;
 
         var title = files.Count == 1 ? files[0].Name : $"{Fmt.N(files.Count)} {Fmt.Plural(files.Count, "файл", "файла", "файлов")}";
-        var up = new UploadViewModel(title, files[0].Icon, files.FirstOrDefault(f => f.Thumb is not null)?.Thumb);
+        // Заготовка той же формы, что сообщение после отправки: фото и видео — сеткой, файлы — строками;
+        // у каждой части свой ободок загрузки, сама заготовка не пересоздаётся.
+        var asMedia = !asFiles && files.All(f => f.IsImage || f.IsVideo);
+        var parts = files.Select(f => new UploadPart(f.Name, f.SizeText, f.Thumb,
+            f.Thumb is System.Windows.Media.Imaging.BitmapSource b && b.PixelHeight > 0 ? (double)b.PixelWidth / b.PixelHeight : 16 / 9.0, f.IsVideo)).ToList();
+        var up = new UploadViewModel(title, files[0].Icon, files.FirstOrDefault(f => f.Thumb is not null)?.Thumb)
+        {
+            Tiles = asMedia ? parts : [],
+            Files = asMedia ? [] : parts,
+        };
         var fractions = new double[files.Count];
         await RunUploadAsync(up, async () =>
         {
@@ -1051,6 +1060,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
                 new Progress<(int Index, double Fraction)>(p =>
                 {
                     fractions[p.Index] = p.Fraction;
+                    if (p.Index < parts.Count) parts[p.Index].Progress = p.Fraction;
                     up.Progress = fractions.Average();
                 }), up.Cts.Token);
             return null; // сами сообщения приходят обновлением от сервера
@@ -1319,7 +1329,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     public bool IsSelecting => Selected.Count > 0;
     public string SelectedText => $"{Fmt.N(Selected.Count)} {Fmt.Plural(Selected.Count, "сообщение", "сообщения", "сообщений")}";
     /// <summary>Удалить выбранные можно, только если все они свои.</summary>
-    public bool CanDeleteSelected => Selected.Count > 0 && Selected.All(m => m.IsOut);
+    public bool CanDeleteSelected => Selected.Count > 0 && Selected.All(m => m.CanDelete);
 
     private void SelectionChanged()
     {
@@ -1378,47 +1388,36 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     {
         if (!CanDeleteSelected) return;
         var ids = SelectedIds().ToArray();
-        _owner.Confirm = new ConfirmRequest(
-            $"Удалить {SelectedText}?", "Сообщения будут удалены для всех.", "Удалить", true,
-            async () =>
-            {
-                await _tg.DeleteAsync(Peer, ids, true);
-                OnMessagesDeleted(ids);
-                _owner.OnLocalDeleted(Peer.Key);
-                ClearSelection();
-            });
-    }
-
-    [RelayCommand]
-    private void Copy(MessageViewModel? m)
-    {
-        if (m is null) return;
-        try
-        {
-            Clipboard.SetText(m.HasText ? m.Text : m.Item.Preview);
-            _owner.ShowToast("Скопировано");
-        }
-        catch { /* буфер занят */ }
+        AskDelete(ids, $"Удалить {SelectedText}?", ClearSelection);
     }
 
     [RelayCommand]
     private void Delete(MessageViewModel? m)
     {
-        if (m is null) return;
-        var everyone = m.IsOut || Peer.Kind != PeerKind.User;
+        if (m is not { CanDelete: true }) return;
         var ids = m.AllIds.ToArray();
-        _owner.Confirm = new ConfirmRequest(
-            ids.Length > 1 ? $"Удалить {ids.Length} сообщения?" : "Удалить сообщение?",
-            Peer.Kind == PeerKind.User
-                ? "Сообщение будет удалено у вас и у собеседника."
-                : "Сообщение будет удалено для всех участников (нужны права администратора, если оно не ваше).",
-            "Удалить", true,
-            async () =>
-            {
-                await _tg.DeleteAsync(Peer, ids, everyone);
-                OnMessagesDeleted(ids);
-                _owner.OnLocalDeleted(Peer.Key);
-            });
+        AskDelete(ids, ids.Length > 1 ? $"Удалить {ids.Length} сообщения?" : "Удалить сообщение?");
+    }
+
+    // Как в Telegram: в личке, с ботом и в обычной группе — галочка «удалить и у них» (по умолчанию стоит; сняли — только у себя);
+    // в супергруппах и каналах удаление всегда у всех. В «Избранном» спрашивать не о чем.
+    private void AskDelete(int[] ids, string title, Action? done = null)
+    {
+        var check = Peer.IsSelf || !Peer.CanRevoke ? null : new ConfirmCheck(Peer.Kind switch
+        {
+            PeerKind.User => $"Также удалить у {Peer.DisplayTitle}",
+            PeerKind.Bot => $"Также удалить у бота {Peer.DisplayTitle}",
+            _ => "Удалить для всех участников",
+        });
+        var text = Peer.IsSelf ? null : !Peer.CanRevoke ? "Сообщения будут удалены для всех участников." : null;
+        _owner.Confirm = new ConfirmRequest(title, text!, "Удалить", true, async () =>
+        {
+            await _tg.DeleteAsync(Peer, ids, forEveryone: check?.IsChecked ?? true);
+            OnMessagesDeleted(ids);
+            _owner.OnLocalDeleted(Peer.Key);
+            done?.Invoke();
+        })
+        { Check = check };
     }
 
     [RelayCommand(AllowConcurrentExecutions = true)] // общая для всех сообщений: пока качается одно, остальные кнопки не блокируются

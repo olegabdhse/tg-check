@@ -34,6 +34,12 @@ public sealed class AvatarView : Grid
         HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
     };
     private readonly Ellipse _photo = new();
+    // «Избранное» (инициалы «★») — закладка, как в Telegram.
+    private readonly System.Windows.Shapes.Path _bookmark = new()
+    {
+        Data = Geometry.Parse("M2,0 H12 A2,2 0 0 1 14,2 V18 L7,13.5 L0,18 V2 A2,2 0 0 1 2,0 Z"), Fill = Brushes.White, Stretch = Stretch.Uniform,
+        HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false,
+    };
     // Тонкая обводка по краю, когда цветной рамки нет — у любого аватара есть аккуратный контур.
     private readonly Ellipse _edge = new() { IsHitTestVisible = false, StrokeThickness = 1, Stroke = EdgeBrush };
     private static readonly Brush EdgeBrush = Freeze(new SolidColorBrush(Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF)));
@@ -43,6 +49,7 @@ public sealed class AvatarView : Grid
     {
         _face.Children.Add(_bg);
         _face.Children.Add(_initials);
+        _face.Children.Add(_bookmark);
         _face.Children.Add(_photo);
         _face.Children.Add(_edge);
         Children.Add(_ring);
@@ -66,7 +73,10 @@ public sealed class AvatarView : Grid
         _edge.Visibility = hasRing ? Visibility.Collapsed : Visibility.Visible;
 
         _bg.Fill = Fill ?? Brushes.SlateGray;
-        _initials.Text = Initials;
+        var saved = Initials == "★";
+        _initials.Text = saved ? null : Initials;
+        _bookmark.Visibility = saved ? Visibility.Visible : Visibility.Collapsed;
+        _bookmark.Height = Math.Max(8, size * 0.42);
         _initials.FontSize = Math.Max(8, (size - (hasRing ? 2 * (thickness + gap) : 0)) * 0.38);
         _photo.Fill = Source is null ? null : new ImageBrush(Source) { Stretch = Stretch.UniformToFill };
         _photo.Visibility = Source is null ? Visibility.Collapsed : Visibility.Visible;

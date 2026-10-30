@@ -167,7 +167,45 @@
                                     IsUnlistened="{Binding IsMediaUnread}" />
         </DataTemplate>
 
-        <!-- Голосовое / аудио -->
+        <!-- Песня: обложка с кнопкой, название и исполнитель, тонкая полоска прогресса (без волны), как в Telegram -->
+        <DataTemplate x:Key="MediaAudio" DataType="{x:Type vm:MessageViewModel}">
+            <DockPanel Margin="0,2,0,2" MinWidth="260">
+                <Button DockPanel.Dock="Left" Width="54" Height="54" Margin="0,0,12,0" Style="{StaticResource BareButton}" Cursor="Hand"
+                        Command="{Binding DataContext.PlayAudioCommand, ElementName=Root}" CommandParameter="{Binding}">
+                    <Grid>
+                        <Grid helpers:RoundClip.Radius="10">
+                            <Border Background="{StaticResource AccentBrush}" />
+                            <TextBlock Text="&#xE8D6;" Style="{StaticResource Icon}" FontSize="20" Foreground="#99FFFFFF"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Visibility="{Binding Preview, Converter={StaticResource InvNullToVis}}" />
+                            <Image Source="{Binding Preview}" Stretch="UniformToFill" />
+                        </Grid>
+                        <Border Width="30" Height="30" CornerRadius="15" Background="#99000000" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Grid>
+                                <TextBlock Text="{Binding PlayIcon}" Style="{StaticResource Icon}" FontSize="12" Foreground="White"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Visibility="{Binding IsLoadingAudio, Converter={StaticResource InvBoolToVis}}" />
+                                <views:Spinner Width="16" Height="16" Visibility="{Binding IsLoadingAudio, Converter={StaticResource BoolToVis}}" />
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Button>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{Binding SongTitle}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis" MaxWidth="260" />
+                    <TextBlock Text="{Binding SongPerformer}" FontSize="12" Foreground="#8FA3B5" TextTrimming="CharacterEllipsis" MaxWidth="260"
+                               Visibility="{Binding SongPerformer, Converter={StaticResource NullToVis}}" />
+                    <Grid Height="14" Width="200" Margin="0,4,0,0" HorizontalAlignment="Left" Background="Transparent" Cursor="Hand"
+                          MouseLeftButtonDown="Wave_MouseLeftButtonDown">
+                        <Border Height="3" CornerRadius="1.5" Background="#33FFFFFF" VerticalAlignment="Center" />
+                        <Border Height="3" CornerRadius="1.5" Background="{StaticResource AccentBrush}" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                Width="{Binding PlayProgress, Converter={StaticResource Mul}, ConverterParameter=200}" />
+                    </Grid>
+                    <TextBlock Text="{Binding VoiceDurationText}" FontSize="11" Foreground="{StaticResource MetaBrush}" />
+                </StackPanel>
+            </DockPanel>
+        </DataTemplate>
+
+        <!-- Голосовое -->
         <DataTemplate x:Key="MediaVoice" DataType="{x:Type vm:MessageViewModel}">
             <DockPanel Margin="0,2,0,2" MinWidth="250">
                 <Button DockPanel.Dock="Left" Width="44" Height="44" Margin="0,0,10,0" Style="{StaticResource RoundButton}"
@@ -181,7 +219,7 @@
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="{Binding FileTitle}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" MaxWidth="260"
                                Visibility="{Binding IsAudio, Converter={StaticResource BoolToVis}}" />
-                    <Grid Height="28" Width="160" HorizontalAlignment="Left" Background="Transparent" Cursor="Hand"
+                    <Grid Height="28" Width="200" HorizontalAlignment="Left" Background="Transparent" Cursor="Hand"
                           MouseLeftButtonDown="Wave_MouseLeftButtonDown">
                         <ItemsControl ItemsSource="{Binding WaveBars}" VerticalAlignment="Center" IsHitTestVisible="False">
                             <ItemsControl.ItemsPanel>
@@ -196,8 +234,8 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                         <Border HorizontalAlignment="Left" ClipToBounds="True" IsHitTestVisible="False"
-                                Width="{Binding PlayProgress, Converter={StaticResource Mul}, ConverterParameter=160}">
-                            <ItemsControl ItemsSource="{Binding WaveBars}" VerticalAlignment="Center" Width="160">
+                                Width="{Binding PlayProgress, Converter={StaticResource Mul}, ConverterParameter=200}">
+                            <ItemsControl ItemsSource="{Binding WaveBars}" VerticalAlignment="Center" Width="200">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <StackPanel Orientation="Horizontal" />
@@ -390,6 +428,7 @@
                 <DataTrigger Binding="{Binding Layout}" Value="Sticker"><Setter Property="ContentTemplate" Value="{StaticResource MediaSticker}" /></DataTrigger>
                 <DataTrigger Binding="{Binding Layout}" Value="Round"><Setter Property="ContentTemplate" Value="{StaticResource MediaRound}" /></DataTrigger>
                 <DataTrigger Binding="{Binding Layout}" Value="Voice"><Setter Property="ContentTemplate" Value="{StaticResource MediaVoice}" /></DataTrigger>
+                <DataTrigger Binding="{Binding IsAudio}" Value="True"><Setter Property="ContentTemplate" Value="{StaticResource MediaAudio}" /></DataTrigger>
                 <DataTrigger Binding="{Binding Layout}" Value="Poll"><Setter Property="ContentTemplate" Value="{StaticResource MediaPoll}" /></DataTrigger>
                 <DataTrigger Binding="{Binding Layout}" Value="File"><Setter Property="ContentTemplate" Value="{StaticResource MediaFile}" /></DataTrigger>
                 <DataTrigger Binding="{Binding Layout}" Value="VisualAlbum"><Setter Property="ContentTemplate" Value="{StaticResource MediaVisualAlbum}" /></DataTrigger>
@@ -468,29 +507,50 @@
                                     <Setter.Value>
                                         <!-- Слайд-шоу одним окном: стрелки по краям, белые точки внизу — текущий слайд -->
                                         <DataTemplate>
-                                            <Grid Width="363" Height="{Binding SlideHeight}" Margin="-6,3,-6,5" HorizontalAlignment="Left" helpers:RoundClip.Radius="8">
+                                            <Grid x:Name="Slide" Width="363" Height="{Binding SlideHeight}" Margin="-6,3,-6,5" HorizontalAlignment="Left" helpers:RoundClip.Radius="8">
                                                 <Border Background="#22FFFFFF" />
                                                 <Button Style="{StaticResource BareButton}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                                                         Command="{Binding DataContext.OpenMediaCommand, ElementName=Root}" CommandParameter="{Binding Current}">
                                                     <Grid>
                                                         <Image Source="{Binding Current.Preview}" Stretch="UniformToFill" />
-                                                        <Border Width="44" Height="44" CornerRadius="22" Background="#88000000"
+                                                        <!-- Видео, уже скачанное, играет само (без звука, по кругу) -->
+                                                        <controls:GifView Media="{Binding Current.Item}" OnlyIfCached="True" CornerRadius="0"
+                                                                          Visibility="{Binding Current.IsVideo, Converter={StaticResource BoolToVis}}" />
+                                                        <Border Style="{StaticResource Pill}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="52,8,0,0"
                                                                 Visibility="{Binding Current.IsVideo, Converter={StaticResource BoolToVis}}">
-                                                            <TextBlock Text="&#xE768;" Style="{StaticResource Icon}" FontSize="16" Foreground="White" HorizontalAlignment="Center" />
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Text="&#xE768;" Style="{StaticResource Icon}" FontSize="9" Foreground="White" Margin="0,0,5,0" VerticalAlignment="Center" />
+                                                                <TextBlock Text="{Binding Current.DurationText}" FontSize="11" Foreground="White" />
+                                                            </StackPanel>
                                                         </Border>
                                                     </Grid>
                                                 </Button>
-                                                <Button Style="{StaticResource BareButton}" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="8,0,0,0"
+                                                <!-- По краям — полосы с размытой картинкой и стрелками: стрелки видны на любом снимке -->
+                                                <Button Style="{StaticResource BareButton}" HorizontalAlignment="Left" Width="44" ClipToBounds="True"
                                                         Command="{Binding PrevSlideCommand}" ToolTip="Назад" Visibility="{Binding HasPrev, Converter={StaticResource BoolToVis}}">
-                                                    <Border Width="32" Height="32" CornerRadius="16" Background="#88000000">
-                                                        <TextBlock Text="&#xE76B;" Style="{StaticResource Icon}" FontSize="13" Foreground="White" HorizontalAlignment="Center" />
-                                                    </Border>
+                                                    <Grid>
+                                                        <Image Source="{Binding Current.Preview}" Stretch="UniformToFill" Width="363" Height="{Binding SlideHeight}" HorizontalAlignment="Left">
+                                                            <Image.Effect>
+                                                                <BlurEffect Radius="18" KernelType="Gaussian" />
+                                                            </Image.Effect>
+                                                        </Image>
+                                                        <Border Background="#40000000" />
+                                                        <TextBlock Text="&#xE76B;" Style="{StaticResource Icon}" FontSize="15" Foreground="White"
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                    </Grid>
                                                 </Button>
-                                                <Button Style="{StaticResource BareButton}" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0"
+                                                <Button Style="{StaticResource BareButton}" HorizontalAlignment="Right" Width="44" ClipToBounds="True"
                                                         Command="{Binding NextSlideCommand}" ToolTip="Дальше" Visibility="{Binding HasNext, Converter={StaticResource BoolToVis}}">
-                                                    <Border Width="32" Height="32" CornerRadius="16" Background="#88000000">
-                                                        <TextBlock Text="&#xE76C;" Style="{StaticResource Icon}" FontSize="13" Foreground="White" HorizontalAlignment="Center" />
-                                                    </Border>
+                                                    <Grid>
+                                                        <Image Source="{Binding Current.Preview}" Stretch="UniformToFill" Width="363" Height="{Binding SlideHeight}" HorizontalAlignment="Right">
+                                                            <Image.Effect>
+                                                                <BlurEffect Radius="18" KernelType="Gaussian" />
+                                                            </Image.Effect>
+                                                        </Image>
+                                                        <Border Background="#40000000" />
+                                                        <TextBlock Text="&#xE76C;" Style="{StaticResource Icon}" FontSize="15" Foreground="White"
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                    </Grid>
                                                 </Button>
                                                 <Border HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,8" Padding="6,4" CornerRadius="8" Background="#55000000"
                                                         IsHitTestVisible="False">
@@ -540,10 +600,34 @@
 
         <!-- ================================================= Служебное сообщение -->
         <DataTemplate x:Key="ServiceTpl" DataType="{x:Type vm:MessageViewModel}">
-            <Border HorizontalAlignment="Center" Margin="40,6" Padding="12,5" CornerRadius="12" Background="#99182533">
-                <TextBlock helpers:RichText.Text="{Binding Item.ServiceText}" helpers:RichText.EmojiSize="16" FontSize="12"
-                           Foreground="#C9D4DF" TextWrapping="Wrap" TextAlignment="Center" />
-            </Border>
+            <Grid>
+                <Border HorizontalAlignment="Center" Margin="40,6" Padding="12,5" CornerRadius="12" Background="#99182533"
+                        Visibility="{Binding HasGift, Converter={StaticResource InvBoolToVis}}">
+                    <TextBlock helpers:RichText.Text="{Binding Item.ServiceText}" helpers:RichText.EmojiSize="16" FontSize="12"
+                               Foreground="#C9D4DF" TextWrapping="Wrap" TextAlignment="Center" />
+                </Border>
+                <!-- Подарок — карточка как в Telegram: стикер подарка, от кого, название, сообщение, цена -->
+                <Border HorizontalAlignment="Center" Margin="40,8" Width="250" Padding="16,14,16,16" CornerRadius="18"
+                        Background="{Binding GiftBackground}" Visibility="{Binding HasGift, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <controls:StickerView Width="120" Height="120" Media="{Binding Gift.Sticker}" HorizontalAlignment="Center" />
+                        <TextBlock Text="{Binding Gift.Caption}" FontSize="13" Foreground="#C9D4DF" TextAlignment="Center" TextWrapping="Wrap" Margin="0,10,0,0" />
+                        <TextBlock Text="{Binding Gift.Title}" FontSize="16" FontWeight="SemiBold" Foreground="White" TextAlignment="Center" TextWrapping="Wrap"
+                                   Margin="0,4,0,0" Visibility="{Binding Gift.Title, Converter={StaticResource NullToVis}}" />
+                        <TextBlock helpers:RichText.Text="{Binding Gift.Message}" helpers:RichText.EmojiSize="18" FontSize="14" Foreground="White"
+                                   TextAlignment="Center" TextWrapping="Wrap" Margin="0,8,0,0"
+                                   Visibility="{Binding Gift.Message, Converter={StaticResource NullToVis}}" />
+                        <TextBlock Text="{Binding Gift.Note}" FontSize="12" Foreground="#AAC0D4" TextAlignment="Center" TextWrapping="Wrap" Margin="0,8,0,0"
+                                   Visibility="{Binding Gift.Note, Converter={StaticResource NullToVis}}" />
+                        <Border HorizontalAlignment="Center" Margin="0,12,0,0" Padding="12,4" CornerRadius="12" Background="#33FFFFFF"
+                                Visibility="{Binding Gift.Stars, Converter={StaticResource NullToVis}}">
+                            <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="#FFD15C">
+                                <Run Text="⭐" /> <Run Text="{Binding Gift.Stars, Mode=OneWay}" />
+                            </TextBlock>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </Grid>
         </DataTemplate>
 
         <!-- ================================================= Сообщение -->
@@ -678,7 +762,7 @@
                                 <MenuItem Header="Удалить" Tag="&#xE74D;" Style="{StaticResource DangerMenuItem}"
                                           Command="{Binding PlacementTarget.Tag.DeleteCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}"
-                                          Visibility="{Binding IsOut, Converter={StaticResource BoolToVis}}" />
+                                          Visibility="{Binding CanDelete, Converter={StaticResource BoolToVis}}" />
                             </ContextMenu>
                         </Border.ContextMenu>
 
@@ -955,22 +1039,18 @@
 
         <!-- Отправляется: свой пузырь с прогрессом загрузки и крестиком отмены (как в Telegram) -->
         <DataTemplate x:Key="UploadTpl" DataType="{x:Type vm:UploadViewModel}">
-            <Grid>
-            <!-- Голосовое: та же форма, что у отправленного (волна, длительность, время) — после отправки ничего не скачет -->
-            <Border HorizontalAlignment="Right" Margin="0,1" Padding="10,6,10,6" CornerRadius="14" Background="{StaticResource OutBubble}"
-                    Visibility="{Binding IsVoice, Converter={StaticResource BoolToVis}}">
+            <!-- Отправка: пузырь той же формы, что будет после (голосовое, сетка медиа, файлы); вместо плеера/значка —
+                 белый ободок загрузки с крестиком. Заготовка живёт до конца отправки — меняется только ободок. -->
+            <Border HorizontalAlignment="Right" Margin="0,1" Padding="10,6,10,6" CornerRadius="14" Background="{StaticResource OutBubble}" MaxWidth="520">
                 <StackPanel>
-                    <DockPanel Margin="0,2,0,2" MinWidth="250">
-                        <Grid DockPanel.Dock="Left" Width="44" Height="44" Margin="0,0,10,0">
-                            <Ellipse Fill="{StaticResource AccentBrush}" />
-                            <views:Spinner Width="40" Height="40" IsHitTestVisible="False" />
-                            <Button Style="{StaticResource BareButton}" Command="{Binding CancelCommand}" ToolTip="Отменить отправку" Cursor="Hand">
-                                <TextBlock Text="&#xE711;" Style="{StaticResource Icon}" FontSize="14" Foreground="White"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Button>
-                        </Grid>
+                    <!-- Голосовое -->
+                    <DockPanel Margin="0,2,0,2" MinWidth="250" Visibility="{Binding IsVoice, Converter={StaticResource BoolToVis}}">
+                        <Button DockPanel.Dock="Left" Width="44" Height="44" Margin="0,0,10,0" Style="{StaticResource BareButton}"
+                                Command="{Binding CancelCommand}" ToolTip="Отменить отправку" Cursor="Hand">
+                            <controls:ProgressArc Width="44" Height="44" Progress="{Binding Progress}" Fill="{StaticResource AccentBrush}" />
+                        </Button>
                         <StackPanel VerticalAlignment="Center">
-                            <ItemsControl ItemsSource="{Binding WaveBars}" Height="28" Width="160" HorizontalAlignment="Left" IsHitTestVisible="False">
+                            <ItemsControl ItemsSource="{Binding WaveBars}" Height="28" HorizontalAlignment="Left" IsHitTestVisible="False">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <StackPanel Orientation="Horizontal" />
@@ -985,6 +1065,74 @@
                             <TextBlock Text="{Binding VoiceDuration}" FontSize="11" Foreground="{StaticResource MetaBrush}" />
                         </StackPanel>
                     </DockPanel>
+
+                    <!-- Одно фото / видео — того же размера, что после отправки -->
+                    <ItemsControl ItemsSource="{Binding Tiles}" Margin="-6,0,-6,4" HorizontalAlignment="Left"
+                                  Visibility="{Binding IsSingleTile, Converter={StaticResource BoolToVis}}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:UploadPart}">
+                                <Grid Width="{Binding SingleWidth}" Height="{Binding SingleHeight}" helpers:RoundClip.Radius="10">
+                                    <Border Background="#22FFFFFF" />
+                                    <Image Source="{Binding Preview}" Stretch="UniformToFill" />
+                                    <Button Style="{StaticResource BareButton}" Width="48" Height="48" Cursor="Hand" ToolTip="Отменить отправку"
+                                            Command="{Binding DataContext.CancelCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
+                                        <controls:ProgressArc Width="48" Height="48" Progress="{Binding Progress}" />
+                                    </Button>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Несколько — той же сеткой, что альбом после отправки -->
+                    <ItemsControl ItemsSource="{Binding Tiles}" Margin="-6,0,-6,4" Width="363" HorizontalAlignment="Left"
+                                  Visibility="{Binding IsAlbumTiles, Converter={StaticResource BoolToVis}}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <controls:AlbumPanel Spacing="3" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:UploadPart}">
+                                <Grid helpers:RoundClip.Radius="6">
+                                    <Border Background="#22FFFFFF" />
+                                    <Image Source="{Binding Preview}" Stretch="UniformToFill" />
+                                    <Button Style="{StaticResource BareButton}" Width="40" Height="40" Cursor="Hand" ToolTip="Отменить отправку"
+                                            Command="{Binding DataContext.CancelCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
+                                        <controls:ProgressArc Width="40" Height="40" Progress="{Binding Progress}" />
+                                    </Button>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Файлы — строками, как отправленные -->
+                    <ItemsControl ItemsSource="{Binding Files}" Visibility="{Binding IsFiles, Converter={StaticResource BoolToVis}}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:UploadPart}">
+                                <DockPanel Margin="0,2,0,4" MinWidth="230">
+                                    <Button DockPanel.Dock="Left" Width="44" Height="44" Margin="0,0,10,0" Style="{StaticResource BareButton}" Cursor="Hand"
+                                            ToolTip="Отменить отправку"
+                                            Command="{Binding DataContext.CancelCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
+                                        <controls:ProgressArc Width="44" Height="44" Progress="{Binding Progress}" Fill="{StaticResource AccentBrush}" />
+                                    </Button>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" MaxWidth="340" />
+                                        <TextBlock Text="{Binding Size}" FontSize="12" Foreground="#8FA3B5" />
+                                    </StackPanel>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Прочее -->
+                    <DockPanel Visibility="{Binding IsPlain, Converter={StaticResource BoolToVis}}">
+                        <Button DockPanel.Dock="Left" Width="44" Height="44" Margin="0,0,10,0" Style="{StaticResource BareButton}" Cursor="Hand"
+                                Command="{Binding CancelCommand}" ToolTip="Отменить отправку">
+                            <controls:ProgressArc Width="44" Height="44" Progress="{Binding Progress}" Fill="{StaticResource AccentBrush}" />
+                        </Button>
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="240" VerticalAlignment="Center" />
+                    </DockPanel>
+
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,2,0,-1">
                         <TextBlock Text="{Binding TimeText}" FontSize="11" Foreground="{StaticResource MetaBrush}" />
                         <TextBlock Text="&#xE823;" Style="{StaticResource Icon}" FontSize="10" Foreground="{StaticResource MetaBrush}" Margin="5,0,0,0"
@@ -992,32 +1140,6 @@
                     </StackPanel>
                 </StackPanel>
             </Border>
-            <Border HorizontalAlignment="Right" Margin="60,3,0,3" Padding="8,8,14,8" CornerRadius="14" Background="{StaticResource OutBubble}"
-                    MaxWidth="360" Visibility="{Binding IsVoice, Converter={StaticResource InvBoolToVis}}">
-                <DockPanel>
-                    <Grid DockPanel.Dock="Left" Width="46" Height="46" Margin="0,0,10,0">
-                        <Border CornerRadius="23" Background="#33FFFFFF" ClipToBounds="True">
-                            <Image Source="{Binding Preview}" Stretch="UniformToFill" Visibility="{Binding HasPreview, Converter={StaticResource BoolToVis}}" />
-                        </Border>
-                        <views:Spinner Width="46" Height="46" />
-                        <Button Style="{StaticResource BareButton}" Command="{Binding CancelCommand}" ToolTip="Отменить отправку" Cursor="Hand">
-                            <Border Width="30" Height="30" CornerRadius="15" Background="#66000000">
-                                <TextBlock Text="&#xE711;" Style="{StaticResource Icon}" FontSize="12" Foreground="White"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Border>
-                        </Button>
-                    </Grid>
-                    <StackPanel VerticalAlignment="Center">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding Icon}" Style="{StaticResource Icon}" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"
-                                       Visibility="{Binding HasPreview, Converter={StaticResource InvBoolToVis}}" />
-                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="240" />
-                        </StackPanel>
-                        <TextBlock Text="{Binding ProgressText}" FontSize="12" Foreground="{StaticResource MetaBrush}" Margin="0,3,0,0" />
-                    </StackPanel>
-                </DockPanel>
-            </Border>
-            </Grid>
         </DataTemplate>
 
         <views:MessageTemplateSelector x:Key="MessageSelector"
@@ -1290,7 +1412,7 @@
                                         <DataTemplate DataType="{x:Type vm:StickerSetViewModel}">
                                             <Button Style="{StaticResource BareButton}" Width="42" Height="42" ToolTip="{Binding Title}" Margin="0,0,2,0"
                                                     Command="{Binding DataContext.SelectSetCommand, ElementName=PickerPanel}" CommandParameter="{Binding}">
-                                                <controls:StickerView Media="{Binding Cover}" Animate="False" Width="32" Height="32" />
+                                                <controls:StickerView Media="{Binding Cover}" Once="True" Width="32" Height="32" />
                                             </Button>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
@@ -1309,7 +1431,7 @@
                                             <DataTemplate>
                                                 <Button Style="{StaticResource BareButton}" Width="84" Height="84" Padding="4"
                                                         Command="{Binding Tag.SendStickerCommand, ElementName=PickerPanel}" CommandParameter="{Binding}">
-                                                    <controls:StickerView Media="{Binding}" Animate="False" Width="72" Height="72" />
+                                                    <controls:StickerView Media="{Binding}" Once="True" Width="72" Height="72" />
                                                 </Button>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>

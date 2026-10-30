@@ -27,6 +27,9 @@ public sealed class GifView : Grid
 
     public double CornerRadius { get => (double)GetValue(CornerRadiusProperty); set => SetValue(CornerRadiusProperty, value); }
 
+    /// <summary>Играть только уже скачанное (видео в слайд-шоу): само не качает.</summary>
+    public bool OnlyIfCached { get; set; }
+
     private readonly Image _preview = new() { Stretch = Stretch.UniformToFill };
     private readonly MediaElement _player = new()
     {
@@ -88,7 +91,11 @@ public sealed class GifView : Grid
     private void UpdatePlayback()
     {
         var inView = IsLoaded && IsVisible && Viewport.Contains(this);
-        if (inView && !_hasSource) { EnsureFile(); return; }
+        if (inView && !_hasSource)
+        {
+            if (!OnlyIfCached || (Media is { } m && AppServices.Media?.IsMediaFileCached(m) == true)) EnsureFile();
+            return;
+        }
         if (!_hasSource) return;
         // Играем только то, что реально в видимой части ленты.
         if (IsLoaded && IsVisible && Viewport.Contains(this)) _player.Play();

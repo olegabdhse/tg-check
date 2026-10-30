@@ -238,6 +238,6 @@ public static class AvatarColors
     {
         var words = title.Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .Select(w => w.FirstOrDefault(char.IsLetterOrDigit)).Where(c => c != default).Take(2).ToArray();
-        return words.Length == 0 ? "?" : new string(words).ToUpperInvariant();
+        return words.Length == 0 ? "" : new string(words).ToUpperInvariant(); // без букв (скрытое имя) — просто цветной круг, без «?»
     }
 }

@@ -497,6 +497,7 @@ public sealed partial class TelegramService
                 DateUtc = s.date,
                 IsOut = s.flags.HasFlag(MessageService.Flags.out_),
                 ServiceText = ServiceText(s, from),
+                Gift = MapGiftCard(s, from),
                 // Служебные сообщения форума: «тема создана» — сама тема, остальные — тема, где они случились.
                 TopicId = s.action is MessageActionTopicCreate ? s.id
                     : s.reply_to is MessageReplyHeader { flags: var sf2 } sh && sf2.HasFlag(MessageReplyHeader.Flags.forum_topic)
@@ -572,7 +573,8 @@ public sealed partial class TelegramService
                     return Clone(item, MediaKind.Video, doc: d, w: video.w, h: video.h, title: name ?? "Видео", duration: video.duration);
                 if (audio is not null)
                     return Clone(item, MediaKind.Audio, doc: d, duration: audio.duration,
-                        title: Names.Join(audio.performer, audio.title) is { Length: > 0 } t ? t : name ?? "Аудио");
+                        title: Names.Join(audio.performer, audio.title) is { Length: > 0 } t ? t : name ?? "Аудио",
+                        songTitle: string.IsNullOrWhiteSpace(audio.title) ? name ?? "Аудио" : audio.title, performer: string.IsNullOrWhiteSpace(audio.performer) ? null : audio.performer);
                 return Clone(item, MediaKind.Document, doc: d, title: name ?? "Файл");
             case MessageMediaPoll poll:
                 var mapped = MapPoll(poll.poll, poll.results);
@@ -672,7 +674,8 @@ public sealed partial class TelegramService
     }
 
     private static MessageItem Clone(MessageItem i, MediaKind kind, Photo? photo = null, Document? doc = null,
-        int w = 0, int h = 0, string? title = null, string? emoji = null, double duration = 0, IReadOnlyList<byte>? waveform = null) => new()
+        int w = 0, int h = 0, string? title = null, string? emoji = null, double duration = 0, IReadOnlyList<byte>? waveform = null,
+        string? songTitle = null, string? performer = null) => new()
     {
         Id = i.Id, PeerKey = i.PeerKey, FromKey = i.FromKey, From = i.From, DateUtc = i.DateUtc, Text = i.Text,
         IsOut = i.IsOut, EditDateUtc = i.EditDateUtc, ReplyToId = i.ReplyToId, ThreadTopId = i.ThreadTopId, TopicId = i.TopicId, ForwardedFrom = i.ForwardedFrom,
@@ -680,6 +683,7 @@ public sealed partial class TelegramService
         InlineButtons = i.InlineButtons, ReplyKeyboard = i.ReplyKeyboard, KeyboardPlaceholder = i.KeyboardPlaceholder, Comments = i.Comments, Reactions = i.Reactions,
         Media = kind, Photo = photo, Document = doc, MediaWidth = w, MediaHeight = h,
         MediaTitle = title, MediaSize = doc?.size ?? 0, StickerEmoji = emoji, DurationSeconds = duration, Waveform = waveform,
+        SongTitle = songTitle, SongPerformer = performer,
     };
 
     private string ServiceText(MessageService s, PeerRef? from)

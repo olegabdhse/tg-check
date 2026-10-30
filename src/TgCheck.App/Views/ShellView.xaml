@@ -389,7 +389,11 @@
                                     <ItemsControl ItemsSource="{Binding Viewers}" Focusable="False">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate DataType="{x:Type vm:StoryViewerViewModel}">
-                                                <DockPanel Margin="16,6">
+                                                <DockPanel Margin="16,6" Background="Transparent" Cursor="Hand" ToolTip="Открыть профиль">
+                                                    <DockPanel.InputBindings>
+                                                        <MouseBinding MouseAction="LeftClick" Command="{Binding DataContext.OpenViewerCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                      CommandParameter="{Binding}" />
+                                                    </DockPanel.InputBindings>
                                                     <controls:AvatarView DockPanel.Dock="Left" Width="38" Height="38" Margin="0,0,12,0" Source="{Binding Avatar}"
                                                                          Fill="{Binding AvatarBrush}" Initials="{Binding Initials}" />
                                                     <TextBlock DockPanel.Dock="Right" helpers:RichText.Text="{Binding Reaction}" helpers:RichText.EmojiSize="20"

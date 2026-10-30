@@ -409,6 +409,47 @@ public sealed class MediaService
         }
     }
 
+    // ===================================================================== Обложка песни
+
+    /// <summary>
+    /// Обложка альбома для песни без встроенной картинки: поиск по исполнителю и названию в открытом каталоге iTunes
+    /// (без ключей). Ответ — и «не найдено» тоже — кэшируется на диске, повторно не спрашиваем.
+    /// </summary>
+    public Task<byte[]?> GetSongCoverAsync(string? performer, string title)
+    {
+        var term = string.Join(' ', new[] { performer, title }.Where(s => !string.IsNullOrWhiteSpace(s))).Trim();
+        if (term.Length < 3) return Task.FromResult<byte[]?>(null);
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(term.ToLowerInvariant())))[..16];
+        var key = "cover_" + hash;
+        return _inflight.GetOrAdd(key, _ => Task.Run(async () =>
+        {
+            var path = Path.Combine(_cacheDir, key + ".jpg");
+            var miss = Path.Combine(_cacheDir, key + ".none");
+            try
+            {
+                if (File.Exists(path)) return await File.ReadAllBytesAsync(path);
+                if (File.Exists(miss)) return null;
+                var url = "https://itunes.apple.com/search?media=music&entity=song&limit=1&term=" + Uri.EscapeDataString(term);
+                using var json = System.Text.Json.JsonDocument.Parse(await MapHttp.GetStringAsync(url));
+                var results = json.RootElement.GetProperty("results");
+                if (results.GetArrayLength() == 0 || !results[0].TryGetProperty("artworkUrl100", out var art) || art.GetString() is not { } artUrl)
+                {
+                    await File.WriteAllTextAsync(miss, "");
+                    return null;
+                }
+                var bytes = await MapHttp.GetByteArrayAsync(artUrl.Replace("100x100", "300x300"));
+                await File.WriteAllBytesAsync(path, bytes);
+                return bytes;
+            }
+            catch (Exception ex)
+            {
+                Logging.Write($"song cover: {ex.Message}");
+                _inflight.TryRemove(key, out var _gone);
+                return null;
+            }
+        }));
+    }
+
     // ===================================================================== Карта для геопозиции
 
     private static readonly HttpClient MapHttp = CreateMapHttp();
@@ -477,6 +518,15 @@ public sealed class MediaService
     /// для воспроизведения без «Сохранить как». Повторные вызовы отдают тот же файл.
     /// </summary>
     /// <param name="priority">true — открыто пользователем (видео, история, голосовое): без очереди. false — фоновая загрузка (GIF, кружки).</param>
+    /// <summary>Файл (видео и т.п.) уже скачан целиком — можно играть сразу, не загружая.</summary>
+    public bool IsMediaFileCached(MediaHolder media)
+    {
+        if (media.Document is not { } doc) return false;
+        var dir = Path.Combine(_cacheDir, "media");
+        if (!Directory.Exists(dir)) return false;
+        return Directory.EnumerateFiles(dir, $"{doc.id}.*").Any(f => !f.EndsWith(".part") && new FileInfo(f).Length == doc.size);
+    }
+
     public Task<string?> GetMediaFileAsync(MediaHolder media, IProgress<double>? progress = null, bool priority = true)
     {
         if (media.Document is not { } doc) return Task.FromResult<string?>(null);

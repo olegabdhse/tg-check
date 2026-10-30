@@ -241,6 +241,15 @@ public sealed partial class StoriesViewModel : ObservableObject
         _openProfile(peer);
     }
 
+    /// <summary>Кто посмотрел историю — открыть его профиль.</summary>
+    [RelayCommand]
+    private void OpenViewer(StoryViewerViewModel? viewer)
+    {
+        if (viewer is null) return;
+        Close();
+        _openProfile(viewer.Peer);
+    }
+
     private static string TimeAgo(DateTime utc)
     {
         var d = DateTime.UtcNow - utc;

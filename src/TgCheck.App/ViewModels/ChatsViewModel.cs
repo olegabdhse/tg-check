@@ -527,7 +527,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
             }
             var vm = new ChatItemViewModel(d, order++);
             if (_forumUnread.TryGetValue(d.Peer.Key, out var knownForumUnread)) vm.Unread = knownForumUnread;
-            if (d.Peer.IsUser) vm.IsOnline = _tg.GetPresence(d.Peer).Presence == Presence.Online;
+            if (d.Peer.IsUser && !d.Peer.IsSelf) vm.IsOnline = _tg.GetPresence(d.Peer).Presence == Presence.Online;
             _byKey[d.Peer.Key] = vm;
             Chats.Add(vm);
         }
@@ -909,7 +909,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
 
     private void OnUserStatus(long userId, Presence presence, DateTime? seen) => Anim.Ui(() =>
     {
-        if (_byKey.TryGetValue(userId, out var chat)) chat.IsOnline = presence == Presence.Online;
+        if (_byKey.TryGetValue(userId, out var chat) && !chat.Peer.IsSelf) chat.IsOnline = presence == Presence.Online;
         if (_conversations.TryGetValue(userId, out var conv)) conv.UpdateStatus();
     });
 

@@ -45,7 +45,18 @@ public sealed partial class InfoRow : ObservableObject
 }
 
 /// <summary>Запрос подтверждения действия (оверлей поверх страницы).</summary>
-public sealed record ConfirmRequest(string Title, string Text, string ActionText, bool IsDanger, Func<Task> Action);
+public sealed record ConfirmRequest(string Title, string Text, string ActionText, bool IsDanger, Func<Task> Action)
+{
+    /// <summary>Галочка в окне (например, «Также удалить у …»); null — без неё.</summary>
+    public ConfirmCheck? Check { get; init; }
+}
+
+/// <summary>Галочка в окне подтверждения.</summary>
+public sealed partial class ConfirmCheck(string text, bool isChecked = true) : ObservableObject
+{
+    public string Text { get; } = text;
+    [ObservableProperty] private bool _isChecked = isChecked;
+}
 
 public sealed partial class ProfileViewModel : ObservableObject
 {

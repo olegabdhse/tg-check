@@ -209,4 +209,9 @@ public partial class ChatsView : UserControl
         public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value is int i && i != 0;
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotSupportedException();
     }
+
+    private void ConfirmCheck_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: ConfirmCheck check }) check.IsChecked = !check.IsChecked;
+    }
 }
