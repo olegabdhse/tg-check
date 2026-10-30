@@ -369,7 +369,11 @@ public sealed partial class ProfileViewModel : ObservableObject
     private void SetMusic(ProfileInfo profile)
     {
         if (profile.Music is not { } song || profile.Peer is not { } owner) { Music = null; return; }
-        if (Music?.Item.MediaId == song.MediaId) return;
+        if (Music is { } current && current.Item.MediaId == song.MediaId)
+        {
+            current.Item = song; // та же песня, но свежая ссылка на файл (у кэшированного профиля она устаревает)
+            return;
+        }
         var vm = new MessageViewModel(song, owner);
         vm.EnsurePreview(_tg.Media);
         VoicePlayback.Attach(vm);
@@ -457,7 +461,12 @@ public sealed partial class ProfileViewModel : ObservableObject
             var avatar = profile.Avatar is { } bytes ? await Task.Run(() => Images.FromBytes(bytes, 256)) : null;
             // Профиль — сразу, не дожидаясь аватарки (её загрузка с диска или из сети раньше задерживала всю страницу).
             // Уже показан (из кэша или боковой панели) и не изменился — не перерисовываем.
-            if (Profile is { } shown && Signature(shown) == Signature(profile)) { if (avatar is not null) Avatar = avatar; IsLoading = false; }
+            if (Profile is { } shown && Signature(shown) == Signature(profile))
+            {
+                if (avatar is not null) Avatar = avatar;
+                SetMusic(profile); // ссылки на файлы — всегда свежие
+                IsLoading = false;
+            }
             else ApplyProfile(profile, avatar);
             if (avatar is null && profile.Peer is { HasPhoto: true } who) _ = LoadSmallAvatarAsync(who);
             if (!IsSelf && !IsCompact && profile.Peer is { HasPhoto: true } owner) _ = LoadBigAvatarAsync(owner);

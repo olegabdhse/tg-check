@@ -669,10 +669,30 @@ public sealed class MediaService
         if (media.Document is { } doc) _cancelledFiles[doc.id] = true;
     }
 
+    /// <summary>Взять свежую ссылку на файл (сообщение или профиль запросить заново). Задаёт TelegramService.</summary>
+    internal Func<MediaHolder, Task<Document?>>? RefreshDocument { get; set; }
+
+    // Скачать; если ссылка на файл устарела (кэш, давно открытый чат) — один раз берём свежую и повторяем.
+    private async Task<string?> DownloadFreshAsync(MediaHolder media, Document doc, IProgress<double>? progress, bool priority)
+    {
+        try { return await DownloadMediaFileAsync(doc, progress, priority); }
+        catch (FileReferenceExpiredException)
+        {
+            if (RefreshDocument is null) return null;
+            Document? fresh = null;
+            try { fresh = await RefreshDocument(media); }
+            catch (Exception ex) { Logging.Write($"refresh file reference: {ex.Message}"); }
+            if (fresh is null) return null;
+            Logging.Write($"media file {doc.id}: ссылка обновлена, повторяем");
+            try { return await DownloadMediaFileAsync(fresh, progress, priority); }
+            catch (FileReferenceExpiredException) { return null; }
+        }
+    }
+
     public Task<string?> GetMediaFileAsync(MediaHolder media, IProgress<double>? progress = null, bool priority = true)
     {
         if (media.Document is not { } doc) return Task.FromResult<string?>(null);
-        var task = _files.GetOrAdd(doc.id, _ => Task.Run(() => DownloadMediaFileAsync(doc, progress, priority)));
+        var task = _files.GetOrAdd(doc.id, _ => Task.Run(() => DownloadFreshAsync(media, doc, progress, priority)));
         if (task.IsFaulted || (task.IsCompleted && task.Result is null)) _files.TryRemove(doc.id, out _);
         return task;
     }
@@ -789,6 +809,8 @@ public sealed class MediaService
             Logging.Write($"media file {doc.id}: {ex.Message}");
             _files.TryRemove(doc.id, out _);
             foreach (var leftover in Directory.EnumerateFiles(Path.GetDirectoryName(path)!, $"{doc.id}*.part")) try { File.Delete(leftover); } catch { }
+            // Ссылка на файл устарела (Telegram выдаёт их на время) — пусть вызывающий возьмёт свежую и повторит.
+            if (ex is RpcException { Message: "FILE_REFERENCE_EXPIRED" }) throw new FileReferenceExpiredException();
             return null;
         }
     }

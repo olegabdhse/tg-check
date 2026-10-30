@@ -128,3 +128,6 @@ internal sealed class BytesCache(long capacity)
         }
     }
 }
+
+/// <summary>Ссылка на файл в Telegram устарела — нужна свежая (сообщение или профиль запросить заново).</summary>
+internal sealed class FileReferenceExpiredException() : Exception("FILE_REFERENCE_EXPIRED");

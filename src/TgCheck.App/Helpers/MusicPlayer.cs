@@ -100,6 +100,15 @@ public sealed class MusicPlayer
             _lengthMs = 0;
             Key = key;
             _player.Play(_media);
+            // Песня не скачалась (ошибка сети, устаревшая ссылка) — плеер закрывается, а не крутит загрузку вечно.
+            if (source is GrowingFileStream growing)
+                _ = growing.Done.ContinueWith(t =>
+                {
+                    if (t.IsCompletedSuccessfully && t.Result is not null) return;
+                    Logging.Write("music: песня не скачалась");
+                    lock (_lock) { if (Key != key) return; StopInternal(); }
+                    Notify();
+                });
             _timer = new Timer(_ => { if (IsPlaying || IsBuffering) Notify(); }, null, 0, 50);
         }
         Notify();
