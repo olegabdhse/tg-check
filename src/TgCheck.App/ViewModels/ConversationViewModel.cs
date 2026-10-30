@@ -375,6 +375,8 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         }
     }
 
+    private int _quietId;
+
     private void AppendRange(IEnumerable<MessageItem> messages, bool animate)
     {
         foreach (var m in messages)
@@ -390,7 +392,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
                 continue;
             }
             var vm = Create(m);
-            vm.IsNew = animate;
+            vm.IsNew = animate && m.Id != _quietId;
             var day = m.DateUtc.ToLocalTime().Date;
             if (last is null || last.Item.DateUtc.ToLocalTime().Date != day) Items.Add(new DateSeparatorViewModel(day));
             Items.Add(vm);
@@ -728,16 +730,45 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
 
     // ===================================================================== Запись голосовых (как в Telegram Desktop)
     // Пустое поле — вместо «отправить» микрофон: держите — идёт запись, отпустили — отправилось,
-    // увели курсор с кнопки и отпустили — отмена, потянули вверх — запись «закрепляется» без удержания.
+    // увели курсор влево и отпустили — отмена, потянули вверх — запись «закрепляется» без удержания.
+    // Закреплённую запись можно остановить: тогда её можно прослушать, обрезать с краёв и только потом отправить.
 
     private VoiceRecorder? _recorder;
     private Task _recorderStart = Task.CompletedTask;
     private System.Windows.Threading.DispatcherTimer? _recordTimer;
 
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowMic))] private bool _isRecording;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowMic), nameof(IsVoiceUi))] private bool _isRecording;
     [ObservableProperty] private bool _isRecordLocked;
     [ObservableProperty] private string _recordTime = "0:00,0";
     [ObservableProperty] private double _recordLevel;
+    /// <summary>Громкость записи по 50 мс — живая волна вместо поля ввода.</summary>
+    [ObservableProperty] private float[]? _recordPeaks;
+
+    // ---- прослушивание и обрезка перед отправкой
+    private VoiceRecorder? _preview;
+    private System.Windows.Threading.DispatcherTimer? _previewTimer;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsVoiceUi))] private bool _isVoicePreview;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(PreviewTime))] private double _trimStart;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(PreviewTime))] private double _trimEnd = 1;
+    /// <summary>Где прослушивание (0..1 от всей записи), меньше 0 — не играет.</summary>
+    [ObservableProperty] private double _previewPosition = -1;
+    [ObservableProperty] private bool _isPreviewPlaying;
+    private double _previewSeconds;
+
+    /// <summary>Поле ввода спрятано: идёт запись или прослушивание голосового.</summary>
+    public bool IsVoiceUi => IsRecording || IsVoicePreview;
+    /// <summary>Длина того, что уйдёт (после обрезки).</summary>
+    public string PreviewTime => Fmt.Duration((TrimEnd - TrimStart) * _previewSeconds);
+
+    partial void OnTrimStartChanged(double value) => RestartPreviewIfPlaying();
+    partial void OnTrimEndChanged(double value) => RestartPreviewIfPlaying();
+
+    // Ручку двигают во время прослушивания — играем уже обрезанное, с начала.
+    private void RestartPreviewIfPlaying()
+    {
+        if (!IsPreviewPlaying) return;
+        PlayPreviewFrom(TrimStart);
+    }
 
     public bool ShowMic => string.IsNullOrWhiteSpace(Draft) && Editing is null && !HasAttachments;
 
@@ -771,6 +802,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             var s = _recorder.Seconds;
             RecordTime = $"{(int)s / 60}:{(int)s % 60:00},{(int)(s * 10) % 10}";
             RecordLevel = _recorder.Level;
+            RecordPeaks = _recorder.Peaks();
         };
         _recordTimer.Start();
         _ = _tg.NotifyTypingAsync(Peer);
@@ -780,10 +812,113 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     private void LockRecording() => IsRecordLocked = IsRecording;
 
     [RelayCommand]
-    private void CancelRecording() => _ = FinishRecordingAsync(cancel: true);
+    private void CancelRecording()
+    {
+        if (IsVoicePreview) { ClosePreview(); return; }
+        _ = FinishRecordingAsync(cancel: true);
+    }
 
     [RelayCommand]
-    private Task SendRecording() => FinishRecordingAsync(cancel: false);
+    private Task SendRecording() => IsVoicePreview ? SendPreviewAsync() : FinishRecordingAsync(cancel: false);
+
+    /// <summary>Закреплённая запись: «стоп» — остановить и перейти к прослушиванию и обрезке.</summary>
+    [RelayCommand]
+    private async Task StopRecording()
+    {
+        if (_recorder is not { } recorder) return;
+        _recorder = null;
+        _recordTimer?.Stop();
+        try { await _recorderStart; } catch { IsRecording = false; IsRecordLocked = false; return; }
+        await Task.Run(recorder.StopCapture);
+        _previewSeconds = recorder.Seconds;
+        IsRecordLocked = false;
+        RecordLevel = 0;
+        if (_previewSeconds < 0.7)
+        {
+            recorder.Dispose();
+            IsRecording = false;
+            RecordPeaks = null;
+            _owner.ShowToast("Слишком короткое голосовое");
+            return;
+        }
+        _preview = recorder;
+        RecordPeaks = recorder.Peaks();
+        TrimStart = 0;
+        TrimEnd = 1;
+        PreviewPosition = -1;
+        IsVoicePreview = true;
+        IsRecording = false;
+    }
+
+    [RelayCommand]
+    private void TogglePreviewPlay()
+    {
+        if (_preview is null) return;
+        if (IsPreviewPlaying) { StopPreviewPlayback(); return; }
+        var from = PreviewPosition >= TrimStart && PreviewPosition < TrimEnd - 0.01 ? PreviewPosition : TrimStart;
+        PlayPreviewFrom(from);
+    }
+
+    /// <summary>Клик по волне — слушать с этого места.</summary>
+    public void SeekPreview(double fraction)
+    {
+        if (_preview is null) return;
+        PlayPreviewFrom(Math.Clamp(fraction, TrimStart, TrimEnd));
+    }
+
+    private double _previewStart;
+
+    private void PlayPreviewFrom(double fraction)
+    {
+        if (_preview is not { } rec) return;
+        _previewStart = fraction * _previewSeconds;
+        var dispatcher = System.Windows.Application.Current.Dispatcher;
+        rec.Play(_previewStart, TrimEnd * _previewSeconds, () => dispatcher.BeginInvoke(() => { if (IsPreviewPlaying) StopPreviewPlayback(rewind: true); }));
+        IsPreviewPlaying = true;
+        PreviewPosition = fraction;
+        if (_previewTimer is null)
+        {
+            _previewTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
+            _previewTimer.Tick += (_, _) =>
+            {
+                if (_preview?.PlaybackSeconds is not { } played || _previewSeconds <= 0) return;
+                PreviewPosition = Math.Min(TrimEnd, (_previewStart + played) / _previewSeconds);
+            };
+        }
+        _previewTimer.Start();
+    }
+
+    private void StopPreviewPlayback(bool rewind = false)
+    {
+        _previewTimer?.Stop();
+        IsPreviewPlaying = false; // раньше остановки плеера: его «доиграло» не должно перематывать
+        _preview?.StopPlayback();
+        if (rewind) PreviewPosition = -1;
+    }
+
+    private void ClosePreview()
+    {
+        StopPreviewPlayback(rewind: true);
+        _preview?.Dispose();
+        _preview = null;
+        RecordPeaks = null;
+        RecordTime = "0:00,0";
+        IsVoicePreview = false;
+    }
+
+    private async Task SendPreviewAsync()
+    {
+        if (_preview is not { } rec) return;
+        StopPreviewPlayback(rewind: true);
+        var (from, to) = (TrimStart * _previewSeconds, TrimEnd * _previewSeconds);
+        var peaks = Slice(RecordPeaks, from, to);
+        _preview = null; // запись уходит в отправку — здесь её не закрываем
+        ClosePreview();
+        var voice = await Task.Run(() => rec.Encode(from, to));
+        rec.Dispose();
+        if (voice is null) { _owner.ShowToast("Слишком короткое голосовое"); return; }
+        await SendVoiceAsync(voice, peaks);
+    }
 
     public async Task FinishRecordingAsync(bool cancel)
     {
@@ -793,17 +928,39 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         IsRecording = false;
         IsRecordLocked = false;
         RecordLevel = 0;
+        var peaks = RecordPeaks;
+        RecordPeaks = null;
         try { await _recorderStart; } catch { return; } // микрофон ещё открывался — дождаться (или он не открылся)
         var voice = await Task.Run(() => recorder.Stop(cancel));
+        recorder.Dispose();
         RecordTime = "0:00,0";
         if (voice is null)
         {
             if (!cancel) _owner.ShowToast("Удерживайте кнопку, чтобы записать голосовое");
             return;
         }
+        await SendVoiceAsync(voice, peaks);
+    }
+
+    private static float[]? Slice(float[]? peaks, double from, double to)
+    {
+        if (peaks is null) return null;
+        var a = Math.Clamp((int)(from * VoiceRecorder.PeaksPerSecond), 0, peaks.Length);
+        var b = Math.Clamp((int)(to * VoiceRecorder.PeaksPerSecond), a, peaks.Length);
+        return peaks[a..b];
+    }
+
+    // Пока голосовое отправляется, в ленте уже стоит пузырь той же формы, что будет после отправки: волна и длительность,
+    // а вместо «играть» — загрузка с крестиком. Сообщение пришло — пузырь меняется на настоящий без скачка.
+    private async Task SendVoiceAsync(VoiceRecording voice, float[]? peaks)
+    {
         var reply = ReplyTo?.Id ?? SendTopId;
         ReplyTo = null;
-        var up = new UploadViewModel($"Голосовое сообщение · {Fmt.Duration(voice.DurationSeconds)}", "");
+        var up = new UploadViewModel("Голосовое сообщение", "")
+        {
+            VoiceDuration = Fmt.Duration(voice.DurationSeconds),
+            WaveBars = UploadViewModel.Bars(peaks),
+        };
         await RunUploadAsync(up, async () =>
             await _tg.SendVoiceAsync(Peer, voice, reply, new Progress<double>(p => up.Progress = p), up.Cts.Token));
     }
@@ -911,7 +1068,9 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             Items.Remove(up);
             if (sent is not null)
             {
+                _quietId = sent.Id; // встаёт на место заготовки той же формы — без анимации «прилёта», не скачет
                 OnMessageReceived(sent);
+                _quietId = 0;
                 _owner.OnMessageReceived(sent, fromConversation: true);
             }
         }
@@ -938,7 +1097,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         InsertTextRequested?.Invoke(emoji);
     }
 
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task SendSticker(MediaHolder? media)
     {
         if (media is null) return;
@@ -987,7 +1146,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         ReplyTo = null;
     }
 
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task CopyImage(MessageViewModel? m)
     {
         if (m?.Item.Media is not MediaKind.Photo) return;
@@ -1005,7 +1164,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsStickerPackOpen))] private StickerPackViewModel? _stickerPack;
     public bool IsStickerPackOpen => StickerPack is not null;
 
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task OpenStickerPack(MessageViewModel? m)
     {
         if (m is null || !m.IsSticker) return;
@@ -1047,7 +1206,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     public IReadOnlyList<string> QuickReactions { get; } = TelegramService.QuickReactions;
 
     /// <summary>Параметр — MessageViewModel и эмодзи (из меню) либо плашка реакции (клик под сообщением).</summary>
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task React(object? parameter)
     {
         MessageViewModel? m;
@@ -1262,7 +1421,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             });
     }
 
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = true)] // общая для всех сообщений: пока качается одно, остальные кнопки не блокируются
     private async Task Download(MessageViewModel? m)
     {
         if (m is null || !m.Item.CanDownload) return;
@@ -1297,7 +1456,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         string.Concat(name.Select(c => System.IO.Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
 
     // ---- голосовые и аудио
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = true)] // иначе пока грузится одно голосовое, кнопки всех голосовых «выключались»
     private async Task PlayAudio(MessageViewModel? m)
     {
         if (m is null) return;
@@ -1336,7 +1495,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     }
 
     // ---- опросы
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task Vote(PollOptionViewModel? option)
     {
         var m = _byId.Values.Distinct().FirstOrDefault(v => v.PollOptions.Contains(option!));
@@ -1465,7 +1624,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         await OpenWebAppAsync(Peer, menu.Url, fromMenu: menu.Url is not null, title: menu.Text);
     }
 
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task PressInline(InlineButtonViewModel? b)
     {
         if (b is null) return;
@@ -1520,7 +1679,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     // ===================================================================== Комментарии к постам
 
     /// <summary>Комментарии открываются как обычный чат-ветка (как в Telegram Desktop), «назад» — к каналу.</summary>
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task OpenComments(MessageViewModel? post)
     {
         if (post is null) return;

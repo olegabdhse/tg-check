@@ -9,21 +9,24 @@ namespace TgCheck.Core.Media;
 public sealed record VoiceRecording(string Path, double DurationSeconds, byte[] Waveform);
 
 /// <summary>
-/// Запись голосового с микрофона: 48 кГц моно → Opus в Ogg (тот же формат, что у официальных клиентов),
-/// попутно собирается громкость для волны и индикатора записи.
+/// Запись голосового с микрофона: 48 кГц моно. Звук копится в памяти — запись можно остановить, прослушать,
+/// обрезать с краёв и только потом закодировать в Opus/Ogg (тот же формат, что у официальных клиентов).
+/// Попутно собирается громкость: для живой волны во время записи и для волны в сообщении.
 /// </summary>
 public sealed class VoiceRecorder : IDisposable
 {
     private const int SampleRate = 48000;
+    /// <summary>Пиков в секунду: один пик — 50 мс звука.</summary>
+    public const int PeaksPerSecond = 20;
+
     private WaveInEvent? _input;
-    private OpusOggWriteStream? _ogg;
-    private FileStream? _file;
-    private string? _path;
+    private readonly MemoryStream _pcm = new(); // 16 бит, моно
     private long _samples;
     private readonly List<float> _peaks = [];
     private float _blockPeak;
     private int _blockSamples;
     private readonly object _lock = new();
+    private WaveOutEvent? _output;
 
     public bool IsRecording => _input is not null;
     public double Seconds => (double)Interlocked.Read(ref _samples) / SampleRate;
@@ -31,22 +34,24 @@ public sealed class VoiceRecorder : IDisposable
     /// <summary>Текущая громкость 0..1 — для «пульсации» кнопки записи.</summary>
     public float Level { get; private set; }
 
+    /// <summary>Громкость по 50 мс с начала записи (копия) — для волны.</summary>
+    public float[] Peaks()
+    {
+        lock (_lock) return [.. _peaks];
+    }
+
     public void Start()
     {
         if (_input is not null) return;
-        var dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "TgCheck", "voice");
-        Directory.CreateDirectory(dir);
-        _path = System.IO.Path.Combine(dir, $"voice_{DateTime.Now:yyyyMMdd_HHmmss}.ogg");
-        _file = File.Create(_path);
-        var encoder = OpusCodecFactory.CreateEncoder(SampleRate, 1, OpusApplication.OPUS_APPLICATION_VOIP);
-        encoder.Bitrate = 32000;
-        _ogg = new OpusOggWriteStream(encoder, _file);
-        _samples = 0;
-        _peaks.Clear();
-        _blockPeak = 0;
-        _blockSamples = 0;
-
-        _input = new WaveInEvent { WaveFormat = new WaveFormat(SampleRate, 16, 1), BufferMilliseconds = 60 };
+        lock (_lock)
+        {
+            _pcm.SetLength(0);
+            _peaks.Clear();
+            _blockPeak = 0;
+            _blockSamples = 0;
+        }
+        Interlocked.Exchange(ref _samples, 0);
+        _input = new WaveInEvent { WaveFormat = new WaveFormat(SampleRate, 16, 1), BufferMilliseconds = 50 };
         _input.DataAvailable += OnData;
         _input.StartRecording();
     }
@@ -54,20 +59,16 @@ public sealed class VoiceRecorder : IDisposable
     private void OnData(object? sender, WaveInEventArgs e)
     {
         var count = e.BytesRecorded / 2;
-        var samples = new short[count];
-        Buffer.BlockCopy(e.Buffer, 0, samples, 0, count * 2);
         lock (_lock)
         {
-            if (_ogg is null) return;
-            _ogg.WriteSamples(samples, 0, count);
+            _pcm.Write(e.Buffer, 0, count * 2);
             var level = 0f;
-            foreach (var s in samples)
+            for (var i = 0; i < count; i++)
             {
-                var a = Math.Abs(s / 32768f);
+                var a = Math.Abs(BitConverter.ToInt16(e.Buffer, i * 2) / 32768f);
                 if (a > level) level = a;
                 if (a > _blockPeak) _blockPeak = a;
-                // Пик каждые ~50 мс — из них потом строится волна из 100 столбиков.
-                if (++_blockSamples >= SampleRate / 20)
+                if (++_blockSamples >= SampleRate / PeaksPerSecond)
                 {
                     _peaks.Add(_blockPeak);
                     _blockPeak = 0;
@@ -79,33 +80,97 @@ public sealed class VoiceRecorder : IDisposable
         Interlocked.Add(ref _samples, count);
     }
 
-    /// <summary>Остановить; null — запись слишком короткая или отменена.</summary>
-    public VoiceRecording? Stop(bool cancel = false)
+    /// <summary>Остановить запись с микрофона (звук остаётся — его можно прослушать, обрезать и отправить).</summary>
+    public void StopCapture()
     {
-        if (_input is null) return null;
+        if (_input is null) return;
         _input.DataAvailable -= OnData;
         try { _input.StopRecording(); } catch { }
         _input.Dispose();
         _input = null;
+        Level = 0;
+    }
+
+    /// <summary>Остановить и сразу закодировать всё; null — запись слишком короткая или отменена.</summary>
+    public VoiceRecording? Stop(bool cancel = false)
+    {
+        StopCapture();
+        return cancel ? null : Encode(0, Seconds);
+    }
+
+    /// <summary>Закодировать часть записи [from; to] в секундах. null — короче 0,7 с.</summary>
+    public VoiceRecording? Encode(double from, double to)
+    {
+        StopPlayback();
+        var (start, count) = Range(from, to);
+        if (count < SampleRate * 0.7) return null;
+        var samples = new short[count];
+        lock (_lock) Buffer.BlockCopy(_pcm.GetBuffer(), start * 2, samples, 0, count * 2);
+
+        var dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "TgCheck", "voice");
+        Directory.CreateDirectory(dir);
+        var path = System.IO.Path.Combine(dir, $"voice_{DateTime.Now:yyyyMMdd_HHmmss_fff}.ogg");
+        using (var file = File.Create(path))
+        {
+            var encoder = OpusCodecFactory.CreateEncoder(SampleRate, 1, OpusApplication.OPUS_APPLICATION_VOIP);
+            encoder.Bitrate = 32000;
+            var ogg = new OpusOggWriteStream(encoder, file);
+            ogg.WriteSamples(samples, 0, count);
+            ogg.Finish();
+        }
+        float[] peaks;
         lock (_lock)
         {
-            try { _ogg?.Finish(); } catch { }
-            _ogg = null;
-            _file?.Dispose();
-            _file = null;
+            var p0 = Math.Clamp(start * PeaksPerSecond / SampleRate, 0, _peaks.Count);
+            var p1 = Math.Clamp((start + count) * PeaksPerSecond / SampleRate, p0, _peaks.Count);
+            peaks = _peaks.GetRange(p0, p1 - p0).ToArray();
         }
-        Level = 0;
-        var seconds = Seconds;
-        if (cancel || seconds < 0.7 || _path is null)
-        {
-            try { if (_path is not null) File.Delete(_path); } catch { }
-            return null;
-        }
-        return new VoiceRecording(_path, seconds, EncodeWaveform(_peaks));
+        return new VoiceRecording(path, (double)count / SampleRate, EncodeWaveform(peaks));
+    }
+
+    private (int Start, int Count) Range(double from, double to)
+    {
+        long total;
+        lock (_lock) total = _pcm.Length / 2;
+        var start = (int)Math.Clamp(from * SampleRate, 0, total);
+        var end = (int)Math.Clamp(to * SampleRate, start, total);
+        return (start, end - start);
+    }
+
+    // ---- прослушивание перед отправкой
+
+    /// <summary>Сколько секунд от начала куска уже проиграно (null — не играет).</summary>
+    public double? PlaybackSeconds => _output is { } o && _playback is { } s ? (double)s.Position / (SampleRate * 2) : null;
+    private RawSourceWaveStream? _playback;
+
+    /// <summary>Проиграть часть записи [from; to]; onEnd — доиграло до конца (вызывается из фонового потока).</summary>
+    public void Play(double from, double to, Action onEnd)
+    {
+        StopPlayback();
+        var (start, count) = Range(from, to);
+        if (count <= 0) return;
+        byte[] bytes;
+        lock (_lock) bytes = _pcm.GetBuffer().AsSpan(start * 2, count * 2).ToArray();
+        _playback = new RawSourceWaveStream(new MemoryStream(bytes), new WaveFormat(SampleRate, 16, 1));
+        var output = _output = new WaveOutEvent { DesiredLatency = 120 };
+        output.Init(_playback);
+        output.PlaybackStopped += (_, _) => { if (ReferenceEquals(_output, output)) onEnd(); };
+        output.Play();
+    }
+
+    public void StopPlayback()
+    {
+        var output = _output;
+        _output = null;
+        if (output is null) return;
+        try { output.Stop(); } catch { }
+        output.Dispose();
+        _playback?.Dispose();
+        _playback = null;
     }
 
     // Волна Telegram: 100 значений по 5 бит, упакованных подряд (младшие биты первыми).
-    private static byte[] EncodeWaveform(List<float> peaks)
+    private static byte[] EncodeWaveform(IReadOnlyList<float> peaks)
     {
         const int bars = 100;
         var values = new int[bars];
@@ -132,5 +197,9 @@ public sealed class VoiceRecorder : IDisposable
         return bytes;
     }
 
-    public void Dispose() => Stop(cancel: true);
+    public void Dispose()
+    {
+        StopPlayback();
+        StopCapture();
+    }
 }

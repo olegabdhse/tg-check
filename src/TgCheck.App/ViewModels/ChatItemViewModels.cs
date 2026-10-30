@@ -632,6 +632,32 @@ public sealed partial class UploadViewModel(string title, string icon, ImageSour
 
     [RelayCommand]
     private void Cancel() => Cts.Cancel();
+
+    // ---- голосовое: пузырь той же формы, что после отправки (волна и длительность)
+    public string? VoiceDuration { get; init; }
+    public IReadOnlyList<double>? WaveBars { get; init; }
+    public bool IsVoice => VoiceDuration is not null;
+    public string TimeText { get; } = DateTime.Now.ToString("HH:mm");
+
+    /// <summary>40 столбиков волны (высоты как у отправленного голосового) из громкости записи.</summary>
+    public static IReadOnlyList<double> Bars(float[]? peaks)
+    {
+        const int bars = 40;
+        var result = new double[bars];
+        var max = peaks is { Length: > 0 } ? Math.Max(peaks.Max(), 0.05f) : 1;
+        for (var i = 0; i < bars; i++)
+        {
+            var p = 0f;
+            if (peaks is { Length: > 0 })
+            {
+                var from = i * peaks.Length / bars;
+                var to = Math.Max(from + 1, (i + 1) * peaks.Length / bars);
+                for (var j = from; j < to && j < peaks.Length; j++) p = Math.Max(p, peaks[j]);
+            }
+            result[i] = 3 + Math.Clamp(p / max, 0, 1) * 23;
+        }
+        return result;
+    }
 }
 
 /// <summary>Блок сложного сообщения: заголовок, абзац, цитата, код, разделитель, медиа или коллаж.</summary>

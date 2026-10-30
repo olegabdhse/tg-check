@@ -86,6 +86,8 @@ public partial class ConversationView : UserControl
         _vm.PropertyChanged += OnVmPropertyChanged;
         _vm.IsAtBottom = () => IsNearBottom(Scroller.VerticalOffset);
         _vm.VisibleMaxId = VisibleMaxId;
+        PreviewWave.SeekRequested -= OnPreviewSeek;
+        PreviewWave.SeekRequested += OnPreviewSeek;
         _vm.Items.CollectionChanged += OnItemsChanged;
         UpdateBack();
         // В теме форума справа островок тем — лента не должна уходить под него.
@@ -97,6 +99,8 @@ public partial class ConversationView : UserControl
         _stickToBottom = true;
         ScrollToBottom(false);
     }
+
+    private void OnPreviewSeek(double fraction) => _vm?.SeekPreview(fraction);
 
     private void Detach()
     {
@@ -354,20 +358,27 @@ public partial class ConversationView : UserControl
     }
 
     // ---- запись голосового: логика кнопки микрофона Telegram Desktop
+    // Держите — запись; отпустили — отправка; потянули вверх — запись закрепляется (руки свободны);
+    // увели влево и отпустили — отмена. Раньше отменой считался любой выход курсора за кнопку,
+    // а она во время записи визуально больше, чем её область нажатия, — запись то и дело «путалась» и отменялась.
+    private const double LockDistance = 60, CancelDistance = 110;
     private Point _micStart;
     private bool _micReleasing;
+    private bool _micCancelArmed;
 
     private void Mic_Down(object sender, MouseButtonEventArgs e)
     {
         if (_vm is null) return;
         e.Handled = true;
-        if (_vm.IsRecordLocked)
+        if (_vm.IsRecordLocked || _vm.IsVoicePreview)
         {
-            _vm.SendRecordingCommand.Execute(null); // закреплённая запись: клик — отправить
+            _vm.SendRecordingCommand.Execute(null); // закреплённая или прослушанная запись: кнопка — «отправить»
             return;
         }
+        if (_vm.IsRecording) return;
         _micStart = e.GetPosition(this);
         _micReleasing = false;
+        SetCancelArmed(false);
         MicButton.CaptureMouse();
         _vm.StartRecording();
     }
@@ -376,33 +387,45 @@ public partial class ConversationView : UserControl
     {
         if (_vm is not { IsRecording: true, IsRecordLocked: false } || !MicButton.IsMouseCaptured) return;
         var pos = e.GetPosition(this);
-        if (_micStart.Y - pos.Y > 70)
+        var up = _micStart.Y - pos.Y;
+        var left = _micStart.X - pos.X;
+        if (up > LockDistance && up > Math.Abs(left))
         {
             // Потянули вверх — запись продолжается без удержания.
             _vm.LockRecordingCommand.Execute(null);
             _micReleasing = true;
+            SetCancelArmed(false);
             MicButton.ReleaseMouseCapture();
             return;
         }
-        // Курсор ушёл с кнопки — подсказываем, что отпускание отменит запись.
-        var inside = new Rect(0, 0, MicButton.ActualWidth, MicButton.ActualHeight).Contains(e.GetPosition(MicButton));
-        MicCircle.Fill = inside ? (Brush)FindResource("AccentBrush") : (Brush)FindResource("DangerBrush");
+        // Увели влево достаточно далеко — отпускание отменит запись (кнопка краснеет, подсказка меняется).
+        SetCancelArmed(left > CancelDistance);
+    }
+
+    private void SetCancelArmed(bool armed)
+    {
+        if (_micCancelArmed == armed) return;
+        _micCancelArmed = armed;
+        CancelHintText.Text = armed ? "Отпустите — отмена" : "Влево — отмена";
+        UpdateMicVisual();
     }
 
     private void Mic_Up(object sender, MouseButtonEventArgs e)
     {
         if (_vm is not { IsRecording: true, IsRecordLocked: false } || !MicButton.IsMouseCaptured) return;
         e.Handled = true;
-        var inside = new Rect(0, 0, MicButton.ActualWidth, MicButton.ActualHeight).Contains(e.GetPosition(MicButton));
+        var cancel = _micCancelArmed;
         _micReleasing = true;
+        SetCancelArmed(false);
         MicButton.ReleaseMouseCapture();
-        _ = _vm.FinishRecordingAsync(cancel: !inside);
+        _ = _vm.FinishRecordingAsync(cancel);
     }
 
     // Захват потерян не по нашей воле (Alt+Tab и т.п.) — запись отменяется.
     private void Mic_LostCapture(object sender, MouseEventArgs e)
     {
         if (_micReleasing || _vm is not { IsRecording: true, IsRecordLocked: false }) return;
+        SetCancelArmed(false);
         _ = _vm.FinishRecordingAsync(cancel: true);
     }
 
@@ -410,9 +433,11 @@ public partial class ConversationView : UserControl
     {
         if (_vm is null) return;
         var recording = _vm.IsRecording;
-        MicCircle.Fill = recording ? (Brush)FindResource("AccentBrush") : Brushes.Transparent;
-        MicIcon.Foreground = recording ? Brushes.White : (Brush)FindResource("TextSecondaryBrush");
-        MicIcon.Text = _vm.IsRecordLocked ? "" : "";
+        var sendMode = _vm.IsRecordLocked || _vm.IsVoicePreview;
+        MicCircle.Fill = _micCancelArmed && recording ? (Brush)FindResource("DangerBrush")
+            : recording || sendMode ? (Brush)FindResource("AccentBrush") : Brushes.Transparent;
+        MicIcon.Foreground = recording || sendMode ? Brushes.White : (Brush)FindResource("TextSecondaryBrush");
+        MicIcon.Text = sendMode ? "" : _micCancelArmed ? "" : "";
         // Начало/конец записи — кнопка плавно вырастает в большой круг (и обратно).
         if (recording != _micBig)
         {
@@ -522,7 +547,8 @@ public partial class ConversationView : UserControl
             Dispatcher.BeginInvoke(DispatcherPriority.Loaded, RevealFeed); // после прокрутки; пустой чат или ошибка — показать как есть
             return;
         }
-        if (e.PropertyName is nameof(ConversationViewModel.IsRecording) or nameof(ConversationViewModel.IsRecordLocked) or nameof(ConversationViewModel.RecordLevel))
+        if (e.PropertyName is nameof(ConversationViewModel.IsRecording) or nameof(ConversationViewModel.IsRecordLocked) or nameof(ConversationViewModel.RecordLevel)
+            or nameof(ConversationViewModel.IsVoicePreview))
         {
             UpdateMicVisual();
             return;
