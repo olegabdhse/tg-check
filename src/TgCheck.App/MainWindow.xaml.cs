@@ -123,9 +123,9 @@ public partial class MainWindow : Window
     private void OnIncoming(ChatItemViewModel chat) => Dispatcher.BeginInvoke(() =>
     {
         if (!UiSettings.Notifications || (chat.IsArchived && !UiSettings.NotifyArchived)) return;
-        // Окно на виду и активно — уведомление не нужно (чат и так виден в списке).
-        if (IsVisible && IsActive && WindowState != WindowState.Minimized) return;
-        if (_notifyShell?.MiniChat?.Peer.Key == chat.Key && Application.Current.Windows.OfType<MiniChatWindow>().Any(w => w.IsActive)) return;
+        // Как в Telegram: уведомление приходит и при развёрнутом окне — не нужно только для чата, который сейчас открыт на экране
+        // (раньше при открытом окне уведомлений не было вовсе, и сообщения легко пропустить).
+        if (_notifyShell?.IsOnScreen(chat.Key) == true && (IsActive || Application.Current.Windows.OfType<MiniChatWindow>().Any(w => w.IsActive))) return;
         chat.EnsureAvatar(_notifyShell!.Chats.Media);
         var data = new NotificationData(chat.Peer, chat.Title, chat.LastText, chat.Avatar, chat.AvatarBrush, chat.Initials);
         NotificationWindow.Show(data, OpenChatFromNotification);
