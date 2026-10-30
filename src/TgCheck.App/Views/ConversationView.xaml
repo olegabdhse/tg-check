@@ -527,8 +527,8 @@
                                                     <Grid>
                                                         <Border Background="#22FFFFFF" />
                                                         <Image Source="{Binding Current.Preview}" Stretch="UniformToFill" />
-                                                        <!-- Видео, уже скачанное, играет само (без звука, по кругу) -->
-                                                        <controls:GifView Media="{Binding Current.Item}" OnlyIfCached="True" CornerRadius="0"
+                                                        <!-- Видео загружается и играет само (без звука, по кругу) — открывать в просмотре не нужно -->
+                                                        <controls:GifView Media="{Binding Current.Item}" CornerRadius="0"
                                                                           Visibility="{Binding Current.IsVideo, Converter={StaticResource BoolToVis}}" />
                                                         <Border Style="{StaticResource Pill}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8"
                                                                 Visibility="{Binding Current.IsVideo, Converter={StaticResource BoolToVis}}">
