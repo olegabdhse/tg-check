@@ -216,6 +216,12 @@
                             <TextBlock Text="Последние чаты сверху экрана, пока окно свёрнуто" Style="{StaticResource Caption}" />
                         </StackPanel>
                     </CheckBox>
+                    <CheckBox Style="{StaticResource SettingSwitch}" IsChecked="{Binding ShowIslandMusic}">
+                        <StackPanel>
+                            <TextBlock Text="Плеер музыки в островке" />
+                            <TextBlock Text="Обложка играющей песни с волнами; по клику — управление" Style="{StaticResource Caption}" />
+                        </StackPanel>
+                    </CheckBox>
                 </StackPanel>
             </Border>
         </Grid>

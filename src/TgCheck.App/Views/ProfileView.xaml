@@ -264,16 +264,20 @@
 
                         <!-- Музыка в профиле — карточка как в Telegram: обложка, название, исполнитель; фон — цвет обложки.
                              Нажатие — играть в плеере музыки (под списком чатов и в островке) -->
-                        <Button Style="{StaticResource BareButton}" Margin="0,4,0,10" Cursor="Hand" DataContext="{Binding Music}"
+                        <Button Margin="0,4,0,10" Cursor="Hand" DataContext="{Binding Music}" FocusVisualStyle="{x:Null}"
                                 Command="{Binding DataContext.PlayMusicCommand, ElementName=Root}"
-                                Visibility="{Binding Converter={StaticResource NullToVis}}" ToolTip="Слушать">
+                                Visibility="{Binding Converter={StaticResource NullToVis}}">
+                            <!-- Без подсветки при наведении (раньше выделение вылезало за скругление карточки) -->
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <ContentPresenter />
+                                </ControlTemplate>
+                            </Button.Template>
                             <Grid helpers:RoundClip.Radius="18" Height="92">
                                 <!-- Фон — сама обложка: увеличенная часть, размытая и затемнённая (нет обложки — градиент песни) -->
                                 <Border Background="{Binding CoverBrush}" />
-                                <Image Source="{Binding Preview}" Stretch="UniformToFill" RenderTransformOrigin="0.3,0.4" IsHitTestVisible="False">
-                                    <Image.RenderTransform>
-                                        <ScaleTransform ScaleX="1.6" ScaleY="1.6" />
-                                    </Image.RenderTransform>
+                                <!-- Края размытия — за рамкой карточки (иначе по краям просвечивал цветной фон полосой) -->
+                                <Image Source="{Binding Preview}" Stretch="UniformToFill" Margin="-50" IsHitTestVisible="False">
                                     <Image.Effect>
                                         <BlurEffect Radius="26" KernelType="Gaussian" />
                                     </Image.Effect>

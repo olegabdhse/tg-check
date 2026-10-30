@@ -17,6 +17,7 @@ public partial class MusicPlayerBar : UserControl
             _hideOnly = value;
             // В островке обложка с волнами уже стоит слева от плеера — здесь её не повторяем.
             Waves.Visibility = value ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+            TimeLine.Visibility = Waves.Visibility; // в островке — без строки времени, компактнее
         }
     }
 

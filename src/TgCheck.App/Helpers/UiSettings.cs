@@ -15,6 +15,7 @@ public static class UiSettings
         public double? MiniLeft { get; set; }
         public double? MiniTop { get; set; }
         public bool HideIsland { get; set; }
+        public bool HideIslandMusic { get; set; }
         public bool NotificationsOff { get; set; }
         public bool SoundOff { get; set; }
         public bool ArchiveNotificationsOff { get; set; }
@@ -48,6 +49,8 @@ public static class UiSettings
 
     /// <summary>Островок с чатами при сворачивании окна.</summary>
     public static bool ShowIsland { get => !_data.HideIsland; set { _data.HideIsland = !value; Save(); } }
+    /// <summary>Плеер музыки в островке (по умолчанию включён).</summary>
+    public static bool ShowIslandMusic { get => !_data.HideIslandMusic; set { _data.HideIslandMusic = !value; Save(); } }
 
     /// <summary>Всплывающие уведомления о новых сообщениях.</summary>
     public static bool Notifications { get => !_data.NotificationsOff; set { _data.NotificationsOff = !value; Save(); } }

@@ -1474,10 +1474,15 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             NowPlaying.Instance.RequestedAudio = m.AudioKey;
             if (m.IsAudio)
             {
+                NowPlaying.Instance.ShowPendingMusic(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush); // смена трека — сразу на экране
                 // Песня играет сразу, пока качается (не ждём весь файл).
                 var stream = await _tg.Media.OpenMediaStreamAsync(m.Item);
                 m.IsLoadingAudio = false;
-                if (stream is null) throw new IOException("Не удалось загрузить аудио.");
+                if (stream is null)
+                {
+                    NowPlaying.Instance.CancelPending(m.AudioKey);
+                    throw new IOException("Не удалось загрузить аудио.");
+                }
                 if (NowPlaying.Instance.RequestedAudio != m.AudioKey) { stream.Dispose(); return; }
                 await Task.Run(() => AudioPlayer.Instance.PlayStream(m.AudioKey, stream));
                 NowPlaying.Instance.StartMusic(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush);

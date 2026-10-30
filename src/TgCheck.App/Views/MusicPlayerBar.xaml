@@ -57,7 +57,7 @@
                     </Border.RenderTransform>
                 </Border>
             </Grid>
-            <TextBlock Text="{Binding TimeText}" FontSize="11" Foreground="{StaticResource MetaBrush}" />
+            <TextBlock x:Name="TimeLine" Text="{Binding TimeText}" FontSize="11" Foreground="{StaticResource MetaBrush}" />
         </StackPanel>
     </DockPanel>
 </UserControl>

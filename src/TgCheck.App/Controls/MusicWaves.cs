@@ -68,6 +68,9 @@ public sealed class MusicWaves : FrameworkElement
     // История громкости: каждый кадр — новый замер; лучи показывают последние замеры, и волна «бежит» вокруг обложки в такт музыке.
     private readonly double[] _history = new double[Rays / 2];
     private int _head;
+    private double _shape, _shapeTarget, _turn;
+    private int _points = 6;
+    private long _nextShape;
     private double _peak = 0.3;
 
     private void OnFrame(object? sender, EventArgs e)
@@ -83,6 +86,17 @@ public sealed class MusicWaves : FrameworkElement
         _amp += (norm - _amp) * (norm > _amp ? 0.65 : 0.18);
         _head = (_head + 1) % _history.Length;
         _history[_head] = _amp;
+        // Форма раз в несколько секунд меняется: круг ↔ звезда (5, 6 или 8 лучей), плавно и с медленным поворотом.
+        var tick = Environment.TickCount64;
+        if (tick >= _nextShape)
+        {
+            _nextShape = tick + 4000 + Random.Shared.Next(3000);
+            var star = _shapeTarget < 0.5;
+            _shapeTarget = star ? 1 : 0;
+            if (star) _points = new[] { 5, 6, 8 }[Random.Shared.Next(3)];
+        }
+        _shape += (_shapeTarget - _shape) * 0.04;
+        _turn += 0.004;
         if (BassPulse)
         {
             var bass = IsPlaying ? Core.Media.AudioPlayer.Instance.Bass : 0;
@@ -113,7 +127,9 @@ public sealed class MusicWaves : FrameworkElement
                 // Луч i — замер i кадров назад (симметрично по двум половинам круга): удар в музыке расходится волной.
                 var k = i < Rays / 2 ? i : Rays - 1 - i;
                 var v = _history[(_head - k + _history.Length) % _history.Length];
-                var len = 1.5 + maxLen * v * (0.85 + 0.15 * Math.Sin(t * 3 + i));
+                // Звезда: лучи у «вершин» длиннее, между ними короче; в круге — все одинаковые.
+                var star = 1 - _shape * 0.75 * (0.5 - 0.5 * Math.Cos(_points * (a + _turn)));
+                var len = 1.5 + maxLen * v * star * (0.85 + 0.15 * Math.Sin(t * 3 + i));
                 var from = new Point(c.X + Math.Cos(a) * (r + 3), c.Y + Math.Sin(a) * (r + 3));
                 var to = new Point(c.X + Math.Cos(a) * (r + 3 + len), c.Y + Math.Sin(a) * (r + 3 + len));
                 dc.DrawLine(RayPen(size), from, to);

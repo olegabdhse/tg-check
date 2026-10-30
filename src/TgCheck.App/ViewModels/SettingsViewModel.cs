@@ -7,6 +7,7 @@ namespace TgCheck.App.ViewModels;
 public sealed partial class SettingsViewModel : ObservableObject
 {
     [ObservableProperty] private bool _showIsland = UiSettings.ShowIsland;
+    [ObservableProperty] private bool _showIslandMusic = UiSettings.ShowIslandMusic;
     [ObservableProperty] private bool _notifications = UiSettings.Notifications;
     [ObservableProperty] private bool _notificationSound = UiSettings.NotificationSound;
     [ObservableProperty] private bool _notifyArchived = UiSettings.NotifyArchived;
@@ -22,6 +23,11 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     partial void OnShowIslandChanged(bool value) => UiSettings.ShowIsland = value;
+    partial void OnShowIslandMusicChanged(bool value)
+    {
+        UiSettings.ShowIslandMusic = value;
+        NowPlaying.Instance.IslandMusicEnabled = value;
+    }
     partial void OnNotificationsChanged(bool value) => UiSettings.Notifications = value;
     partial void OnNotificationSoundChanged(bool value)
     {

@@ -15,13 +15,13 @@ public sealed partial class NowPlaying : ObservableObject
 {
     public static NowPlaying Instance { get; } = new();
 
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsActive), nameof(IsMusicActive), nameof(ShowTopBar), nameof(ShowMusicBar))] private string? _title;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsActive), nameof(IsMusicActive), nameof(ShowTopBar), nameof(ShowMusicBar), nameof(ShowIslandMusic))] private string? _title;
     [ObservableProperty] private string _subtitle = "";
     [ObservableProperty] private bool _isPlaying;
     [ObservableProperty] private double _progress;
     [ObservableProperty] private string _timeText = "";
     /// <summary>Музыка (песня), а не голосовое / кружок: для неё — отдельный плеер под списком чатов и в островке.</summary>
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsMusicActive), nameof(ShowTopBar), nameof(ShowMusicBar))] private bool _isMusic;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsMusicActive), nameof(ShowTopBar), nameof(ShowMusicBar), nameof(ShowIslandMusic))] private bool _isMusic;
     [ObservableProperty] private ImageSource? _cover;
     [ObservableProperty] private Brush? _coverBrush;
     /// <summary>Громкость сейчас (0..1) — для волн вокруг обложки.</summary>
@@ -30,6 +30,9 @@ public sealed partial class NowPlaying : ObservableObject
     public bool IsMusicActive => IsMusic && IsActive;
     /// <summary>Плеер музыки на экране (при закрытии сначала уезжает он, а песня останавливается следом).</summary>
     public bool ShowMusicBar => IsMusicActive && !_closingMusic;
+    /// <summary>Плеер музыки в островке включён в настройках.</summary>
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowIslandMusic))] private bool _islandMusicEnabled = UiSettings.ShowIslandMusic;
+    public bool ShowIslandMusic => ShowMusicBar && IslandMusicEnabled;
     private bool _closingMusic;
 
     /// <summary>Закрыть плеер музыки: убрать его с экрана и только потом остановить песню.</summary>
@@ -37,11 +40,11 @@ public sealed partial class NowPlaying : ObservableObject
     {
         if (_closingMusic) return;
         _closingMusic = true;
-        OnPropertyChanged(nameof(ShowMusicBar));
+        OnPropertyChanged(nameof(ShowMusicBar)); OnPropertyChanged(nameof(ShowIslandMusic));
         await Task.Delay(260);
         _closingMusic = false;
         Close();
-        OnPropertyChanged(nameof(ShowMusicBar));
+        OnPropertyChanged(nameof(ShowMusicBar)); OnPropertyChanged(nameof(ShowIslandMusic));
     }
 
     [RelayCommand]
@@ -80,6 +83,29 @@ public sealed partial class NowPlaying : ObservableObject
     // ---- голосовые и аудио (NAudio)
     private string? _audioKey;
 
+    // Выбрали песню, а она ещё открывается (качается начало): плеер уже показывает её, старая сразу остановлена.
+    private string? _pendingKey;
+
+    /// <summary>Смена трека — сразу на экране, не дожидаясь загрузки.</summary>
+    public void ShowPendingMusic(string key, string title, string? performer, ImageSource? cover, Brush coverBrush)
+    {
+        _pendingKey = key;
+        StartMusic(key, title, performer, cover, coverBrush);
+        IsPlaying = false;
+        Progress = 0;
+        Level = 0;
+        TimeText = "Загрузка…";
+        AudioPlayer.Instance.Stop(); // прошлая песня замолкает сразу
+    }
+
+    /// <summary>Песня не открылась — убрать её из плеера.</summary>
+    public void CancelPending(string key)
+    {
+        if (_pendingKey != key) return;
+        _pendingKey = null;
+        if (_audioKey == key) Clear();
+    }
+
     /// <summary>Песня: обложка (или градиент песни), название и исполнитель — для плеера музыки.</summary>
     public void StartMusic(string key, string title, string? performer, ImageSource? cover, Brush coverBrush)
     {
@@ -110,10 +136,12 @@ public sealed partial class NowPlaying : ObservableObject
         var player = AudioPlayer.Instance;
         if (player.Key != _audioKey)
         {
+            if (_audioKey == _pendingKey) return; // новая песня ещё открывается — она уже на экране
             // Плеер остановлен или переключился на другое сообщение без нас.
             if (player.Key is null) Clear();
             return;
         }
+        if (_pendingKey == _audioKey) _pendingKey = null;
         IsPlaying = player.IsPlaying;
         Level = player.IsPlaying ? player.Level : 0;
         var total = player.Duration.TotalSeconds;
