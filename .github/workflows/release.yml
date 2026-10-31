@@ -1,0 +1,88 @@
+# Сборка релиза на машинах GitHub: TgCheck.exe собирается тем же build.ps1 и прикрепляется к черновику релиза
+# (черновика с этой версией нет — создаётся). С компьютера разработчика 100+ МБ больше не загружаются.
+#
+# Запуск: Actions → «Сборка релиза» → Run workflow → версия (например 2.1.1).
+# Ключи — из секретов репозитория (Settings → Secrets and variables → Actions):
+#   TG_API_ID, TG_API_HASH — обязательно; TG_PROXY, TG_XRAY, TG_IGNORE_IDS — если используются.
+# Они попадают только во временный .env на машине сборки и зашиваются в exe зашифрованными (build\embed-env.ps1);
+# в логах GitHub прячет их звёздочками, машина сборки после работы удаляется.
+name: Сборка релиза
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Версия без v, например 2.1.1"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Версия
+        shell: pwsh
+        run: |
+          if ('${{ inputs.version }}' -notmatch '^\d+\.\d+\.\d+$') { throw "Версия должна быть вида 2.1.1, а не «${{ inputs.version }}»" }
+
+      - name: Ключи из секретов → .env
+        shell: pwsh
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          TG_PROXY: ${{ secrets.TG_PROXY }}
+          TG_XRAY: ${{ secrets.TG_XRAY }}
+          TG_IGNORE_IDS: ${{ secrets.TG_IGNORE_IDS }}
+        run: |
+          $names = 'TG_API_ID', 'TG_API_HASH', 'TG_PROXY', 'TG_XRAY', 'TG_IGNORE_IDS'
+          $lines = foreach ($n in $names) { $v = [Environment]::GetEnvironmentVariable($n); if ($v) { "$n=$v" } }
+          if (-not ($lines -match '^TG_API_ID=') -or -not ($lines -match '^TG_API_HASH=')) {
+            throw 'Нет секретов TG_API_ID и TG_API_HASH (Settings → Secrets and variables → Actions)'
+          }
+          Set-Content -Path .env -Value $lines -Encoding UTF8
+          Write-Host "Ключей в сборке: $($lines.Count) — $(($lines | ForEach-Object { $_.Split('=')[0] }) -join ', ')"
+
+      - name: Сборка TgCheck.exe
+        shell: pwsh
+        run: ./build.ps1 -Version ${{ inputs.version }}
+
+      - name: Проверка
+        shell: pwsh
+        run: |
+          $exe = Get-Item dist/TgCheck.exe
+          $v = $exe.VersionInfo.ProductVersion
+          Write-Host "TgCheck.exe: $([Math]::Round($exe.Length / 1MB, 1)) МБ, версия $v"
+          if (-not $v.StartsWith('${{ inputs.version }}')) { throw "В exe версия $v, а не ${{ inputs.version }}" }
+
+      - name: В черновик релиза
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = '${{ inputs.version }}'
+          $tag = "v$version"
+          $repo = '${{ github.repository }}'
+          # Черновики по тегу не ищутся — смотрим список релизов (в нём видны и черновики).
+          $release = gh api "repos/$repo/releases?per_page=50" | ConvertFrom-Json | Where-Object { $_.tag_name -eq $tag } | Select-Object -First 1
+          if ($release -and -not $release.draft) { throw "Релиз $tag уже опубликован — exe не меняю. Нужна новая версия." }
+          if (-not $release) {
+            Write-Host "Черновика $tag нет — создаю"
+            $release = gh api "repos/$repo/releases" -X POST -f tag_name=$tag -f target_commitish=$env:GITHUB_SHA `
+              -f name="TG Check $version" -F draft=true -f body="" | ConvertFrom-Json
+          }
+          # Прошлый TgCheck.exe в черновике (повторная сборка) — заменить.
+          foreach ($asset in $release.assets | Where-Object { $_.name -eq 'TgCheck.exe' }) {
+            gh api "repos/$repo/releases/assets/$($asset.id)" -X DELETE
+          }
+          gh api "https://uploads.github.com/repos/$repo/releases/$($release.id)/assets?name=TgCheck.exe" -X POST `
+            -H "Content-Type: application/octet-stream" --input dist/TgCheck.exe | Out-Null
+          Write-Host "Готово: TgCheck.exe прикреплён к черновику $tag — осталось нажать Publish"
+          Write-Host "${{ github.server_url }}/$repo/releases"
