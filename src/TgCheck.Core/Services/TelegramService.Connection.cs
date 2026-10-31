@@ -9,6 +9,9 @@ public sealed partial class TelegramService
     /// <summary>Связь с Telegram: false — потеряна, идёт переподключение; true — восстановлена (пропущенное надо досинхронизировать).</summary>
     public event Action<bool>? ConnectionChanged;
 
+    /// <summary>Связь восстановлена другим способом (выбранный не проходил): «встроенный прокси», «напрямую»…</summary>
+    public event Action<string>? RouteChanged;
+
     private volatile bool _online;
     private volatile bool _disposed;
     private int _reconnecting;
@@ -75,6 +78,7 @@ public sealed partial class TelegramService
     private async Task ReconnectAsync()
     {
         if (Interlocked.Exchange(ref _reconnecting, 1) != 0) return;
+        var routeBefore = RouteName;
         try
         {
             ConnectionChanged?.Invoke(false);
@@ -97,6 +101,7 @@ public sealed partial class TelegramService
                 catch (Exception ex) when (!TgErrors.IsSessionDead(ex))
                 {
                     Logging.Write($"connection: попытка {attempt} не удалась ({ex.Message})");
+                    if (attempt % 3 == 0) NextRoute(); // три неудачи подряд — пробуем другой способ (встроенный прокси / напрямую)
                     await Task.Delay(TimeSpan.FromSeconds(Math.Min(30, 2 + attempt * 3)));
                 }
             }
@@ -110,6 +115,7 @@ public sealed partial class TelegramService
         if (_disposed) return;
         Media.ForgetPending();
         ConnectionChanged?.Invoke(true);
+        if (RouteName != routeBefore) RouteChanged?.Invoke(RouteName);
         ResyncNeeded?.Invoke();
     }
 

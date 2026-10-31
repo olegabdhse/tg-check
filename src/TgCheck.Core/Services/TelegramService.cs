@@ -60,7 +60,7 @@ public sealed partial class TelegramService : IAsyncDisposable
         client.OnUpdates += _ => { MarkAlive(); return Task.CompletedTask; };
         // Подключение с тайм-аутом и keep-alive (и напрямую, и к MTProxy): мёртвый канал замечается быстро.
         client.TcpHandler = Socks5.ConnectDirectAsync;
-        if (_env.Proxy is { } proxy)
+        if (CurrentProxy is { } proxy)
         {
             if (AppEnv.IsMtProxy(proxy)) client.MTProxyUrl = proxy;
             else
@@ -72,7 +72,26 @@ public sealed partial class TelegramService : IAsyncDisposable
         return client;
     }
 
-    public bool UsesProxy => _env.Proxy is not null;
+    public bool UsesProxy => CurrentProxy is not null;
+
+    // Способы подключения по очереди: выбранный в программе, встроенный прокси, напрямую. РКН режет волнами — то прокси,
+    // то прямое подключение; когда выбранный не проходит несколько раз подряд, пробуем следующий.
+    private int _route;
+    private IReadOnlyList<string?> Routes => new[] { _env.Proxy, _env.BuiltInProxyUrl, null }.Distinct().ToList();
+    private string? CurrentProxy => Routes[_route % Routes.Count];
+
+    /// <summary>Как подключены сейчас: «встроенный прокси», «свой прокси», «напрямую».</summary>
+    public string RouteName => CurrentProxy is null ? "напрямую" : CurrentProxy == _env.BuiltInProxyUrl ? "встроенный прокси" : "свой прокси";
+
+    /// <summary>Подключились другим способом, чем выбран (выбранный не проходил).</summary>
+    public bool OnFallbackRoute => _route % Routes.Count != 0;
+
+    private void NextRoute()
+    {
+        if (Routes.Count < 2) return;
+        _route = (_route + 1) % Routes.Count;
+        Logging.Write($"connection: пробуем {RouteName}");
+    }
 
     private string? Config(string what) => what switch
     {
@@ -104,7 +123,7 @@ public sealed partial class TelegramService : IAsyncDisposable
     public async Task<bool> TryRestoreSessionAsync(Action<int>? onRetry = null)
     {
         // Соединение с Telegram у некоторых провайдеров рвётся/тормозит — несколько попыток с таймаутом.
-        const int attempts = 4;
+        const int attempts = 6;
         for (var attempt = 1; ; attempt++)
         {
             try
@@ -121,6 +140,7 @@ public sealed partial class TelegramService : IAsyncDisposable
             {
                 Logging.Write($"connect attempt {attempt} failed: {ex.GetType().Name}: {ex.Message}");
                 onRetry?.Invoke(attempt + 1);
+                if (attempt % 2 == 0) NextRoute(); // две неудачи подряд — другим способом (прокси / напрямую)
                 await ResetClientAsync(deleteSession: false);
                 await Task.Delay(TimeSpan.FromSeconds(attempt * 2));
             }

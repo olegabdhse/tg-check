@@ -34,6 +34,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _ = Task.Run(() => tg.Media.TrimMediaCache()); // обход папки кэша — не в потоке интерфейса
         if (env.UpdateRepo is { } repo) _updates = new UpdateService(repo);
         tg.ConnectionChanged += OnConnectionChanged;
+        // Выбранный способ не проходил — связь поднялась другим (встроенный прокси / напрямую): сказать, как подключены.
+        tg.RouteChanged += route => Helpers.Anim.Ui(() => ShowToast($"Связь восстановлена: {route}"));
         _currentPage = Chats;
     }
 

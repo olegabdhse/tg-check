@@ -180,7 +180,9 @@ internal sealed class StreamingDownload
                 }
                 bool urgentWaiting;
                 lock (_lock) urgentWaiting = _urgent.Count > 0;
-                if (!urgentWaiting && _shouldYield()) { await Task.Delay(100); continue; }
+                // Уступаем (смотрят историю, грузятся превью) — не встаём совсем, а качаем по одному запросу: раньше полная пауза
+                // на всё время загрузки превью (в разделе музыки они грузятся почти всегда) «вешала» видео, кружки и песни.
+                if (!urgentWaiting && _shouldYield() && slots.CurrentCount < Parallel) { await _wake.WaitAsync(100); continue; }
 
                 await slots.WaitAsync();
                 var request = Next();

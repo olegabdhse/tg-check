@@ -783,6 +783,8 @@ public sealed class MediaService
             return streaming.Done;
         }
         var task = _files.GetOrAdd(doc.id, _ => Task.Run(() => AsStory(media, () => DownloadFreshAsync(media, doc, progress, priority))));
+        // Уже ждёт в фоновой очереди, а пользователь нажал — вперёд.
+        if (priority && !task.IsCompleted) _promoted[doc.id] = true;
         if (task.IsFaulted || (task.IsCompleted && task.Result is null)) _files.TryRemove(doc.id, out _);
         return task;
     }
@@ -900,6 +902,8 @@ public sealed class MediaService
     }
 
     private readonly SemaphoreSlim _backgroundFiles = new(2, 2);
+    // Фоновые загрузки, которые пользователь открыл сам, — их больше не держит фоновая очередь.
+    private readonly ConcurrentDictionary<long, bool> _promoted = new();
 
     // Путь готового файла в кэше: {id}.{расширение по типу}.
     private string MediaFilePath(Document doc)
@@ -933,8 +937,16 @@ public sealed class MediaService
             }
             _cancelledFiles.TryRemove(doc.id, out _);
             var part = path + "." + Guid.NewGuid().ToString("N")[..8] + ".part";
-            if (!priority) { await WhilePriorityAsync(); await _backgroundFiles.WaitAsync(); }
-            else Interlocked.Increment(ref _priorityActive);
+            // Фоновая загрузка (голосовые на экране) ждёт открытое пользователем и свою очередь; но если пользователь нажал
+            // на этот же файл — она сразу становится срочной (раньше нажатое голосовое ждало в той же фоновой очереди).
+            var heldSlot = false;
+            if (!priority)
+            {
+                while (Volatile.Read(ref _priorityActive) > 0 && !_promoted.ContainsKey(doc.id)) await Task.Delay(250);
+                while (!_promoted.ContainsKey(doc.id))
+                    if (await _backgroundFiles.WaitAsync(250)) { heldSlot = true; break; }
+            }
+            if (!heldSlot) Interlocked.Increment(ref _priorityActive);
             try
             {
                 // Файл открыт для чтения другими (песня играет, пока качается); запись строго по порядку — без «дыр».
@@ -955,9 +967,10 @@ public sealed class MediaService
             }
             finally
             {
-                if (!priority) _backgroundFiles.Release();
+                if (heldSlot) _backgroundFiles.Release();
                 else Interlocked.Decrement(ref _priorityActive);
                 _partPaths.TryRemove(doc.id, out _);
+                _promoted.TryRemove(doc.id, out _);
             }
             File.Move(part, path, overwrite: true);
             return path;
