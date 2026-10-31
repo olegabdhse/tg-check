@@ -203,16 +203,59 @@ public sealed partial class TelegramService
         return found.FirstOrDefault(t => t.Id == track.Id) ?? found.FirstOrDefault(t => MusicTrack.SameSong(t, track));
     }
 
+    // ===================================================================== Любимые (музыка своего профиля)
+
+    private HashSet<long>? _likedSongs;
+
+    /// <summary>Песни своего профиля — «Любимые» (сердечко в плеере добавляет туда).</summary>
+    public async Task<IReadOnlyList<MusicTrack>> GetLikedSongsAsync()
+    {
+        var res = await _client.Users_GetSavedMusic(InputUser.Self, 0, 100, 0).ConfigureAwait(false);
+        await Task.Yield();
+        var songs = res is Users_SavedMusic list ? list.documents.OfType<Document>().Select(d => MapSong(d, _client.UserId)).ToList() : [];
+        lock (this) _likedSongs = songs.Select(s => s.MediaId).ToHashSet();
+        return songs.Select(MusicTrack.FromTelegram).ToList();
+    }
+
+    /// <summary>Песня уже в профиле (сердечко закрашено).</summary>
+    public bool IsLikedSong(long mediaId)
+    {
+        lock (this) return _likedSongs?.Contains(mediaId) == true;
+    }
+
+    /// <summary>Добавить песню в музыку профиля (наверх) или убрать оттуда.</summary>
+    public async Task SetSongLikedAsync(MessageItem song, bool liked)
+    {
+        if (song.Document is not { } doc) throw new InvalidOperationException("У этой песни нет файла в Telegram — её нельзя добавить в профиль.");
+        static InputDocument Input(Document d) => new() { id = d.id, access_hash = d.access_hash, file_reference = d.file_reference };
+        try { await _client.Account_SaveMusic(Input(doc), null, unsave: !liked).ConfigureAwait(false); }
+        catch (RpcException ex) when (ex.Message.StartsWith("FILE_REFERENCE"))
+        {
+            // Ссылка на файл устарела (песня из кэша) — свежая и ещё раз.
+            var fresh = await RefreshDocumentAsync(song) ?? throw ex;
+            await _client.Account_SaveMusic(Input(fresh), null, unsave: !liked).ConfigureAwait(false);
+        }
+        lock (this)
+        {
+            _likedSongs ??= [];
+            if (liked) _likedSongs.Add(doc.id); else _likedSongs.Remove(doc.id);
+        }
+    }
+
     /// <summary>Песня из истории заново (после перезапуска): сообщение или музыка профиля.</summary>
     public async Task<MessageItem?> GetSongAsync(long peerKey, int messageId, long mediaId)
     {
         if (messageId == 0)
         {
-            if (!_users.TryGetValue(peerKey, out var user) || IsIgnored(user.id)) return null;
-            var res = await _client.Users_GetSavedMusic(user, 0, 100, 0).ConfigureAwait(false);
+            // Своя музыка профиля («Любимые») — через Self: себя в списке пользователей может не быть.
+            InputUserBase input;
+            if (peerKey == _client.UserId) input = InputUser.Self;
+            else if (_users.TryGetValue(peerKey, out var user) && !IsIgnored(user.id)) input = user;
+            else return null;
+            var res = await _client.Users_GetSavedMusic(input, 0, 100, 0).ConfigureAwait(false);
             await Task.Yield();
             return res is Users_SavedMusic list
-                ? list.documents.OfType<Document>().Where(d => d.id == mediaId).Select(d => MapSong(d, user.id)).FirstOrDefault()
+                ? list.documents.OfType<Document>().Where(d => d.id == mediaId).Select(d => MapSong(d, peerKey)).FirstOrDefault()
                 : null;
         }
         var m = await RefetchMessageAsync(peerKey, messageId).ConfigureAwait(false);

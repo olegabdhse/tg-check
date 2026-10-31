@@ -73,7 +73,7 @@
             </DataTemplate.Triggers>
         </DataTemplate>
 
-        <!-- Плитка сетки «Дальше для вас»: ширина — по сетке, обложка квадратная -->
+        <!-- Плитка сетки «Для вас»: ширина — по сетке, обложка квадратная -->
         <DataTemplate x:Key="GridTile" DataType="{x:Type vm:MusicTrackViewModel}">
             <Button x:Name="TileButton" Style="{StaticResource PlainButton}" Margin="0,0,14,0" ToolTip="{Binding Title}"
                     Command="{Binding DataContext.PlayCommand, ElementName=Root}" CommandParameter="{Binding}">
@@ -314,7 +314,7 @@
                             Command="{Binding ClearQueryCommand}" Visibility="{Binding IsSearch, Converter={StaticResource BoolToVis}}" />
                 </Grid>
 
-                <!-- «Дальше для вас»: 4 песни по трём последним — сеткой во всю ширину, без прокрутки -->
+                <!-- «Для вас»: 4 песни по трём последним — сеткой во всю ширину, без прокрутки -->
                 <StackPanel DataContext="{Binding NextForYou}" Margin="0,0,0,28" MaxWidth="980" HorizontalAlignment="Left"
                             Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=StackPanel}}">
                     <StackPanel.Visibility>
@@ -434,6 +434,8 @@
 
                         <!-- Управление -->
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0">
+                            <Button Style="{StaticResource HeartButton}" Width="36" Height="36" Tag="{Binding IsLiked}" Command="{Binding ToggleLikeCommand}"
+                                    VerticalAlignment="Center" Margin="0,0,2,0" Visibility="{Binding CanLike, Converter={StaticResource BoolToVis}}" />
                             <Button Content="&#xE8EE;" FontSize="15" Padding="10" VerticalAlignment="Center" Command="{Binding ToggleLoopCommand}" ToolTip="Повторять">
                                 <Button.Style>
                                     <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
@@ -477,6 +479,14 @@
                 </Grid>
 
                 <DockPanel DockPanel.Dock="Top" Margin="22,10,16,6">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource SecondaryButton}" Padding="10,4" FontSize="12" Margin="10,0,0,0"
+                            VerticalAlignment="Center" Command="{Binding PlayHistoryCommand}" ToolTip="Слушать всё по порядку, потом — подбор"
+                            Visibility="{Binding HasHistory, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE768;" Style="{StaticResource Icon}" FontSize="10" Margin="0,0,6,0" VerticalAlignment="Center" />
+                            <TextBlock Text="Слушать" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
                     <TextBlock DockPanel.Dock="Right" Text="{Binding History.Count}" Style="{StaticResource Caption}" VerticalAlignment="Center" />
                     <TextBlock Text="Вы слушали" FontSize="16" FontWeight="SemiBold" />
                 </DockPanel>

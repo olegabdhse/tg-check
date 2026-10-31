@@ -739,6 +739,13 @@ public sealed partial class TelegramService
         return await Task.Run(() => MapHistory(res));
     }
 
+    /// <summary>Сообщения новее afterId (лента «оторвана» после перехода к старому сообщению — догрузка вниз).</summary>
+    public async Task<IReadOnlyList<MessageItem>> GetHistoryNewerAsync(PeerRef peer, int afterId, int limit = 50)
+    {
+        var res = await _client.Messages_GetHistory(peer.Info.ToInputPeer(), offset_id: afterId + 1, add_offset: -limit, limit: limit);
+        return await Task.Run(() => MapHistory(res).Where(m => m.Id > afterId).OrderBy(m => m.Id).ToList());
+    }
+
     // ===================================================================== Кастомные (премиум) эмодзи
 
     private readonly Dictionary<long, TaskCompletionSource<StickerItem?>> _customEmoji = [];

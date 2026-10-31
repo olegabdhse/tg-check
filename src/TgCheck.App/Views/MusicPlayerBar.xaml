@@ -10,6 +10,9 @@
         <controls:MusicWaves x:Name="Waves" DockPanel.Dock="Left" Width="58" Height="58" Margin="0,0,10,0" CoverRatio="0.7" BassPulse="True"
                              Cover="{Binding Cover}" CoverBrush="{Binding CoverBrush}" Level="{Binding Level}"
                              Progress="{Binding Progress}" IsPlaying="{Binding IsPlaying}" />
+        <!-- Сердечко — сразу после обложки (в островке обложки здесь нет: оно встаёт сразу после круга с волнами) -->
+        <Button DockPanel.Dock="Left" Style="{StaticResource HeartButton}" Tag="{Binding IsLiked}" Command="{Binding ToggleLikeCommand}"
+                VerticalAlignment="Center" Margin="-4,0,4,0" Visibility="{Binding CanLike, Converter={StaticResource BoolToVis}}" />
         <Button x:Name="CloseButton" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="12" Padding="8" VerticalAlignment="Center"
                 Click="Close_Click" ToolTip="Закрыть" />
         <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE893;" FontSize="13" Padding="7" VerticalAlignment="Center"

@@ -38,8 +38,22 @@ public sealed class MusicPlayer
     public float Bass { get; private set; }
     public bool Loop { get; set; }
     /// <summary>Песня открывается или догружается — в плеере вместо «стоп» показывается загрузка.</summary>
-    public bool IsBuffering =>
-        _player is { State: VLCState.Opening or VLCState.Buffering } || (_source as IStreamingSource)?.IsWaiting == true;
+    public bool IsBuffering
+    {
+        get
+        {
+            var waiting = _player is { State: VLCState.Opening or VLCState.Buffering } || (_source as IStreamingSource)?.IsWaiting == true;
+            if (!waiting || _paused || _player is not { } p) return false;
+            // VLC порой так и остаётся в «буферизации», хотя звук давно идёт, — загрузку показываем, только если позиция
+            // не двигается (за последние 0,7 с).
+            var time = p.Time;
+            var now = Environment.TickCount64;
+            if (time != _lastTime) { _lastTime = time; _lastAdvance = now; }
+            return time <= 0 || now - _lastAdvance > 700;
+        }
+    }
+
+    private long _lastTime = -1, _lastAdvance;
 
     /// <summary>Состояние изменилось (~20 раз в секунду, пока играет). Из фонового потока.</summary>
     public event Action? Changed;

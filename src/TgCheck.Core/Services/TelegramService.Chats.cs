@@ -22,6 +22,37 @@ public sealed partial class TelegramService
     public event Action? ResyncNeeded;
     /// <summary>Реакции под сообщением изменились (peerKey, id, реакции).</summary>
     public event Action<long, int, IReadOnlyList<ReactionInfo>>? ReactionsUpdated;
+
+    /// <summary>На ваше сообщение поставили реакцию (чат, id сообщения, кто, эмодзи) — для уведомления.</summary>
+    public event Action<PeerRef, int, PeerRef, string>? ReactionReceived;
+
+    // Уже показанные реакции: сервер присылает весь список «недавних» при каждом изменении — без этого уведомление
+    // повторялось бы на каждую новую реакцию к тому же сообщению.
+    private readonly HashSet<(long, int, long, string)> _seenReactions = [];
+
+    // Непрочитанные реакции на свои сообщения (флаг unread ставит сервер только на реакции к нашим сообщениям) — не свои,
+    // не от игнорируемого и не старше пяти минут (при сверке после обрыва старые не всплывают).
+    private void OnNewReactions(PeerRef chat, int msgId, MessageReactions? reactions)
+    {
+        if (reactions?.recent_reactions is not { } recent) return;
+        foreach (var pr in recent)
+        {
+            if (!pr.flags.HasFlag(MessagePeerReaction.Flags.unread) || pr.flags.HasFlag(MessagePeerReaction.Flags.my)) continue;
+            if (DateTime.UtcNow - pr.date > TimeSpan.FromMinutes(5) || IsIgnored(pr.peer_id) || PeerOf(pr.peer_id) is not { } who) continue;
+            var emoji = pr.reaction switch
+            {
+                ReactionEmoji e => e.emoticon,
+                ReactionPaid => "⭐",
+                _ => "❤",
+            };
+            lock (_seenReactions)
+            {
+                if (!_seenReactions.Add((chat.Key, msgId, who.Key, emoji))) continue;
+                if (_seenReactions.Count > 2000) _seenReactions.Clear();
+            }
+            ReactionReceived?.Invoke(chat, msgId, who, emoji);
+        }
+    }
     /// <summary>Удалены сообщения: ключ чата (null — личные/обычные группы, id глобальные) и id.</summary>
     public event Action<long?, int[]>? MessagesDeleted;
     /// <summary>Прослушаны голосовые/кружки: ключ чата (null — личные/обычные группы, id глобальные) и id.</summary>
@@ -529,6 +560,7 @@ public sealed partial class TelegramService
                 break;
             case UpdateMessageReactions r when PeerOf(r.peer) is { } rp:
                 ReactionsUpdated?.Invoke(rp.Key, r.msg_id, MapReactions(r.reactions));
+                OnNewReactions(rp, r.msg_id, r.reactions);
                 break;
             case UpdateUserStatus s when !IsIgnored(s.user_id):
                 var (presence, seen) = MapStatus(s.status);

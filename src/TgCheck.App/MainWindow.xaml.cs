@@ -111,9 +111,9 @@ public partial class MainWindow : Window
         if (e.PropertyName != nameof(MainViewModel.CurrentPage)) return;
         var shell = (sender as MainViewModel)?.CurrentPage as ShellViewModel;
         if (ReferenceEquals(shell, _notifyShell)) return;
-        if (_notifyShell is not null) _notifyShell.Incoming -= OnIncoming;
+        if (_notifyShell is not null) { _notifyShell.Incoming -= OnIncoming; _notifyShell.ReactionIncoming -= OnReaction; }
         _notifyShell = shell;
-        if (shell is not null) shell.Incoming += OnIncoming;
+        if (shell is not null) { shell.Incoming += OnIncoming; shell.ReactionIncoming += OnReaction; }
         // Островок готовим заранее, в простое: первое создание окна занимает ~2 с, и при первом сворачивании
         // он появлялся с задержкой, сначала не того размера и не на своём месте — «дважды».
         if (shell is not null && UiSettings.ShowIsland)
@@ -131,6 +131,16 @@ public partial class MainWindow : Window
         chat.EnsureAvatar(_notifyShell!.Chats.Media);
         var data = new NotificationData(chat.Peer, chat.Title, chat.LastText, chat.Avatar, chat.AvatarBrush, chat.Initials);
         NotificationWindow.Show(data, OpenChatFromNotification);
+        if (UiSettings.NotificationSound) Notifier.PlaySound();
+    });
+
+    // Реакция на ваше сообщение — уведомление, как о сообщении: те же настройки, и не для чата, открытого на экране.
+    private void OnReaction(ChatItemViewModel chat, string text) => Dispatcher.BeginInvoke(() =>
+    {
+        if (!UiSettings.Notifications || (chat.IsArchived && chat.Peer.Kind != PeerKind.User && !UiSettings.NotifyArchived)) return;
+        if (_notifyShell?.IsOnScreen(chat.Key) == true && IsActive) return;
+        chat.EnsureAvatar(_notifyShell!.Chats.Media);
+        NotificationWindow.Show(new NotificationData(chat.Peer, chat.Title, text, chat.Avatar, chat.AvatarBrush, chat.Initials), OpenChatFromNotification);
         if (UiSettings.NotificationSound) Notifier.PlaySound();
     });
 

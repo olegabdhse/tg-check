@@ -64,10 +64,10 @@ public sealed partial class MusicNow : ObservableObject
     }
 
     /// <summary>Смена трека — сразу на экране, не дожидаясь загрузки.</summary>
-    public void ShowPending(string key, string title, string? performer, ImageSource? cover, Brush coverBrush)
+    public void ShowPending(string key, string title, string? performer, ImageSource? cover, Brush coverBrush, TgCheck.Core.Models.MessageItem? song = null)
     {
         _pendingKey = key;
-        Start(key, title, performer, cover, coverBrush);
+        Start(key, title, performer, cover, coverBrush, song);
         IsPlaying = false;
         Progress = 0;
         Level = 0;
@@ -86,9 +86,10 @@ public sealed partial class MusicNow : ObservableObject
     }
 
     /// <summary>Песня: обложка (или градиент песни), название и исполнитель.</summary>
-    public void Start(string key, string title, string? performer, ImageSource? cover, Brush coverBrush)
+    public void Start(string key, string title, string? performer, ImageSource? cover, Brush coverBrush, TgCheck.Core.Models.MessageItem? song = null)
     {
         _key = key;
+        SetSong(song);
         Subtitle = performer ?? "";
         Cover = cover;
         CoverBrush = coverBrush;
@@ -148,6 +149,7 @@ public sealed partial class MusicNow : ObservableObject
     private void Clear()
     {
         _key = null;
+        SetSong(null);
         _resumeAfter = false;
         Title = null;
         Cover = null;
@@ -175,4 +177,36 @@ public sealed partial class MusicNow : ObservableObject
 
     [RelayCommand]
     private void ToggleLoop() => Loop = !Loop;
+
+    // ---- сердечко: песня в музыке профиля Telegram («Любимые»)
+
+    /// <summary>Сама песня (файл Telegram) — её можно добавить в профиль; null — нельзя (ссылка бота, фрагмент).</summary>
+    public TgCheck.Core.Models.MessageItem? Song { get; private set; }
+    [ObservableProperty] private bool _isLiked;
+    [ObservableProperty] private bool _canLike;
+
+    /// <summary>Задаёт раздел «Музыка»: есть ли песня в профиле и как её добавить или убрать.</summary>
+    public static Func<TgCheck.Core.Models.MessageItem, bool>? IsLikedQuery { get; set; }
+    public static Func<TgCheck.Core.Models.MessageItem, bool, Task>? SetLiked { get; set; }
+
+    private void SetSong(TgCheck.Core.Models.MessageItem? song)
+    {
+        Song = song?.CanDownload == true ? song : null;
+        CanLike = Song is not null && SetLiked is not null;
+        IsLiked = Song is not null && IsLikedQuery?.Invoke(Song) == true;
+    }
+
+    [RelayCommand]
+    private async Task ToggleLike()
+    {
+        if (Song is not { } song || SetLiked is null) return;
+        var like = !IsLiked;
+        IsLiked = like; // сразу на экране, запрос — следом
+        try { await SetLiked(song, like); }
+        catch (Exception ex)
+        {
+            if (Song == song) IsLiked = !like;
+            TgCheck.Core.Services.Logging.Write($"like song: {ex.Message}");
+        }
+    }
 }

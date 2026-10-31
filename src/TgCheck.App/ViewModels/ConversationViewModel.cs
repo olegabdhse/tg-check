@@ -375,6 +375,46 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         }
     }
 
+    /// <summary>
+    /// Лента «оторвана» (перешли к закрепу или ответу) и долистали вниз — догрузить более новые сообщения. Дошли до
+    /// конца истории — лента снова обычная: дописывается сохранённый конец, новые сообщения идут как всегда.
+    /// </summary>
+    public async Task<bool> LoadNewerAsync()
+    {
+        if (!_detached || _loadingNewer || IsLoading || _byId.Count == 0) return false;
+        _loadingNewer = true;
+        try
+        {
+            var newest = _byId.Keys.Max();
+            var newer = await _tg.GetHistoryNewerAsync(Peer, newest, 50);
+            if (!_detached) return false; // пока грузилось, нажали «вниз»
+            if (newer.Count < 50)
+            {
+                // Конец истории: плюс то, что пришло за это время в сохранённый конец.
+                var rest = newer.Concat(_liveTail?.Where(t => t.Id > newest) ?? []).GroupBy(m => m.Id).Select(g => g.First()).OrderBy(m => m.Id).ToList();
+                AppendRange(rest, animate: false);
+                _detached = false;
+                _liveTail = null;
+                PendingNewCount = 0;
+                await ResolveRepliesAsync(rest);
+            }
+            else
+            {
+                AppendRange(newer, animate: false);
+                await ResolveRepliesAsync(newer);
+            }
+            return newer.Count > 0;
+        }
+        catch (Exception ex)
+        {
+            Logging.Write($"load newer: {ex.Message}");
+            return false;
+        }
+        finally { _loadingNewer = false; }
+    }
+
+    private bool _loadingNewer;
+
     private int _quietId;
 
     private void AppendRange(IEnumerable<MessageItem> messages, bool animate)
@@ -1382,6 +1422,9 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         FillForwardChats();
     }
 
+    /// <summary>Текст сообщения, если оно загружено в ленту (для уведомления о реакции).</summary>
+    public string? MessageText(int id) => _byId.TryGetValue(id, out var vm) ? (vm.HasText ? vm.Text : vm.Item.Preview) : null;
+
     /// <summary>Скопировать текст сообщения (меню сообщения).</summary>
     [RelayCommand]
     private void Copy(MessageViewModel? m)
@@ -1503,7 +1546,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             if (m.IsAudio)
             {
                 _songRequested = m.AudioKey;
-                MusicNow.Instance.ShowPending(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush); // смена трека — сразу на экране
+                MusicNow.Instance.ShowPending(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush, m.Item); // смена трека — сразу на экране
                 // Песня играет сразу, пока качается (не ждём весь файл).
                 var stream = await _tg.Media.OpenMediaStreamAsync(m.Item);
                 m.IsLoadingAudio = false;
@@ -1514,7 +1557,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
                 }
                 if (_songRequested != m.AudioKey) { stream.Dispose(); return; } // пока открывалась, выбрали другую песню
                 await Task.Run(() => MusicPlayer.Instance.PlayStream(m.AudioKey, stream));
-                MusicNow.Instance.Start(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush);
+                MusicNow.Instance.Start(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush, m.Item);
                 MusicViewModel.RecordTelegram(_tg, m.Item, m.Preview);
                 return;
             }
@@ -1526,7 +1569,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             if (NowPlaying.Instance.RequestedAudio != m.AudioKey) return;
             AudioPlayer.Instance.Play(m.AudioKey, path);
             MarkListened(m);
-            if (m.IsAudio) MusicNow.Instance.Start(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush); // песня — плеер музыки
+            if (m.IsAudio) MusicNow.Instance.Start(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush, m.Item); // песня — плеер музыки
             else NowPlaying.Instance.StartAudio(m.AudioKey, m.IsOut ? "Вы" : (m.SenderName is { Length: > 0 } s ? s : Title),
                 m.IsVoice ? "Голосовое сообщение" : (m.FileTitle ?? "Аудио"));
         }

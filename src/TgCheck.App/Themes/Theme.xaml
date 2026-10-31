@@ -42,6 +42,52 @@
     <Geometry x:Key="StarGeometry">M12,1.5 L15.1,8.1 L22.3,8.9 L16.9,13.8 L18.4,20.9 L12,17.3 L5.6,20.9 L7.1,13.8 L1.7,8.9 L8.9,8.1 Z</Geometry>
     <!-- Бумажный самолётик -->
     <Geometry x:Key="PlaneGeometry">M2.4,11.3 L20.6,3.8 C21.4,3.5 22.1,4.2 21.9,5 L18.8,19.6 C18.6,20.5 17.6,20.8 16.9,20.3 L12.4,16.9 L10.2,19 C9.9,19.3 9.3,19.1 9.3,18.6 L9.4,15.3 L17.2,8.2 L7.8,14.1 L2.5,12.5 C1.8,12.3 1.8,11.5 2.4,11.3 Z</Geometry>
+    <Geometry x:Key="HeartGeometry">M12,20.6 L10.6,19.3 C5.6,14.8 2.4,11.9 2.4,8.4 C2.4,5.5 4.6,3.3 7.5,3.3 C9.1,3.3 10.7,4.1 12,5.3 C13.3,4.1 14.9,3.3 16.5,3.3 C19.4,3.3 21.6,5.5 21.6,8.4 C21.6,11.9 18.4,14.8 13.4,19.3 Z</Geometry>
+
+    <!-- Сердечко «в профиль» (плееры музыки): Tag = true — закрашено -->
+    <Style x:Key="HeartButton" TargetType="Button">
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Width" Value="30" />
+        <Setter Property="Height" Value="30" />
+        <Setter Property="ToolTip" Value="В любимые (музыка профиля)" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" Background="Transparent" CornerRadius="15">
+                        <Path x:Name="Heart" Data="{StaticResource HeartGeometry}" Stretch="Uniform" Margin="7" Fill="Transparent"
+                              Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.7" StrokeLineJoin="Round" RenderTransformOrigin="0.5,0.5">
+                            <Path.RenderTransform>
+                                <ScaleTransform x:Name="Pop" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="#14FFFFFF" />
+                            <Setter TargetName="Heart" Property="Stroke" Value="{StaticResource TextBrush}" />
+                        </Trigger>
+                        <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True">
+                            <Setter TargetName="Heart" Property="Fill" Value="#FF4D6A" />
+                            <Setter TargetName="Heart" Property="Stroke" Value="#FF4D6A" />
+                            <DataTrigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Pop" Storyboard.TargetProperty="ScaleX" From="0.6" To="1" Duration="0:0:0.25">
+                                            <DoubleAnimation.EasingFunction><BackEase EasingMode="EaseOut" Amplitude="0.6" /></DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetName="Pop" Storyboard.TargetProperty="ScaleY" From="0.6" To="1" Duration="0:0:0.25">
+                                            <DoubleAnimation.EasingFunction><BackEase EasingMode="EaseOut" Amplitude="0.6" /></DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </DataTrigger.EnterActions>
+                        </DataTrigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
 
     <!-- ============================== Конвертеры -->
     <conv:BoolToVisibilityConverter x:Key="BoolToVis" />

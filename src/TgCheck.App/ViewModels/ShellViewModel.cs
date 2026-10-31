@@ -34,6 +34,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _ = Task.Run(() => tg.Media.TrimMediaCache()); // обход папки кэша — не в потоке интерфейса
         if (env.UpdateRepo is { } repo) _updates = new UpdateService(repo);
         tg.ConnectionChanged += OnConnectionChanged;
+        tg.ReactionReceived += OnReactionReceived;
         // Выбранный способ не проходил — связь поднялась другим (встроенный прокси / напрямую): сказать, как подключены.
         tg.RouteChanged += route => Helpers.Anim.Ui(() => ShowToast($"Связь восстановлена: {route}"));
         _currentPage = Chats;
@@ -141,6 +142,18 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     public void NotifyIslandChanged() => IslandChanged?.Invoke();
     public void OnIncoming(ChatItemViewModel chat) => Incoming?.Invoke(chat);
+
+    /// <summary>На ваше сообщение поставили реакцию (чат и текст уведомления: «Имя: ❤ на ваше сообщение»).</summary>
+    public event Action<ChatItemViewModel, string>? ReactionIncoming;
+
+    private void OnReactionReceived(PeerRef chat, int msgId, PeerRef who, string emoji) => Helpers.Anim.Ui(() =>
+    {
+        if (Chats.Chats.FirstOrDefault(c => c.Key == chat.Key) is not { IsMuted: false } item) return;
+        // Что за сообщение — если оно уже есть в открытом чате.
+        var quote = Chats.Conversation is { } open && open.Peer.Key == chat.Key ? open.MessageText(msgId) : null;
+        var what = string.IsNullOrWhiteSpace(quote) ? "на ваше сообщение" : $"на «{(quote.Length > 60 ? quote[..60] + "…" : quote)}»";
+        ReactionIncoming?.Invoke(item, chat.IsUser ? $"{emoji} {what}" : $"{who.DisplayTitle}: {emoji} {what}");
+    });
 
     public IReadOnlyList<ChatItemViewModel> IslandChats() => Chats.RecentOutgoing(4);
 

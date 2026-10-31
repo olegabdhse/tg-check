@@ -111,14 +111,24 @@ public partial class IslandWindow : Window
         SetMusicOpen(!_musicOpen);
     }
 
+    // Сердечко на круге: своё нажатие — не открывать панель музыки (щелчок по кругу).
+    private void HeartBadge_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        MusicNow.Instance.ToggleLikeCommand.Execute(null);
+    }
+
     private void SetMusicOpen(bool open)
     {
         _musicOpen = open;
-        var anim = new DoubleAnimation(open ? 278 : 0, TimeSpan.FromMilliseconds(open ? 240 : 180))
+        var anim = new DoubleAnimation(open ? 308 : 0, TimeSpan.FromMilliseconds(open ? 240 : 180))
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
         };
         MusicPanel.BeginAnimation(WidthProperty, anim);
+        // Развёрнуто — сердечко в панели сразу после круга, значок на круге не нужен.
+        HeartBadge.BeginAnimation(OpacityProperty, new DoubleAnimation(open ? 0 : 1, TimeSpan.FromMilliseconds(150)));
+        HeartBadge.IsHitTestVisible = !open;
     }
 
     private void ApplyEdge()

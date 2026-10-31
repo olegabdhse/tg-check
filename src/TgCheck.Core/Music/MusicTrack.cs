@@ -176,6 +176,10 @@ public sealed class MusicTrack
     {
         if (t.Duration is > 0 and (< 60 or > 900)) return false;
         if (t.Title.Count(c => c == '_') >= 2 && !t.Title.Contains(' ')) return false;
+        // Название стоит в исполнителе («Песня — Исполнитель» в поле исполнителя, исполнитель вместо названия) —
+        // непонятно, что за песня: в поиске и подборе такие не показываем.
+        var title = Normalize(t.Title);
+        if (title.Length >= 3 && Normalize(t.Artist).Contains(title)) return false;
         return Normalize(t.Title).Length > 0;
     }
 

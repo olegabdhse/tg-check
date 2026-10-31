@@ -19,7 +19,7 @@ public partial class ConversationView : UserControl
     private const double BottomThreshold = 60;
     private ConversationViewModel? _vm;
     private bool _stickToBottom = true;
-    private bool _loadingOlder;
+    private bool _loadingOlder, _loadingNewer;
     private readonly DispatcherTimer _videoTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private bool _videoPlaying;
 
@@ -347,6 +347,17 @@ public partial class ConversationView : UserControl
             _stickToBottom = false;
             try { await _vm.LoadOlderAsync(); }
             finally { _loadingOlder = false; }
+        }
+
+        // Лента «оторвана» после перехода к закрепу или ответу: листают вниз — догружаем более новые (раньше низ
+        // не догружался, пока не нажмёшь «вниз»).
+        if (!_loadingNewer && !_feedHidden && _vm.IsDetached && e.VerticalChange > 0
+            && Scroller.ScrollableHeight - Scroller.VerticalOffset < 1500)
+        {
+            _loadingNewer = true;
+            _stickToBottom = false; // иначе выросшая лента сама уезжала бы к новому концу и грузила дальше
+            try { await _vm.LoadNewerAsync(); }
+            finally { _loadingNewer = false; }
         }
     }
 

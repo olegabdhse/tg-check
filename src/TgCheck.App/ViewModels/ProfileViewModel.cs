@@ -399,7 +399,7 @@ public sealed partial class ProfileViewModel : ObservableObject
             if (MusicPlayer.Instance.Key == m.AudioKey) { MusicPlayer.Instance.Toggle(m.AudioKey, ""); return; }
             m.IsLoadingAudio = true;
             var requested = m.AudioKey;
-            MusicNow.Instance.ShowPending(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush); // смена трека — сразу на экране
+            MusicNow.Instance.ShowPending(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush, m.Item); // смена трека — сразу на экране
             // Играет сразу, пока песня качается (не ждём весь файл).
             var stream = await _tg.Media.OpenMediaStreamAsync(m.Item);
             m.IsLoadingAudio = false;
@@ -409,7 +409,7 @@ public sealed partial class ProfileViewModel : ObservableObject
                 throw new IOException("Не удалось загрузить песню.");
             }
             await Task.Run(() => MusicPlayer.Instance.PlayStream(requested, stream));
-            MusicNow.Instance.Start(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush);
+            MusicNow.Instance.Start(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush, m.Item);
             MusicViewModel.RecordTelegram(_tg, m.Item, m.Preview);
         }
         catch (Exception ex)

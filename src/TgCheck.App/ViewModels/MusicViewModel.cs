@@ -181,7 +181,11 @@ public sealed partial class MusicViewModel : ObservableObject
         _library = tg.MusicLibrary;
         MusicCovers.Init(_library);
         MusicTrackViewModel.FindCover = FindTelegramCoverAsync;
-        // Послушали что-то (и в чатах тоже) — история и «Дальше для вас» обновляются.
+        // Сердечко в плеерах: песня в музыке профиля. Список любимых — сразу (по нему закрашено сердечко).
+        MusicNow.IsLikedQuery = song => _tg.IsLikedSong(song.MediaId);
+        MusicNow.SetLiked = SetLikedAsync;
+        _ = LoadFavoritesAsync();
+        // Послушали что-то (и в чатах тоже) — история и «Для вас» обновляются.
         _library.Changed += () => Anim.Ui(() => { RefreshHistory(); if (_loaded) RequestNext(); });
         MusicPlayer.Instance.Ended += key => Anim.Ui(() => { if (key == _current?.Track.Key) _ = NextAsync(auto: true); });
         MusicNow.Instance.PropertyChanged += (_, e) =>
@@ -192,14 +196,17 @@ public sealed partial class MusicViewModel : ObservableObject
 
     // ===================================================================== Главная
 
-    public MusicShelf ForYou { get; } = new("Для вас", "Похожие исполнители · полные песни из Telegram");
+    public MusicShelf ForYou { get; } = new("Похожие исполнители", "Полные песни из Telegram");
     public MusicShelf MoreFromArtists { get; } = new("Ещё от ваших исполнителей", "Полные песни из Telegram") { Max = 6 };
     public MusicShelf InChats { get; } = new("Музыка из ваших чатов", "Полные песни из чатов и каналов Telegram");
 
-    public IReadOnlyList<MusicShelf> Shelves => [MoreFromArtists, InChats]; // «Для вас» не показываем — его песни играют в подборе после очереди
+    /// <summary>«Любимые» — музыка своего профиля Telegram (сердечко в плеере добавляет туда).</summary>
+    public MusicShelf Favorites { get; } = new("Любимые", "Музыка вашего профиля — сердечко в плеере добавляет сюда");
 
-    /// <summary>«Дальше для вас»: 4 песни сеткой по трём последним прослушанным — перестраивается после каждой песни.</summary>
-    public MusicShelf NextForYou { get; } = new("Дальше для вас", "По трём последним песням — больше всего по самой последней");
+    public IReadOnlyList<MusicShelf> Shelves => [Favorites, MoreFromArtists, InChats]; // «Для вас» не показываем — его песни играют в подборе после очереди
+
+    /// <summary>«Для вас»: 4 песни сеткой по трём последним прослушанным — перестраивается после каждой песни.</summary>
+    public MusicShelf NextForYou { get; } = new("Для вас", "По трём последним песням — больше всего по самой последней");
 
     private IEnumerable<MusicShelf> AllShelves => [NextForYou, .. Shelves, FoundTelegram, FoundBots];
 
@@ -212,7 +219,7 @@ public sealed partial class MusicViewModel : ObservableObject
     private void RequestNext(bool soon = false) => _nextTask = BuildNextAsync(soon);
 
     /// <summary>
-    /// «Дальше для вас». Для каждой из трёх последних песен — «радио» её исполнителя в Deezer (треки в похожем
+    /// «Для вас». Для каждой из трёх последних песен — «радио» её исполнителя в Deezer (треки в похожем
     /// звучании и настроении); по самой последней — две песни, по двум предыдущим — по одной. Исполнители, которых только
     /// что слушали, и уже прослушанное не берутся. У каждой находится полная версия — в чатах или у музыкальных ботов.
     /// Если полка уже на экране, она не очищается: через 10 секунд (вдруг песню сразу переключат) плитки заменяются
@@ -278,7 +285,7 @@ public sealed partial class MusicViewModel : ObservableObject
         PrefetchNext(); // новые плитки — заранее подготовить
     }
 
-    // Заменить одну плитку «Дальше для вас»: сначала уже прослушанную, потом по порядку слева; играющую сейчас
+    // Заменить одну плитку «Для вас»: сначала уже прослушанную, потом по порядку слева; играющую сейчас
     // и уже заменённые в этом проходе не трогаем. Плиток меньше четырёх — новая добавляется.
     private async Task ReplaceNextSlotAsync(MusicTrack track, CancellationToken ct)
     {
@@ -326,7 +333,7 @@ public sealed partial class MusicViewModel : ObservableObject
     private bool _homeBusy;
 
     /// <summary>
-    /// Раздел открыли. Сразу — полки с прошлого раза (без ожидания). Первым — «Дальше для вас»; остальное
+    /// Раздел открыли. Сразу — полки с прошлого раза (без ожидания). Первым — «Для вас»; остальное
     /// обновляется после него и только если устарело.
     /// </summary>
     public void Activate()
@@ -336,6 +343,7 @@ public sealed partial class MusicViewModel : ObservableObject
         {
             _loaded = true;
             ShowCachedShelves();
+            if (!_favoritesLoaded) _ = LoadFavoritesOnceAsync();
             _ = Task.Run(_tg.PrepareMusicBotsAsync); // боты — заранее, чтобы первый поиск ответил быстрее
             RequestNext(soon: true);
         }
@@ -369,7 +377,7 @@ public sealed partial class MusicViewModel : ObservableObject
         _homeBusy = true;
         try
         {
-            // «Дальше для вас» — в первую очередь: остальное ждёт его (но не дольше 25 с).
+            // «Для вас» — в первую очередь: остальное ждёт его (но не дольше 25 с).
             await Task.WhenAny(_nextTask, Task.Delay(25_000));
             if (InChats.Items.Count == 0 || DateTime.UtcNow - _chatsAt > ChatsFresh)
             {
@@ -667,6 +675,53 @@ public sealed partial class MusicViewModel : ObservableObject
         return PlayCurrentAsync();
     }
 
+    private bool _favoritesLoaded;
+
+    // При запуске связь ещё поднимается — пробуем несколько раз (и ещё раз при открытии раздела).
+    private async Task LoadFavoritesAsync()
+    {
+        for (var attempt = 0; attempt < 6 && !_favoritesLoaded; attempt++)
+        {
+            if (attempt > 0) await Task.Delay(5000);
+            await LoadFavoritesOnceAsync();
+        }
+    }
+
+    private async Task LoadFavoritesOnceAsync()
+    {
+        try
+        {
+            var liked = await Task.Run(_tg.GetLikedSongsAsync);
+            _favoritesLoaded = true;
+            Favorites.Fill(liked);
+            // Играющая уже песня — сердечко по свежему списку.
+            if (MusicNow.Instance.Song is { } song) MusicNow.Instance.IsLiked = _tg.IsLikedSong(song.MediaId);
+        }
+        catch (Exception ex)
+        {
+            Logging.Write($"music favorites: {ex.Message}");
+            Favorites.Done();
+        }
+    }
+
+    // Сердечко: в профиль (наверх «Любимых») или из профиля.
+    private async Task SetLikedAsync(MessageItem song, bool liked)
+    {
+        await _tg.SetSongLikedAsync(song, liked);
+        Anim.Ui(() =>
+        {
+            var track = MusicTrack.FromTelegram(song);
+            var existing = Favorites.Items.FirstOrDefault(v => v.Track.Song?.MediaId == song.MediaId || MusicTrack.SameSong(v.Track, track));
+            if (liked && existing is null) Favorites.Items.Insert(0, new MusicTrackViewModel(track, Favorites.Items));
+            else if (!liked && existing is not null) Favorites.Items.Remove(existing);
+            Favorites.Done();
+        });
+    }
+
+    /// <summary>«Вы слушали» как плейлист: по порядку, а когда кончится — подбор, как обычно.</summary>
+    [RelayCommand]
+    private Task PlayHistory() => History.Count > 0 ? Play(History[0]) : Task.CompletedTask;
+
     /// <summary>Вся полка по порядку.</summary>
     [RelayCommand]
     private Task PlayShelf(MusicShelf? shelf) =>
@@ -716,7 +771,7 @@ public sealed partial class MusicViewModel : ObservableObject
         if (_recs is null) _ = LoadRecommendationsAsync();
         await Task.CompletedTask;
         // Похожее и ещё от любимых исполнителей — вперемешку; подбора нет (истории ещё нет) — музыка из чатов.
-        var mix = NextForYou.Items.Select(v => v.Track).ToList(); // сначала «Дальше для вас»
+        var mix = NextForYou.Items.Select(v => v.Track).ToList(); // сначала «Для вас»
         for (var i = 0; i < Math.Max(r.MoreFromArtists.Count, r.Similar.Count); i++)
         {
             if (i < r.Similar.Count) mix.Add(r.Similar[i]);
@@ -724,7 +779,7 @@ public sealed partial class MusicViewModel : ObservableObject
         }
         if (mix.Count == 0) mix.AddRange(InChats.Items.Select(v => v.Track));
         var list = new List<MusicTrackViewModel>();
-        foreach (var t in mix.Where(t => !_played.Any(p => MusicTrack.SameSong(p, t)) && !_library.WasPlayed(t)).Take(40)) list.Add(new MusicTrackViewModel(t, list));
+        foreach (var t in mix.Where(t => !_failed.Contains(t.Key) && !_played.Any(p => MusicTrack.SameSong(p, t)) && !_library.WasPlayed(t)).Take(40)) list.Add(new MusicTrackViewModel(t, list));
         return list;
     }
 
@@ -745,7 +800,7 @@ public sealed partial class MusicViewModel : ObservableObject
         SetCurrent(vm);
         NextUpText = _index + 1 < _queue.Count ? $"Далее: {_queue[_index + 1].Artist} — {_queue[_index + 1].Title}" : "Далее: подбор для вас";
         PlayingNote = null;
-        MusicNow.Instance.ShowPending(t.Key, t.Title, vm.Artist, BestCover(vm), vm.CoverBrush); // сразу на экране
+        MusicNow.Instance.ShowPending(t.Key, t.Title, vm.Artist, BestCover(vm), vm.CoverBrush, t.Song); // сразу на экране
         Volatile.Write(ref _startingUntil, Environment.TickCount64 + 8000);
         try
         {
@@ -788,11 +843,10 @@ public sealed partial class MusicViewModel : ObservableObject
                     break;
             }
             if (_requested != vm) return;
-            _failures = 0;
             Volatile.Write(ref _startingUntil, Environment.TickCount64 + 1500); // ещё немного — на первые секунды звука
-            _played.Add(t);
-            MusicNow.Instance.Start(t.Key, t.Title, vm.Artist, BestCover(vm), vm.CoverBrush);
-            _library.Record(t);
+            MusicNow.Instance.Start(t.Key, t.Title, vm.Artist, BestCover(vm), vm.CoverBrush, t.Song);
+            // В «Вы слушали» — только когда песня реально зазвучала (WatchStartAsync): раньше туда попадала каждая
+            // пролистанная и даже незагрузившаяся.
             _ = ShowBigCoverAsync(vm);
             _ = WatchStartAsync(vm);
             PrefetchNext();
@@ -803,10 +857,10 @@ public sealed partial class MusicViewModel : ObservableObject
             MusicNow.Instance.CancelPending(t.Key);
             Volatile.Write(ref _startingUntil, 0);
             Logging.Write($"music play {t.Key}: {ex.Message}");
-            // Не играет — следующий (но не крутимся бесконечно на сломанном списке).
-            if (++_failures <= 3 && _index + 1 < _queue.Count)
+            // Не играет — убрать из списка и дальше (но не крутимся бесконечно на сломанном списке).
+            DropFailed(vm);
+            if (++_failures <= 3 && _index < _queue.Count)
             {
-                _index++;
                 await PlayCurrentAsync();
                 return;
             }
@@ -819,6 +873,22 @@ public sealed partial class MusicViewModel : ObservableObject
     // (песня из Telegram без своей обложки), в плеере так и оставался градиент.
     // Песня не зазвучала за 15 с (файл не качается: недоступный сервер Telegram, ссылка бота умерла) — в лог и дальше,
     // а не бесконечная «загрузка».
+    // Песня не загрузилась: убрать её из очереди и с полки (или из результатов поиска) — чтобы не нажимать на неё снова,
+    // и в подбор она больше не попадёт. Индекс очереди теперь указывает на следующую.
+    private readonly HashSet<string> _failed = [];
+
+    private void DropFailed(MusicTrackViewModel vm)
+    {
+        _failed.Add(vm.Track.Key);
+        var i = _queue.IndexOf(vm);
+        if (i >= 0)
+        {
+            _queue.RemoveAt(i);
+            if (i < _index) _index--;
+        }
+        if (vm.List is ObservableCollection<MusicTrackViewModel> list && !ReferenceEquals(list, History)) list.Remove(vm);
+    }
+
     private async Task WatchStartAsync(MusicTrackViewModel vm)
     {
         var key = vm.Track.Key;
@@ -826,12 +896,22 @@ public sealed partial class MusicViewModel : ObservableObject
         {
             await Task.Delay(500);
             if (MusicPlayer.Instance.Key != key || _current != vm) return; // переключили или остановили
-            if (MusicPlayer.Instance.Position.TotalSeconds > 0) return; // играет
+            if (MusicPlayer.Instance.Position.TotalSeconds > 0)
+            {
+                // Зазвучала — теперь в историю и в «уже звучало».
+                _failures = 0;
+                _played.Add(vm.Track);
+                _library.Record(vm.Track);
+                return;
+            }
             if (!MusicPlayer.Instance.IsPlaying && !MusicPlayer.Instance.IsBuffering) return; // поставили на паузу
         }
         Logging.Write($"music: {key} не зазвучала за 15 с — следующая");
         _toast("Песня не загрузилась — включаю следующую", true);
-        _ = NextAsync(auto: true);
+        MusicPlayer.Instance.Stop();
+        DropFailed(vm);
+        if (_index < _queue.Count) await PlayCurrentAsync();
+        else _ = NextAsync(auto: true);
     }
 
     // Обложка, которая уже есть в памяти: крупная, плиточная или у такой же плитки на странице — плеер не мигает градиентом
@@ -858,7 +938,7 @@ public sealed partial class MusicViewModel : ObservableObject
     }
 
     // Пока играет песня — тихо подготовить то, что могут включить следующим, чтобы переход был почти мгновенным:
-    // следующую в очереди (а на последней — первую из подбора) — около 1 МБ начала, плитки «Дальше для вас» — понемногу
+    // следующую в очереди (а на последней — первую из подбора) — около 1 МБ начала, плитки «Для вас» — понемногу
     // (256 КБ), чтобы и клик по ним стартовал сразу. Песни из сохранённых полок заранее находятся в Telegram заново.
     private void PrefetchNext()
     {
