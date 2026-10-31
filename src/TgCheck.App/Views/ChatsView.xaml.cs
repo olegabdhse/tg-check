@@ -21,6 +21,7 @@ public partial class ChatsView : UserControl
     public ChatsView()
     {
         InitializeComponent();
+        IsVisibleChanged += (_, _) => UpdateCompact(); // вернулись в чаты — раскладка по настоящей ширине
         DataContextChanged += (_, _) =>
         {
             if (_vm is not null) { _vm.PropertyChanged -= OnVmChanged; _vm.SearchDismissed -= DismissSearch; }
@@ -61,10 +62,15 @@ public partial class ChatsView : UserControl
         _lastConversation = _vm?.Conversation;
     }
 
-    private void Root_SizeChanged(object sender, SizeChangedEventArgs e)
+    private void Root_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateCompact();
+
+    // Узкое ли окно — только пока список на экране: скрытый (открыта «Музыка» или профиль) имеет ширину 0, и раньше
+    // он «решал», что окно узкое, — вернувшись, список растягивался на всё окно, а чат открывался вместо него.
+    // Открыты настройки (список сжат до аватарок) — узкий режим не включаем: иначе при сдвиге раскладка «прыгала».
+    private void UpdateCompact()
     {
-        // Открыты настройки (список сжат до аватарок) — узкий режим не включаем: иначе при сдвиге раскладка «прыгала».
-        if (_vm is not null) _vm.IsCompact = !_listCollapsed && ActualWidth < CompactWidth;
+        if (_vm is null || !IsVisible || ActualWidth <= 0) return;
+        _vm.IsCompact = !_listCollapsed && ActualWidth < CompactWidth;
         ApplyLayout();
     }
 
@@ -79,8 +85,7 @@ public partial class ChatsView : UserControl
         SearchRow.Height = StoriesRow.Height = TabsRow.Height = PlayerRow.Height = rows;
         // Без полосы прокрутки — она обрезала аватарки (прокрутка колесом остаётся).
         ScrollViewer.SetVerticalScrollBarVisibility(ChatList, collapsed ? ScrollBarVisibility.Hidden : ScrollBarVisibility.Auto);
-        if (_vm is not null) _vm.IsCompact = !collapsed && ActualWidth < CompactWidth;
-        ApplyLayout();
+        UpdateCompact();
     }
 
     // Адаптивная раскладка: в узком окне список и чат показываются по очереди.
