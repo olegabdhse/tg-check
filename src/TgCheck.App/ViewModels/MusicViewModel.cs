@@ -488,13 +488,23 @@ public sealed partial class MusicViewModel : ObservableObject
         FoundTelegram.Fill(MusicTrack.Distinct(chats.Select(MusicTrack.FromTelegram).Where(MusicTrack.IsSong)).Take(10));
         try
         {
-            await Task.Run(() => _tg.SearchBotMusicAsync(q, maxSongs: 10, ct: ct, partial: songs => Anim.Ui(() =>
+            await Task.Run(() => _tg.SearchBotMusicAsync(q, maxBots: 4, maxSongs: 10, ct: ct, partial: songs => Anim.Ui(() =>
             {
                 if (!ct.IsCancellationRequested) FoundBots.Append(songs.Where(MusicTrack.IsSong), InChatsAlready);
             })));
         }
         catch (Exception ex) { Logging.Write($"music search bots: {ex.Message}"); }
         if (ct.IsCancellationRequested) return;
+        FoundBots.Done();
+        IsSearchLoading = false;
+    }
+
+    // Остановить поиск, что ещё идёт (найденное остаётся на экране).
+    private void StopSearch()
+    {
+        if (!IsSearchLoading) return;
+        _searchCts?.Cancel();
+        FoundTelegram.Done();
         FoundBots.Done();
         IsSearchLoading = false;
     }
@@ -646,6 +656,7 @@ public sealed partial class MusicViewModel : ObservableObject
             MusicPlayer.Instance.Toggle(vm.Track.Key, "");
             return Task.CompletedTask;
         }
+        StopSearch(); // выбрали песню — оставшихся ботов не спрашиваем: соединение — ей
         var list = vm.List?.ToList() ?? [vm];
         // Полка успела обновиться (подбор пересобран), а трек нажат в очереди — играем дальше по очереди.
         if (!list.Contains(vm)) list = _queue.Contains(vm) ? _queue : [vm];
@@ -783,6 +794,7 @@ public sealed partial class MusicViewModel : ObservableObject
             MusicNow.Instance.Start(t.Key, t.Title, vm.Artist, BestCover(vm), vm.CoverBrush);
             _library.Record(t);
             _ = ShowBigCoverAsync(vm);
+            _ = WatchStartAsync(vm);
             PrefetchNext();
         }
         catch (Exception ex)
@@ -805,6 +817,23 @@ public sealed partial class MusicViewModel : ObservableObject
 
     // Крупная обложка в плеер — когда найдётся (плеер её не ждёт). Раньше, если обложку находили уже после запуска
     // (песня из Telegram без своей обложки), в плеере так и оставался градиент.
+    // Песня не зазвучала за 15 с (файл не качается: недоступный сервер Telegram, ссылка бота умерла) — в лог и дальше,
+    // а не бесконечная «загрузка».
+    private async Task WatchStartAsync(MusicTrackViewModel vm)
+    {
+        var key = vm.Track.Key;
+        for (var i = 0; i < 30; i++)
+        {
+            await Task.Delay(500);
+            if (MusicPlayer.Instance.Key != key || _current != vm) return; // переключили или остановили
+            if (MusicPlayer.Instance.Position.TotalSeconds > 0) return; // играет
+            if (!MusicPlayer.Instance.IsPlaying && !MusicPlayer.Instance.IsBuffering) return; // поставили на паузу
+        }
+        Logging.Write($"music: {key} не зазвучала за 15 с — следующая");
+        _toast("Песня не загрузилась — включаю следующую", true);
+        _ = NextAsync(auto: true);
+    }
+
     // Обложка, которая уже есть в памяти: крупная, плиточная или у такой же плитки на странице — плеер не мигает градиентом
     // и не грузит её заново при переключении.
     private ImageSource? BestCover(MusicTrackViewModel vm)

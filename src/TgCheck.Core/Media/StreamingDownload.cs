@@ -44,6 +44,8 @@ internal sealed class StreamingDownload
     private int _readers;
     private volatile bool _keep;
     private bool _failed;
+    private long _startedAt;
+    private bool _gotData;
 
     public StreamingDownload(Func<WTelegram.Client> client, Document doc, string part, string final,
         Func<Task<Document?>> refresh, Func<bool> shouldYield, Func<bool> cancelled)
@@ -161,7 +163,11 @@ internal sealed class StreamingDownload
         var slots = new SemaphoreSlim(Parallel);
         try
         {
+            // В лог — откуда качается и когда пришли первые данные: если песня или видео «висят», видно, на каком сервере.
+            var started = Environment.TickCount64;
             var dc = await _client().GetClientForDC(-_dcId, true);
+            Logging.Write($"stream {_location.id}: DC {_dcId}, {_size / 1024} КБ, подключение {Environment.TickCount64 - started} мс");
+            _startedAt = started;
             while (true)
             {
                 if (_cancelled()) throw new OperationCanceledException();
@@ -262,6 +268,7 @@ internal sealed class StreamingDownload
                         if (!_have[i] && (long)i * Unit < offset + file.bytes.Length) { _have[i] = true; _left--; }
                     }
                     Monitor.PulseAll(_lock); // читатель ждёт этот кусочек
+                    if (!_gotData) { _gotData = true; Logging.Write($"stream {_location.id}: первые данные через {Environment.TickCount64 - _startedAt} мс"); }
                 }
                 return;
             }

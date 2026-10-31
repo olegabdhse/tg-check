@@ -123,8 +123,8 @@ public sealed partial class TelegramService
         {
             if (ct.IsCancellationRequested || found.Count >= maxSongs) break;
             var request = MusicRequestAsync(background, () => InlineMusicAsync(bot, query));
-            // Бот думает дольше 6 с — не ждём его, спрашиваем следующего (его ответ всё равно покажется, если успеет).
-            if (await Task.WhenAny(request, Task.Delay(6000, ct)).ConfigureAwait(false) != request)
+            // Бот думает дольше 5 с — не ждём его, спрашиваем следующего (его ответ всё равно покажется, если успеет).
+            if (await Task.WhenAny(request, Task.Delay(5000, ct)).ConfigureAwait(false) != request)
             {
                 if (ct.IsCancellationRequested) break;
                 _ = request.ContinueWith(t =>
