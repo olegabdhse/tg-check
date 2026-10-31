@@ -303,9 +303,9 @@ public sealed partial class MusicViewModel : ObservableObject
         var query = $"{MusicTrack.MainArtist(t)} {t.Title}".Trim();
         try
         {
-            var chats = (await _tg.SearchMusicAsync(query, 10)).Select(MusicTrack.FromTelegram);
+            var chats = (await _tg.SearchMusicAsync(query, 10, background: true)).Select(MusicTrack.FromTelegram).Where(MusicTrack.IsSong);
             if (chats.FirstOrDefault(c => c.Duration >= 60 && MusicTrack.SameSong(c, t)) is { } inChats) return inChats;
-            var bots = await _tg.SearchBotMusicAsync(query, maxBots: 2);
+            var bots = await _tg.SearchBotMusicAsync(query, maxBots: 2, background: true);
             return bots.FirstOrDefault(b => MusicTrack.SameSong(b, t));
         }
         catch (Exception ex)
@@ -374,12 +374,12 @@ public sealed partial class MusicViewModel : ObservableObject
             {
                 var chats = await Task.Run(async () =>
                 {
-                    try { return await _tg.SearchMusicAsync("", 30); }
+                    try { return await _tg.SearchMusicAsync("", 30, background: true); }
                     catch (Exception ex) { Logging.Write($"music chats: {ex.Message}"); return []; }
                 });
                 if (chats.Count > 0 || InChats.Items.Count == 0)
                 {
-                    var fresh = MusicTrack.Distinct(chats.Select(MusicTrack.FromTelegram));
+                    var fresh = MusicTrack.Distinct(chats.Select(MusicTrack.FromTelegram).Where(MusicTrack.IsSong));
                     if (InChats.Items.Count == 0) InChats.Fill(fresh);
                     else await InChats.ReplaceGraduallyAsync(fresh); // на экране старое — подменяется по одной
                     _chatsAt = DateTime.UtcNow;
@@ -441,10 +441,10 @@ public sealed partial class MusicViewModel : ObservableObject
     private async Task<IReadOnlyList<MusicTrack>> SearchTelegramArtistAsync(string artist)
     {
         await WhenIdleAsync();
-        var found = (await _tg.SearchMusicAsync(artist, 20)).Select(MusicTrack.FromTelegram).ToList();
+        var found = (await _tg.SearchMusicAsync(artist, 20, background: true)).Select(MusicTrack.FromTelegram).Where(MusicTrack.IsSong).ToList();
         var want = MusicTrack.Normalize(artist);
         if (found.Count(t => MusicTrack.Normalize(t.Artist).Contains(want)) >= 3) return found;
-        try { found.AddRange(await _tg.SearchBotMusicAsync(artist, maxBots: 2)); }
+        try { found.AddRange(await _tg.SearchBotMusicAsync(artist, maxBots: 2, background: true)); }
         catch (Exception ex) { Logging.Write($"music recs bots: {ex.Message}"); }
         return found;
     }
@@ -489,14 +489,14 @@ public sealed partial class MusicViewModel : ObservableObject
             {
                 return await _tg.SearchBotMusicAsync(q, partial: songs => Anim.Ui(() =>
                 {
-                    if (!cts.IsCancellationRequested) FoundBots.Append(songs, InChatsAlready);
+                    if (!cts.IsCancellationRequested) FoundBots.Append(songs.Where(MusicTrack.IsSong), InChatsAlready);
                 }));
             }
             catch (Exception ex) { Logging.Write($"music search bots: {ex.Message}"); return []; }
         });
         var t = await tg;
         if (cts.IsCancellationRequested) return;
-        FoundTelegram.Fill(MusicTrack.Distinct(t.Select(MusicTrack.FromTelegram)));
+        FoundTelegram.Fill(MusicTrack.Distinct(t.Select(MusicTrack.FromTelegram).Where(MusicTrack.IsSong)));
         // Боты ответили раньше чатов — убрать у них то, что нашлось в чатах.
         foreach (var dup in FoundBots.Items.Where(x => InChatsAlready(x.Track)).ToList()) FoundBots.Items.Remove(dup);
         await bots;
@@ -875,7 +875,7 @@ public sealed partial class MusicViewModel : ObservableObject
                 t.Song = await _tg.GetSongAsync(t.PeerKey, t.MessageId, long.Parse(t.Id));
                 break;
             case MusicSource.Bot when !t.Live:
-                if (await _tg.RefindBotSongAsync(t) is { } again)
+                if (await _tg.RefindBotSongAsync(t, background: true) is { } again)
                 {
                     t.Song = again.Song;
                     t.StreamUrl = again.StreamUrl;

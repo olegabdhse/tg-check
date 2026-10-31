@@ -13,8 +13,38 @@ public sealed partial class TelegramService
     /// <summary>История прослушанного и подбор (создаётся при первом обращении).</summary>
     public MusicLibrary MusicLibrary => _musicLibrary ??= new MusicLibrary(_env.DataDirectory);
 
+    // Поиск музыки нагружает Telegram: когда подбор слал десятки поисков разом, Telegram начинал придерживать запросы
+    // (FLOOD_WAIT), и поиск, который набрал пользователь, ждал за ними. Теперь фоновые запросы (подбор, полки,
+    // подготовка следующей песни) идут по одному, с паузой, и ждут, пока идёт поиск пользователя.
+    private readonly SemaphoreSlim _musicBackground = new(1);
+    private int _musicForeground;
+
+    private async Task<T> MusicRequestAsync<T>(bool background, Func<Task<T>> request)
+    {
+        if (!background)
+        {
+            Interlocked.Increment(ref _musicForeground);
+            try { return await request().ConfigureAwait(false); }
+            finally { Interlocked.Decrement(ref _musicForeground); }
+        }
+        await _musicBackground.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            while (Volatile.Read(ref _musicForeground) > 0) await Task.Delay(200).ConfigureAwait(false);
+            return await request().ConfigureAwait(false);
+        }
+        finally
+        {
+            _ = Task.Delay(400).ContinueWith(_ => _musicBackground.Release(), TaskScheduler.Default);
+        }
+    }
+
     /// <summary>Песни во всех чатах и каналах (полные треки, новые первыми).</summary>
-    public async Task<IReadOnlyList<MessageItem>> SearchMusicAsync(string query, int limit = 30)
+    /// <param name="background">Для подбора и полок: по очереди, после поиска пользователя.</param>
+    public Task<IReadOnlyList<MessageItem>> SearchMusicAsync(string query, int limit = 30, bool background = false) =>
+        MusicRequestAsync(background, () => SearchMusicCoreAsync(query, limit));
+
+    private async Task<IReadOnlyList<MessageItem>> SearchMusicCoreAsync(string query, int limit)
     {
         var res = await _client.Messages_SearchGlobal(query, new InputMessagesFilterMusic(), limit: limit).ConfigureAwait(false);
         await Task.Yield();
@@ -46,7 +76,7 @@ public sealed partial class TelegramService
     // чат с ботом не создаётся и в списке чатов не появляется. Кроме известных музыкальных ботов пробуем и недавних
     // инлайн-ботов пользователя; кто не вернул ни одной песни — за этот запуск больше не спрашиваем.
     private static readonly string[] KnownMusicBots =
-        ["fmusbot", "vkm_bot", "Buddy_music_bot", "KDMusic_Bot", "melobot", "vkmusic_bot", "lybot", "MusicsHuntersbot"];
+        ["scdlbot", "soundcloud_youtube_music_bot", "fmusbot", "vkm_bot", "Buddy_music_bot", "KDMusic_Bot", "melobot", "vkmusic_bot", "lybot", "MusicsHuntersbot"];
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _musicBots = new(StringComparer.OrdinalIgnoreCase);
     private Task<IReadOnlyList<string>>? _musicBotCandidates;
 
@@ -58,22 +88,31 @@ public sealed partial class TelegramService
     });
 
     /// <summary>Песни от музыкальных ботов (полные, не короче минуты); maxBots — сколько ботов спрашивать.</summary>
-    /// <param name="partial">Ответ каждого бота — сразу, как пришёл (страница показывает его, не дожидаясь остальных).</param>
-    public async Task<IReadOnlyList<MusicTrack>> SearchBotMusicAsync(string query, int maxBots = 6, Action<IReadOnlyList<MusicTrack>>? partial = null)
+    /// <param name="partial">
+    /// Ответ каждого бота — сразу, как пришёл, даже если он опоздал к общему ожиданию (страница показывает его,
+    /// не дожидаясь остальных).
+    /// </param>
+    /// <param name="background">Для подбора: по очереди, после поиска пользователя, только у проверенных ботов.</param>
+    public async Task<IReadOnlyList<MusicTrack>> SearchBotMusicAsync(string query, int maxBots = 6, Action<IReadOnlyList<MusicTrack>>? partial = null,
+        bool background = false)
     {
-        var bots = (await MusicBotCandidatesAsync()).Where(b => !_musicBots.TryGetValue(b, out var works) || works)
-            // Уже показавшие себя — первыми.
-            .OrderByDescending(b => _musicBots.TryGetValue(b, out var works) && works).Take(maxBots).ToList();
-        var results = await Task.WhenAll(bots.Select(async b =>
+        // Порядок списка (новые и любимые боты — первыми); не ответившие ни разу и не музыкальные — пропускаются.
+        // Подбору — сначала те, у кого уже находились песни.
+        var candidates = (await MusicBotCandidatesAsync()).Where(b => !_musicBots.TryGetValue(b, out var works) || works);
+        if (background) candidates = candidates.OrderByDescending(b => _musicBots.TryGetValue(b, out var works) && works);
+        var bots = candidates.Take(maxBots).ToList();
+        var tasks = bots.Select(b => MusicRequestAsync(background, () => InlineMusicAsync(b, query)).ContinueWith(t =>
         {
-            var search = InlineMusicAsync(b, query);
-            var found = await Task.WhenAny(search, Task.Delay(8000)) == search ? await search : [];
+            IReadOnlyList<MusicTrack> found = t.IsCompletedSuccessfully ? t.Result : [];
             if (found.Count > 0) partial?.Invoke(found);
             return found;
-        }));
+        }, TaskScheduler.Default)).ToList();
+        // Ждём всех, но не дольше 12 с (медленный бот потом всё равно покажет свои песни через partial).
+        await Task.WhenAny(Task.WhenAll(tasks), Task.Delay(12_000)).ConfigureAwait(false);
+        var results = tasks.Where(t => t.IsCompletedSuccessfully).Select(t => t.Result).ToList();
         // Вперемешку по ботам: первые ответы каждого, потом вторые…
         var mixed = new List<MusicTrack>();
-        for (var i = 0; i < (results.Length == 0 ? 0 : results.Max(r => r.Count)); i++)
+        for (var i = 0; i < (results.Count == 0 ? 0 : results.Max(r => r.Count)); i++)
             foreach (var r in results)
                 if (i < r.Count) mixed.Add(r[i]);
         return MusicTrack.Distinct(mixed);
@@ -134,10 +173,10 @@ public sealed partial class TelegramService
     }
 
     /// <summary>Песня от бота заново (после перезапуска — ссылки на файлы у ботов временные): тот же запрос тому же боту.</summary>
-    public async Task<MusicTrack?> RefindBotSongAsync(MusicTrack track)
+    public async Task<MusicTrack?> RefindBotSongAsync(MusicTrack track, bool background = false)
     {
         if (track.BotName is not { } bot) return null;
-        var found = await InlineMusicAsync(bot, $"{track.Artist} {track.Title}".Trim());
+        var found = await MusicRequestAsync(background, () => InlineMusicAsync(bot, $"{track.Artist} {track.Title}".Trim()));
         return found.FirstOrDefault(t => t.Id == track.Id) ?? found.FirstOrDefault(t => MusicTrack.SameSong(t, track));
     }
 

@@ -158,9 +158,25 @@ public sealed class MusicTrack
     /// <summary>Песня Telegram (из чата или профиля).</summary>
     public static MusicTrack FromTelegram(MessageItem m)
     {
-        var title = m.SongTitle ?? m.MediaTitle ?? "Аудио";
-        var (artist, cleanTitle) = Tidy(m.SongPerformer, title) ?? (m.SongPerformer ?? "", title);
+        // Без тегов в названии — имя файла: «Artist - Song.mp3» → без расширения; «<unknown>» — исполнителя нет.
+        var title = AudioExtension.Replace(m.SongTitle ?? m.MediaTitle ?? "Аудио", "");
+        var performer = m.SongPerformer is { } p && !p.Contains("unknown", StringComparison.OrdinalIgnoreCase) ? p : null;
+        var (artist, cleanTitle) = Tidy(performer, title) ?? (performer ?? "", title);
         return FromTelegram(m, artist, cleanTitle);
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex AudioExtension =
+        new(@"\.(mp3|m4a|ogg|oga|opus|wav|flac|aac|wma)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// Похоже ли на песню: от минуты до 15 минут (короче — звуки и отрывки, длиннее — записи эфиров, подкасты, миксы),
+    /// и название — не имя файла вида «Технология_AMD_3D_VCache» (так подписаны лекции, озвучки, голосовые-файлы).
+    /// </summary>
+    public static bool IsSong(MusicTrack t)
+    {
+        if (t.Duration is > 0 and (< 60 or > 900)) return false;
+        if (t.Title.Count(c => c == '_') >= 2 && !t.Title.Contains(' ')) return false;
+        return Normalize(t.Title).Length > 0;
     }
 
     private static MusicTrack FromTelegram(MessageItem m, string artist, string title) => new()
