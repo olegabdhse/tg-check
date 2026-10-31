@@ -459,7 +459,7 @@ public sealed partial class MusicViewModel : ObservableObject
     public bool IsSearch => Query.Trim().Length > 0;
 
     public MusicShelf FoundTelegram { get; } = new("В Telegram", "Полные песни из ваших чатов и каналов");
-    public MusicShelf FoundBots { get; } = new("Музыкальные боты", "Полные песни через ботов Telegram");
+    public MusicShelf FoundBots { get; } = new("Музыкальные боты", "Полные песни через ботов Telegram") { Max = 10 };
 
     public IReadOnlyList<MusicShelf> SearchShelves => [FoundTelegram, FoundBots];
 
@@ -467,41 +467,34 @@ public sealed partial class MusicViewModel : ObservableObject
 
     partial void OnQueryChanged(string value) => _ = SearchAsync(value.Trim());
 
+    // Поиск — когда перестали печатать (0,7 с) и не меньше двух букв. Запросы по очереди: сначала чаты, потом боты
+    // по одному; в каждой группе не больше 10 вариантов. Новый текст отменяет всё, что ещё не отправлено по старому.
     private async Task SearchAsync(string q)
     {
         _searchCts?.Cancel();
-        if (q.Length == 0) { IsSearchLoading = false; return; }
+        if (q.Length < 2) { IsSearchLoading = false; return; }
         var cts = _searchCts = new CancellationTokenSource();
-        try { await Task.Delay(400, cts.Token); } // печатают — ждём паузу
+        var ct = cts.Token;
+        try { await Task.Delay(700, ct); }
         catch (TaskCanceledException) { return; }
         IsSearchLoading = true;
         FoundTelegram.Begin();
         FoundBots.Begin();
-        // Чаты и боты — независимо, каждый ответ сразу на странице (песни, которые уже есть в чатах, у ботов не повторяем).
         bool InChatsAlready(MusicTrack t) => FoundTelegram.Items.Any(y => MusicTrack.SameSong(t, y.Track));
-        var tg = Task.Run(async () =>
+        IReadOnlyList<MessageItem> chats;
+        try { chats = await Task.Run(() => _tg.SearchMusicAsync(q, 20)); }
+        catch (Exception ex) { Logging.Write($"music search tg: {ex.Message}"); chats = []; }
+        if (ct.IsCancellationRequested) return;
+        FoundTelegram.Fill(MusicTrack.Distinct(chats.Select(MusicTrack.FromTelegram).Where(MusicTrack.IsSong)).Take(10));
+        try
         {
-            try { return await _tg.SearchMusicAsync(q, 30); }
-            catch (Exception ex) { Logging.Write($"music search tg: {ex.Message}"); return []; }
-        });
-        var bots = Task.Run(async () =>
-        {
-            try
+            await Task.Run(() => _tg.SearchBotMusicAsync(q, maxSongs: 10, ct: ct, partial: songs => Anim.Ui(() =>
             {
-                return await _tg.SearchBotMusicAsync(q, partial: songs => Anim.Ui(() =>
-                {
-                    if (!cts.IsCancellationRequested) FoundBots.Append(songs.Where(MusicTrack.IsSong), InChatsAlready);
-                }));
-            }
-            catch (Exception ex) { Logging.Write($"music search bots: {ex.Message}"); return []; }
-        });
-        var t = await tg;
-        if (cts.IsCancellationRequested) return;
-        FoundTelegram.Fill(MusicTrack.Distinct(t.Select(MusicTrack.FromTelegram).Where(MusicTrack.IsSong)));
-        // Боты ответили раньше чатов — убрать у них то, что нашлось в чатах.
-        foreach (var dup in FoundBots.Items.Where(x => InChatsAlready(x.Track)).ToList()) FoundBots.Items.Remove(dup);
-        await bots;
-        if (cts.IsCancellationRequested) return;
+                if (!ct.IsCancellationRequested) FoundBots.Append(songs.Where(MusicTrack.IsSong), InChatsAlready);
+            })));
+        }
+        catch (Exception ex) { Logging.Write($"music search bots: {ex.Message}"); }
+        if (ct.IsCancellationRequested) return;
         FoundBots.Done();
         IsSearchLoading = false;
     }

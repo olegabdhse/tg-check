@@ -106,35 +106,39 @@ public sealed partial class TelegramService
         catch (Exception ex) { Logging.Write($"music bots: {ex.Message}"); }
     }
 
-    /// <summary>Песни от музыкальных ботов (полные, не короче минуты); maxBots — сколько ботов спрашивать.</summary>
-    /// <param name="partial">
-    /// Ответ каждого бота — сразу, как пришёл, даже если он опоздал к общему ожиданию (страница показывает его,
-    /// не дожидаясь остальных).
-    /// </param>
-    /// <param name="background">Для подбора: по очереди, после поиска пользователя, только у проверенных ботов.</param>
+    /// <summary>
+    /// Песни от музыкальных ботов (полные, не короче минуты). Боты спрашиваются по очереди: следующий — только если
+    /// песен ещё меньше maxSongs; новый запрос (ct) останавливает очередь — старые варианты набранного не досылаются.
+    /// </summary>
+    /// <param name="partial">Ответ каждого бота — сразу, как пришёл (страница показывает его, не дожидаясь остальных).</param>
+    /// <param name="background">Для подбора: после поиска пользователя, сначала проверенные боты.</param>
     public async Task<IReadOnlyList<MusicTrack>> SearchBotMusicAsync(string query, int maxBots = 6, Action<IReadOnlyList<MusicTrack>>? partial = null,
-        bool background = false)
+        bool background = false, int maxSongs = 10, CancellationToken ct = default)
     {
         // Порядок списка (новые и любимые боты — первыми); не ответившие ни разу и не музыкальные — пропускаются.
-        // Подбору — сначала те, у кого уже находились песни.
         var candidates = (await MusicBotCandidatesAsync()).Where(b => !_musicBots.TryGetValue(b, out var works) || works);
         if (background) candidates = candidates.OrderByDescending(b => _musicBots.TryGetValue(b, out var works) && works);
-        var bots = candidates.Take(maxBots).ToList();
-        var tasks = bots.Select(b => MusicRequestAsync(background, () => InlineMusicAsync(b, query)).ContinueWith(t =>
+        var found = new List<MusicTrack>();
+        foreach (var bot in candidates.Take(maxBots))
         {
-            IReadOnlyList<MusicTrack> found = t.IsCompletedSuccessfully ? t.Result : [];
-            if (found.Count > 0) partial?.Invoke(found);
-            return found;
-        }, TaskScheduler.Default)).ToList();
-        // Ждём всех, но не дольше 12 с (медленный бот потом всё равно покажет свои песни через partial).
-        await Task.WhenAny(Task.WhenAll(tasks), Task.Delay(12_000)).ConfigureAwait(false);
-        var results = tasks.Where(t => t.IsCompletedSuccessfully).Select(t => t.Result).ToList();
-        // Вперемешку по ботам: первые ответы каждого, потом вторые…
-        var mixed = new List<MusicTrack>();
-        for (var i = 0; i < (results.Count == 0 ? 0 : results.Max(r => r.Count)); i++)
-            foreach (var r in results)
-                if (i < r.Count) mixed.Add(r[i]);
-        return MusicTrack.Distinct(mixed);
+            if (ct.IsCancellationRequested || found.Count >= maxSongs) break;
+            var request = MusicRequestAsync(background, () => InlineMusicAsync(bot, query));
+            // Бот думает дольше 6 с — не ждём его, спрашиваем следующего (его ответ всё равно покажется, если успеет).
+            if (await Task.WhenAny(request, Task.Delay(6000, ct)).ConfigureAwait(false) != request)
+            {
+                if (ct.IsCancellationRequested) break;
+                _ = request.ContinueWith(t =>
+                {
+                    if (t.IsCompletedSuccessfully && !ct.IsCancellationRequested && t.Result.Count > 0) partial?.Invoke(t.Result.Take(maxSongs).ToList());
+                }, TaskScheduler.Default);
+                continue;
+            }
+            var fresh = (await request).Where(t => !found.Any(f => MusicTrack.SameSong(f, t))).Take(maxSongs - found.Count).ToList();
+            if (fresh.Count == 0 || ct.IsCancellationRequested) continue;
+            found.AddRange(fresh);
+            partial?.Invoke(fresh);
+        }
+        return found;
     }
 
     private async Task<IReadOnlyList<MusicTrack>> InlineMusicAsync(string botName, string query)
