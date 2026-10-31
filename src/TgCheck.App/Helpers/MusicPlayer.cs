@@ -27,9 +27,11 @@ public sealed class MusicPlayer
     private Timer? _timer;
     private long _lengthMs;
     private bool _ended;
+    // Что выбрал пользователь (играть или пауза). Состояние VLC меняется с задержкой — по нему кнопка показывала «пауза» у остановленной песни.
+    private bool _paused;
 
     public string? Key { get; private set; }
-    public bool IsPlaying => _player is { IsPlaying: true };
+    public bool IsPlaying => _player is not null && !_paused && !_ended;
     public TimeSpan Position => TimeSpan.FromMilliseconds(Math.Max(0, _player?.Time ?? 0));
     public TimeSpan Duration => TimeSpan.FromMilliseconds(Math.Max(_lengthMs, _player?.Length ?? 0));
     public float Level { get; private set; }
@@ -51,6 +53,7 @@ public sealed class MusicPlayer
         {
             if (Key == key && _player is { } p)
             {
+                _paused = false;
                 if (_ended) Restart(p);
                 else p.SetPause(false);
                 Notify();
@@ -93,10 +96,15 @@ public sealed class MusicPlayer
             _player.SetAudioFormat("S16N", Rate, Channels);
             _player.SetAudioCallbacks(OnAudio, OnPause, OnResume, OnFlush, OnDrain);
             _player.EndReached += OnEndReached;
+            // VLC сам сменил состояние (догрузил, встал на паузу, остановился) — плеер на экране обновляется сразу.
+            _player.Playing += OnVlcState;
+            _player.Paused += OnVlcState;
+            _player.Stopped += OnVlcState;
             _player.LengthChanged += (_, e) => _lengthMs = e.Length;
             _media = source is not null ? new Media(vlc, new StreamMediaInput(source)) : new Media(vlc, path!, FromType.FromPath);
             _source = source;
             _ended = false;
+            _paused = false;
             _lengthMs = 0;
             Key = key;
             _player.Play(_media);
@@ -134,6 +142,8 @@ public sealed class MusicPlayer
     private void OnFlush(IntPtr data, long pts) => _buffer?.ClearBuffer();
     private void OnDrain(IntPtr data) { }
 
+    private void OnVlcState(object? sender, EventArgs e) => ThreadPool.QueueUserWorkItem(_ => Notify());
+
     private void OnEndReached(object? sender, EventArgs e)
     {
         var key = Key;
@@ -163,7 +173,12 @@ public sealed class MusicPlayer
 
     public void Pause()
     {
-        lock (_lock) _player?.SetPause(true);
+        lock (_lock)
+        {
+            if (_player is null) return;
+            _paused = true;
+            _player.SetPause(true);
+        }
         Notify();
     }
 
@@ -208,6 +223,9 @@ public sealed class MusicPlayer
         _buffer = null;
         if (player is null) { source?.Dispose(); return; }
         player.EndReached -= OnEndReached;
+        player.Playing -= OnVlcState;
+        player.Paused -= OnVlcState;
+        player.Stopped -= OnVlcState;
         // Остановка VLC может занять время (ждёт свои потоки) — не в потоке интерфейса.
         ThreadPool.QueueUserWorkItem(_ =>
         {

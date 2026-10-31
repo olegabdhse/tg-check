@@ -54,6 +54,9 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
 
     private Task RefreshPresenceAsync()
     {
+        // «В сети» истекает само (Telegram задаёт срок): без связи статус больше не зависает.
+        foreach (var c in Chats)
+            if (c.IsOnline && _tg.GetPresence(c.Peer).Presence != Presence.Online) c.IsOnline = false;
         var peers = Chats.Where(c => c.IsPersonal && !c.IsArchived).OrderByDescending(c => c.SortDate).Take(80).Select(c => c.Peer).ToList();
         if (Conversation?.Peer is { IsUser: true } open) peers.Insert(0, open);
         return _tg.RefreshPresenceAsync(peers);
@@ -446,11 +449,34 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     // Telegram сообщил о пропущенных обновлениях — сверка через 2 с (несколько сигналов подряд — одна сверка).
     private readonly System.Windows.Threading.DispatcherTimer _resyncSoon = new() { Interval = TimeSpan.FromSeconds(2) };
 
+    private bool _syncing;
+    private int _syncTicks;
+
+    // Одна сверка за раз и не дольше 20 с: при плохой связи запросы раньше копились и висели минутами —
+    // значки непрочитанных у уже прочитанных чатов не пропадали. Архив сверяется раз в минуту.
     private async Task SyncRecentAsync()
     {
-        try { Merge(await _tg.GetRecentDialogsAsync(), false, removeMissing: false); NotifyArchive(); }
+        if (_syncing) return;
+        _syncing = true;
+        try
+        {
+            Merge(await WithTimeout(_tg.GetRecentDialogsAsync()), false, removeMissing: false);
+            if (_syncTicks++ % 3 == 0)
+            {
+                Merge(await WithTimeout(_tg.GetRecentDialogsAsync(archived: true)), true, removeMissing: false);
+                _ = Task.Run(_tg.FlushDialogsCache); // раз в минуту — свежий список чатов в кэш на диске
+            }
+            NotifyArchive();
+        }
         catch (Exception ex) { Logging.Write("sync dialogs: " + ex.Message); return; }
+        finally { _syncing = false; }
         await RefreshForumUnreadAsync(onlyMarked: true);
+    }
+
+    private static async Task<T> WithTimeout<T>(Task<T> task)
+    {
+        if (await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(20))) != task) throw new TimeoutException("нет ответа 20 с");
+        return await task;
     }
 
     // Обновляем существующие строки, добавляем новые, убираем пропавшие — без мерцания списка.

@@ -490,9 +490,9 @@ public sealed partial class TelegramService
         var first = true;
         foreach (var chunk in medias.Chunk(10))
         {
-            var text = first ? caption ?? "" : "";
-            if (chunk.Length == 1) await _client.SendMessageAsync(input, text, chunk[0], first ? replyToId ?? 0 : 0);
-            else await _client.SendAlbumAsync(input, chunk, text, first ? replyToId ?? 0 : 0);
+            var (text, entities) = first ? MarkdownEntities.Parse(caption ?? "") : ("", null);
+            if (chunk.Length == 1) await _client.SendMessageAsync(input, text, chunk[0], first ? replyToId ?? 0 : 0, entities);
+            else await _client.SendAlbumAsync(input, chunk, text, first ? replyToId ?? 0 : 0, entities);
             first = false;
         }
     }
@@ -621,8 +621,11 @@ public sealed partial class TelegramService
         return await Task.Run(() => MapHistory(replies));
     }
 
-    public async Task<MessageItem> SendCommentAsync(PeerRef discussion, int topId, string text) =>
-        MapMessage(await _client.SendMessageAsync(discussion.Info.ToInputPeer(), text, reply_to_msg_id: topId));
+    public async Task<MessageItem> SendCommentAsync(PeerRef discussion, int topId, string text)
+    {
+        var (clean, entities) = MarkdownEntities.Parse(text);
+        return MapMessage(await _client.SendMessageAsync(discussion.Info.ToInputPeer(), clean, reply_to_msg_id: topId, entities: entities));
+    }
 
     // ===================================================================== Закреплённые и переход к сообщению
 

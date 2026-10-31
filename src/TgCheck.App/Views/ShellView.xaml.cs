@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
+using TgCheck.App.Controls;
 using TgCheck.App.Helpers;
 using TgCheck.App.ViewModels;
 using TgCheck.Core.Media;
@@ -28,29 +29,93 @@ public partial class ShellView : UserControl
         };
         _storyTimer.Tick += (_, _) =>
         {
-            if (DataContext is ShellViewModel { StoryViewer: { } s } && StoryVideo.NaturalDuration.HasTimeSpan)
-                s.ReportVideoProgress(StoryVideo.Position.TotalSeconds / StoryVideo.NaturalDuration.TimeSpan.TotalSeconds);
+            if (_storyVm is { } s && _storyVideo is { Duration: { TotalSeconds: > 0 } d } v)
+                s.ReportVideoProgress(v.Position.TotalSeconds / d.TotalSeconds);
         };
     }
 
     private void OnVmChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(ShellViewModel.CurrentPage)) ShowPage(animate: true);
-        if (e.PropertyName == nameof(ShellViewModel.StoryViewer) && _vm?.StoryViewer is { } stories)
-            stories.PropertyChanged += OnStoryChanged;
+        if (e.PropertyName == nameof(ShellViewModel.StoryViewer)) AttachStories(_vm?.StoryViewer);
     }
 
-    // Видео истории: MediaElement в ручном режиме открывает файл только после Play().
+    // ===================================================================== Видео историй
+    // Каждая видео-история играет в своём, новом плеере: прежний останавливается и выбрасывается целиком.
+    // Раньше один плеер переключался между файлами, и остановка старого файла иногда гасила уже запущенный новый —
+    // история вставала на превью. Превью уходит, только когда показан первый настоящий кадр видео.
+
+    private static readonly System.Windows.Media.Effects.BlurEffect PreviewBlur = new() { Radius = 40, KernelType = System.Windows.Media.Effects.KernelType.Gaussian };
+    private StoriesViewModel? _storyVm;
+    private VlcVideoView? _storyVideo;
+
+    private void AttachStories(StoriesViewModel? stories)
+    {
+        if (ReferenceEquals(_storyVm, stories)) return;
+        if (_storyVm is not null) _storyVm.PropertyChanged -= OnStoryChanged;
+        _storyVm = stories;
+        if (stories is not null) stories.PropertyChanged += OnStoryChanged;
+        ShowStoryVideo(stories?.VideoPath);
+    }
+
     private void OnStoryChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(StoriesViewModel.IsPaused) && sender is StoriesViewModel { VideoPath: not null } paused)
+        if (!ReferenceEquals(sender, _storyVm) || _storyVm is not { } s) return;
+        if (e.PropertyName == nameof(StoriesViewModel.IsPaused))
         {
-            if (paused.IsPaused) StoryVideo.Pause(); else StoryVideo.Play();
+            if (_storyVideo is { } v) { if (s.IsPaused) v.Pause(); else v.Play(); }
             return;
         }
-        if (e.PropertyName != nameof(StoriesViewModel.VideoPath) || sender is not StoriesViewModel s) return;
-        if (s.VideoPath is null) { StoryVideo.Stop(); _storyTimer.Stop(); return; }
-        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => { StoryVideo.Play(); _storyTimer.Start(); });
+        if (e.PropertyName == nameof(StoriesViewModel.VideoPath)) ShowStoryVideo(s.VideoPath);
+    }
+
+    private void ShowStoryVideo(string? path)
+    {
+        _storyTimer.Stop();
+        if (_storyVideo is { } old)
+        {
+            _storyVideo = null;
+            StoryVideoHost.Children.Remove(old);
+            old.Release();
+        }
+        StoryPreview.Effect = null;
+        if (path is null) return;
+        // Видео целиком (как в Telegram), без обрезки краёв; по бокам или сверху-снизу — размытое превью той же истории.
+        var video = new VlcVideoView { Stretch = System.Windows.Media.Stretch.Uniform, Opacity = 0 };
+        video.FirstFrame += (_, _) =>
+        {
+            if (video != _storyVideo) return;
+            video.Opacity = 1;
+            StoryPreview.Effect = PreviewBlur;
+        };
+        video.MediaOpened += (_, _) =>
+        {
+            if (video != _storyVideo) return;
+            AudioPlayer.Instance.Stop();
+            MusicNow.Instance.Interrupt(MusicNow.Story); // видео в истории — музыка на паузу до закрытия историй
+            if (_storyVm?.IsPaused == true) video.Pause();
+            _storyTimer.Start();
+        };
+        video.MediaEnded += (_, _) =>
+        {
+            if (video != _storyVideo) return;
+            _storyTimer.Stop();
+            _storyVm?.Next();
+        };
+        video.MediaFailed += async (_, error) =>
+        {
+            if (video != _storyVideo) return;
+            _storyTimer.Stop();
+            TgCheck.Core.Services.Logging.Write("story video failed: " + error);
+            // Видео не открылось — остаётся превью, через несколько секунд следующая история.
+            var story = _storyVm?.Story;
+            await Task.Delay(4000);
+            if (video == _storyVideo && _storyVm is { } s && s.Story == story) s.Next();
+        };
+        _storyVideo = video;
+        StoryVideoHost.Children.Add(video);
+        video.SourcePath = path; // сначала файл: смена файла сбрасывает «играть»
+        if (_storyVm?.IsPaused != true) video.Play();
     }
 
     // Чаты и свой профиль созданы один раз и просто переключаются — переход мгновенный.
@@ -121,20 +186,5 @@ public partial class ShellView : UserControl
         e.Handled = true;
         if (s.SendReplyCommand.CanExecute(null)) s.SendReplyCommand.Execute(null);
         Focus(); // убрать фокус из поля — история продолжится
-    }
-
-    private void StoryVideo_MediaOpened(object sender, RoutedEventArgs e)
-    {
-        AudioPlayer.Instance.Stop();
-        MusicNow.Instance.Interrupt(MusicNow.Story); // видео в истории — музыка на паузу до закрытия историй
-        StoryVideo.Play();
-        _storyTimer.Start();
-    }
-
-    private void StoryVideo_MediaEnded(object sender, RoutedEventArgs e)
-    {
-        _storyTimer.Stop();
-        StoryVideo.Stop();
-        if (DataContext is ShellViewModel { StoryViewer: { } s }) s.Next();
     }
 }

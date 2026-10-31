@@ -826,12 +826,62 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock x:Name="Body" Grid.ColumnSpan="2" helpers:RichText.CustomEmoji="{Binding Item.CustomEmoji}"
+                                <TextBlock x:Name="Body" Grid.ColumnSpan="2" helpers:RichText.CustomEmoji="{Binding Item.CustomEmoji}" helpers:RichText.Formatting="{Binding Formatting}"
                                            helpers:RichText.Text="{Binding Text}" helpers:RichText.EmojiSize="{Binding TextEmojiSize}"
                                            helpers:RichText.TrailingSpace="{Binding ActualWidth, ElementName=Meta}"
                                            TextWrapping="Wrap" FontSize="14" LineHeight="21" HorizontalAlignment="Left"
                                            Foreground="#F5F7FA" Margin="0,0,0,0" MaxWidth="{Binding TextMaxWidth}"
-                                           Visibility="{Binding HasText, Converter={StaticResource BoolToVis}}" />
+                                           Visibility="{Binding ShowPlainText, Converter={StaticResource BoolToVis}}" />
+                                <!-- Текст с блоками кода: куски по порядку, блоки — во всю ширину пузыря; время — под последним -->
+                                <!-- Создаётся только у сообщений с кодом (свёрнутый элемент шаблон не строит) -->
+                                <ContentControl Grid.ColumnSpan="2" Content="{Binding}" Focusable="False" ButtonBase.Click="CopyCode_Click">
+                                    <ContentControl.Style>
+                                        <Style TargetType="ContentControl">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasCodeBlocks}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                    <Setter Property="ContentTemplate">
+                                                        <Setter.Value>
+                                                            <DataTemplate>
+                                <ItemsControl ItemsSource="{Binding Segments}" Focusable="False" Margin="0,0,0,17"
+                                              MaxWidth="{Binding TextMaxWidth}" MinWidth="220">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:TextSegment}">
+                                            <Grid>
+                                                <TextBlock helpers:RichText.CustomEmoji="{Binding Emoji}" helpers:RichText.Formatting="{Binding Formatting}"
+                                                           helpers:RichText.Text="{Binding Text}" helpers:RichText.EmojiSize="20"
+                                                           TextWrapping="Wrap" FontSize="14" LineHeight="21" Foreground="#F5F7FA" Margin="0,2"
+                                                           Visibility="{Binding IsCode, Converter={StaticResource InvBoolToVis}}" />
+                                                <Border CornerRadius="7" Background="#2E000000" Margin="0,4" Padding="11,7,8,9" ClipToBounds="True"
+                                                        Visibility="{Binding IsCode, Converter={StaticResource BoolToVis}}">
+                                                    <Grid>
+                                                        <!-- Полоска слева, как у блоков кода в Telegram -->
+                                                        <Border Width="3" HorizontalAlignment="Left" Margin="-11,-7,0,-9" Background="#7CC4FA" />
+                                                        <StackPanel>
+                                                            <DockPanel>
+                                                                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE8C8;" FontSize="13"
+                                                                        Padding="4" Margin="8,-3,0,0" Foreground="#9CD2FA" ToolTip="Копировать" Focusable="False" />
+                                                                <TextBlock Text="{Binding LanguageText}" Foreground="#9CD2FA" FontWeight="SemiBold" FontSize="13"
+                                                                           VerticalAlignment="Center" />
+                                                            </DockPanel>
+                                                            <TextBlock Text="{Binding Text}" FontFamily="Consolas" FontSize="13.5" LineHeight="19"
+                                                                       TextWrapping="Wrap" Foreground="#EEF3F8" Margin="0,5,0,0" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                                            </DataTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ContentControl.Style>
+                                </ContentControl>
                                 <Border x:Name="Meta" Grid.ColumnSpan="2" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,2,0,-1" CornerRadius="8" Padding="8,0,0,0">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="&#xE7B3;" Style="{StaticResource Icon}" FontSize="11" Foreground="{StaticResource MetaBrush}" Margin="0,0,3,0"
@@ -2036,7 +2086,7 @@
                         <TextBlock Text="{Binding StatusText}" Style="{StaticResource Caption}" HorizontalAlignment="Center" Margin="0,3,0,0"
                                    Visibility="{Binding StatusText, Converter={StaticResource NullToVis}}" />
                         <!-- У людей — переход к полному профилю (подарки, истории) -->
-                        <Button Style="{StaticResource PrimaryButton}" Content="Открыть профиль" HorizontalAlignment="Center" Margin="0,12,0,0" Padding="18,8"
+                        <Button x:Name="OpenFullProfileButton" Style="{StaticResource PrimaryButton}" Content="Открыть профиль" HorizontalAlignment="Center" Margin="0,12,0,0" Padding="18,8"
                                 Command="{Binding DataContext.OpenFullProfileCommand, ElementName=Root}"
                                 Visibility="{Binding ShowOpenFullProfile, Converter={StaticResource BoolToVis}}" />
                         <views:Spinner Width="22" Height="22" Margin="0,16" Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
@@ -2229,6 +2279,7 @@
                         <Button x:Name="MuteButton" Style="{StaticResource IconButton}" Content="&#xE767;" Foreground="White" Click="Mute_Click" />
                     </StackPanel>
                     <Button Style="{StaticResource IconButton}" Foreground="White" Content="&#xE74E;" ToolTip="Сохранить" Command="{Binding SaveViewerCommand}" />
+                    <Button Style="{StaticResource IconButton}" Foreground="White" Content="&#xE8A7;" ToolTip="Открыть в отдельном окне" Command="{Binding DetachViewerCommand}" />
                 </StackPanel>
             </Border>
             <Button Style="{StaticResource IconButton}" Content="&#xE711;" Foreground="White" Margin="0,12,14,0" HorizontalAlignment="Right"

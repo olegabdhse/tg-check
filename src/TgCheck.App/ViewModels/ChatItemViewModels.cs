@@ -275,6 +275,7 @@ public sealed partial class MessageViewModel : ObservableObject
         Chat = chat;
         _item = item;
         _text = item.Text;
+        _formatting = item.Formatting;
         _isEdited = item.EditDateUtc is not null;
         _isMediaUnread = item.MediaUnread;
         RebuildPoll();
@@ -283,7 +284,9 @@ public sealed partial class MessageViewModel : ObservableObject
     public PeerRef Chat { get; }
 
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(VoiceDurationText))] private MessageItem _item;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasText), nameof(IsJumboEmoji), nameof(TextEmojiSize))] private string _text;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasText), nameof(IsJumboEmoji), nameof(TextEmojiSize), nameof(HasCodeBlocks), nameof(ShowPlainText), nameof(Segments))] private string _text;
+    /// <summary>Оформление текста (у альбома — той части, где подпись).</summary>
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasCodeBlocks), nameof(ShowPlainText), nameof(Segments))] private IReadOnlyList<TextStyleSpan> _formatting;
     [ObservableProperty] private bool _isEdited;
     [ObservableProperty] private bool _isRead;
     [ObservableProperty] private bool _isNew;
@@ -363,7 +366,7 @@ public sealed partial class MessageViewModel : ObservableObject
         Album.Clear();
         foreach (var a in ordered) Album.Add(a);
         // Подпись альбома — текст из той части, где он есть.
-        if (Album.FirstOrDefault(a => a.HasText) is { } captioned) Text = captioned.Text;
+        if (Album.FirstOrDefault(a => a.HasText) is { } captioned) { Formatting = captioned.Formatting; Text = captioned.Text; }
         NotifyAlbum();
     }
 
@@ -545,6 +548,11 @@ public sealed partial class MessageViewModel : ObservableObject
     private static Color Rgb(int v) => Color.FromRgb((byte)(v >> 16), (byte)(v >> 8), (byte)v);
     private static Brush Frozen(Brush b) { b.Freeze(); return b; }
     public bool HasText => !string.IsNullOrEmpty(Text);
+
+    // ---- блоки кода: текст режется на куски «текст / код», блоки кода — отдельными элементами во всю ширину пузыря
+    public bool HasCodeBlocks => HasText && Formatting.Any(f => f.Kind == TextStyleKind.Pre);
+    public bool ShowPlainText => HasText && !HasCodeBlocks;
+    public IReadOnlyList<TextSegment> Segments => HasCodeBlocks ? TextSegment.Split(Text, Formatting, Item.CustomEmoji) : [];
     public bool IsJumboEmoji => !IsAlbum && Item.Media is MediaKind.None or MediaKind.WebPage && RichText.IsEmojiOnly(Text) && !HasReply && !IsForwarded;
     public double TextEmojiSize => IsJumboEmoji ? 56 : 20;
     public bool IsGroupChat => Chat.Kind == PeerKind.Group;

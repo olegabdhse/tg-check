@@ -90,7 +90,9 @@ public sealed class VlcVideoView : Image
     public void Play()
     {
         _playRequested = true;
-        if (_player is not { } p) return;
+        // Новый файл ещё открывается — Play применится, когда он откроется. Раньше здесь заново запускался
+        // прежний файл (Media у плеера ещё старое), а его остановка тут же гасила новый — видео вставало на кадре.
+        if (_player is not { } p || _media is null) return;
         if (p.State == VLCState.Ended) { Replay(TimeSpan.Zero); return; }
         p.Play();
     }
@@ -109,11 +111,27 @@ public sealed class VlcVideoView : Image
         var player = _player;
         var media = _media;
         _media = null;
-        // Stop у VLC может ждать свои потоки — не в потоке интерфейса.
-        if (player is not null) _stopTask = Task.Run(() => { player.Stop(); media?.Dispose(); });
+        // Stop у VLC может ждать свои потоки — не в потоке интерфейса. Остановки идут строго по очереди:
+        // иначе ранняя остановка могла закончиться уже после запуска следующего файла и остановить его.
+        if (player is not null)
+            _stopTask = _stopTask.ContinueWith(_ => { try { player.Stop(); } catch { } media?.Dispose(); }, TaskScheduler.Default);
         Source = null;
         _opened = false;
+        _firstFrame = false;
     }
+
+    /// <summary>Остановить и освободить плеер насовсем (контрол больше не нужен).</summary>
+    public void Release()
+    {
+        Stop();
+        var player = _player;
+        _player = null;
+        if (player is not null) _stopTask = _stopTask.ContinueWith(_ => player.Dispose(), TaskScheduler.Default);
+    }
+
+    /// <summary>Показан первый настоящий кадр видео (до этого под видео видно превью).</summary>
+    public event EventHandler? FirstFrame;
+    private bool _firstFrame;
 
     // После конца файла VLC нужно перезапустить (у него нет «перемотать в начало» из состояния Ended).
     private void Replay(TimeSpan from)
@@ -217,6 +235,9 @@ public sealed class VlcVideoView : Image
                 if (_bitmap is null || _buffer == IntPtr.Zero || _bitmap.PixelWidth != _width || _bitmap.PixelHeight != _height) return;
                 _bitmap.WritePixels(new Int32Rect(0, 0, _width, _height), _buffer, _stride * _height, _stride);
             }
+            if (_firstFrame) return;
+            _firstFrame = true;
+            FirstFrame?.Invoke(this, EventArgs.Empty);
         });
     }
 }

@@ -4,7 +4,7 @@
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         xmlns:views="clr-namespace:TgCheck.App.Views"
         Title="Мини-приложение" Width="400" Height="760" MinWidth="340" MinHeight="480" MaxWidth="600"
-        WindowStartupLocation="CenterOwner" Background="{StaticResource SurfaceBrush}"
+        WindowStartupLocation="Manual" Background="{StaticResource SurfaceBrush}"
         FontFamily="{StaticResource UiFont}" Foreground="{StaticResource TextBrush}" UseLayoutRounding="True">
     <Grid>
         <Grid.RowDefinitions>

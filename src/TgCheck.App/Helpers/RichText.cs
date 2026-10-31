@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
+using TgCheck.Core.Models;
 
 namespace TgCheck.App.Helpers;
 
@@ -29,6 +30,13 @@ public static partial class RichText
     /// </summary>
     public static readonly DependencyProperty TrailingSpaceProperty = DependencyProperty.RegisterAttached(
         "TrailingSpace", typeof(double), typeof(RichText), new PropertyMetadata(0d, OnChanged));
+
+    /// <summary>Оформление текста (жирный, курсив, код, блоки кода с языком, ссылки под текстом).</summary>
+    public static readonly DependencyProperty FormattingProperty = DependencyProperty.RegisterAttached(
+        "Formatting", typeof(IReadOnlyList<TextStyleSpan>), typeof(RichText), new PropertyMetadata(null, OnChanged));
+
+    public static IReadOnlyList<TextStyleSpan>? GetFormatting(DependencyObject d) => (IReadOnlyList<TextStyleSpan>?)d.GetValue(FormattingProperty);
+    public static void SetFormatting(DependencyObject d, IReadOnlyList<TextStyleSpan>? v) => d.SetValue(FormattingProperty, v);
 
     public static double GetTrailingSpace(DependencyObject d) => (double)d.GetValue(TrailingSpaceProperty);
     public static void SetTrailingSpace(DependencyObject d, double v) => d.SetValue(TrailingSpaceProperty, v);
@@ -59,6 +67,9 @@ public static partial class RichText
         _animate = GetTrailingSpace(tb) > 0 || GetEmojiSize(tb) >= 28;
         var text = GetText(tb) ?? "";
         var size = GetEmojiSize(tb) is > 0 and var s ? s : tb.FontSize * 1.3;
+
+        var styles = GetFormatting(tb)?.Where(f => f.Offset >= 0 && f.Offset + f.Length <= text.Length).ToList();
+        if (styles is { Count: > 0 }) { BuildFormatted(tb, text, styles, size); return; }
 
         // Кастомные эмодзи режут текст на куски: между ними — обычная обработка (ссылки, эмодзи).
         var spans = GetCustomEmoji(tb)?.Where(c => c.Offset >= 0 && c.Offset + c.Length <= text.Length).OrderBy(c => c.Offset).ToList();

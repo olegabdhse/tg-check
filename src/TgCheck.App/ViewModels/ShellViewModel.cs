@@ -309,6 +309,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private async Task InstallUpdate()
     {
         if (_updates is null || _update is null || IsUpdating) return;
+        // Сначала «Что нового» (описание релиза с GitHub); обновление — по кнопке «Начать обновление».
+        var whatsNew = new Views.UpdateWindow(_update) { Owner = Application.Current.MainWindow };
+        if (whatsNew.ShowDialog() != true) return;
         IsUpdating = true;
         try
         {
@@ -319,6 +322,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 UpdateText = $"Скачивание обновления… {p:P0}";
             }));
             UpdateText = "Перезапуск…";
+            // Новая версия запускается, как только этот процесс завершится. Если что-то (поток плеера, загрузка) не даёт
+            // процессу выйти — через несколько секунд завершаем принудительно, чтобы обновление применилось само.
+            _ = Task.Run(async () => { await Task.Delay(TimeSpan.FromSeconds(5)); Environment.Exit(0); });
             Application.Current.Shutdown();
         }
         catch (Exception ex)

@@ -84,9 +84,9 @@
         <!-- Плитка статистики -->
         <Style x:Key="StatTile" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource Surface2Brush}" />
-            <Setter Property="CornerRadius" Value="14" />
-            <Setter Property="Padding" Value="14,12" />
-            <Setter Property="Margin" Value="0,0,8,8" />
+            <Setter Property="CornerRadius" Value="15" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="Margin" Value="4,0,4,6" />
         </Style>
     </UserControl.Resources>
 
@@ -236,28 +236,25 @@
                         <TextBlock Text="{Binding StatusText}" Style="{StaticResource Caption}" HorizontalAlignment="Center" Margin="0,3,0,0"
                                    Visibility="{Binding StatusText, Converter={StaticResource NullToVis}}" />
 
-                        <!-- Статистика -->
-                        <WrapPanel Margin="0,20,-8,4">
-                            <Border Style="{StaticResource StatTile}" Width="155" Visibility="{Binding IsSelf, Converter={StaticResource BoolToVis}}">
-                                <StackPanel>
-                                    <TextBlock Text="Звёзды" Style="{StaticResource Caption}" />
-                                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                        <Path Style="{StaticResource StarIcon}" Width="17" Height="17" Margin="0,0,6,0" />
-                                        <TextBlock Text="{Binding StarsText}" FontSize="19" FontWeight="SemiBold" />
-                                    </StackPanel>
+                        <!-- Статистика: компактные «таблетки» в строку по центру (у чужих профилей — только подарки) -->
+                        <WrapPanel Margin="0,16,0,6" HorizontalAlignment="Center">
+                            <Border Style="{StaticResource StatTile}" Visibility="{Binding IsSelf, Converter={StaticResource BoolToVis}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Style="{StaticResource StarIcon}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding StarsText}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <TextBlock Text="звёзд" Style="{StaticResource Caption}" Margin="5,0,0,0" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Border>
-                            <Border Style="{StaticResource StatTile}" Width="155">
-                                <StackPanel>
-                                    <TextBlock Text="Подарков" Style="{StaticResource Caption}" />
-                                    <TextBlock Text="{Binding CountAll}" FontSize="19" FontWeight="SemiBold" Margin="0,4,0,0" />
+                            <Border Style="{StaticResource StatTile}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding CountAll}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding GiftsCaption}" Style="{StaticResource Caption}" Margin="5,0,0,0" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Border>
-                            <Border Style="{StaticResource StatTile}" Width="155"
-                                    Visibility="{Binding HasTon, Converter={StaticResource BoolToVis}}">
-                                <StackPanel>
-                                    <TextBlock Text="TON" Style="{StaticResource Caption}" />
-                                    <TextBlock Text="{Binding TonText}" FontSize="19" FontWeight="SemiBold" Margin="0,4,0,0" />
+                            <Border Style="{StaticResource StatTile}" Visibility="{Binding HasTon, Converter={StaticResource BoolToVis}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding TonText}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <TextBlock Text="TON" Style="{StaticResource Caption}" Margin="5,0,0,0" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Border>
                         </WrapPanel>

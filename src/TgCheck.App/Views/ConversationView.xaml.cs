@@ -53,6 +53,8 @@ public partial class ConversationView : UserControl
             SideStackBack.Opacity = value ? 0 : 1; // в узком режиме роль «назад» у SideCompactBack
             SideStackBack.IsHitTestVisible = !value;
             if (value) SideStackBack.Width = 0;
+            // В мини-окне полного профиля нет — кнопка «Открыть профиль» там не нужна.
+            if (value) OpenFullProfileButton.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -132,11 +134,20 @@ public partial class ConversationView : UserControl
                 SmoothScroll.ScrollTo(Scroller, Scroller.ScrollableHeight);
                 return;
             }
-            if (animated && !_feedHidden) SmoothScroll.ScrollTo(Scroller, Scroller.ScrollableHeight);
+            if (animated && !_feedHidden)
+            {
+                // Далеко от низа — сначала прыжок поближе, затем короткий плавный доезд (а не через всю ленту).
+                if (Scroller.ScrollableHeight - Scroller.VerticalOffset > Scroller.ViewportHeight * 1.5)
+                    SmoothScroll.JumpTo(Scroller, Math.Max(0, Scroller.ScrollableHeight - Scroller.ViewportHeight * 1.2));
+                _bottomIntentUntil = DateTime.UtcNow.AddMilliseconds(700);
+                SmoothScroll.ScrollTo(Scroller, Scroller.ScrollableHeight);
+            }
             else SmoothScroll.JumpTo(Scroller, Scroller.ScrollableHeight);
             if (_vm is { Items.Count: > 0 }) RevealFeed();
         });
     }
+
+    private DateTime _bottomIntentUntil;
 
     // Лента пересобирается (переход к далёкому сообщению): прячем её, пока не встанет на место, — без мигания.
     private bool _feedHidden;
@@ -246,9 +257,11 @@ public partial class ConversationView : UserControl
     private void ScrollToMessage(MessageViewModel message)
     {
         _stickToBottom = false;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
             Scroller.UpdateLayout();
+            TgCheck.Core.Services.Logging.Write($"[perf] jump: раскладка ленты {sw.ElapsedMilliseconds} мс");
             if (Feed.ItemContainerGenerator.ContainerFromItem(message) is FrameworkElement el)
             {
                 var top = el.TransformToAncestor(Scroller).Transform(new Point(0, 0)).Y + Scroller.VerticalOffset;
@@ -292,17 +305,22 @@ public partial class ConversationView : UserControl
         if (e.ExtentHeightChange != 0 && e.VerticalChange == 0)
         {
             // Контент вырос (догрузились картинки/пришли сообщения): если были внизу — остаёмся внизу.
-            if (_stickToBottom) Scroller.ScrollToEnd();
+            // Во время доезда вниз — новая цель для плавной прокрутки (иначе она остановилась бы на старом конце).
+            if (_stickToBottom && DateTime.UtcNow < _bottomIntentUntil) SmoothScroll.ScrollTo(Scroller, Scroller.ScrollableHeight);
+            else if (_stickToBottom) Scroller.ScrollToEnd();
         }
         else
         {
-            _stickToBottom = IsNearBottom(Scroller.VerticalOffset);
+            // Пока лента сама доезжает вниз (после отправки) — «держаться внизу» не сбрасываем: иначе дорастающий
+            // новый пузырь оставлял ленту чуть выше конца.
+            _stickToBottom = IsNearBottom(Scroller.VerticalOffset) || DateTime.UtcNow < _bottomIntentUntil;
         }
 
         var atBottom = IsNearBottom(Scroller.VerticalOffset);
         var showJump = (!atBottom && Scroller.ScrollableHeight > 1) || _vm.IsDetached;
         if (Anim.GetShow(JumpButton) != showJump) Anim.SetShow(JumpButton, showJump);
         if (e.VerticalChange != 0 || e.ExtentHeightChange != 0) MarkReadSoon();
+        if (e.VerticalChange != 0 && _vm.HasPinned) { _pinnedTimer.Stop(); _pinnedTimer.Start(); }
 
         // Фоновая подгрузка истории заранее (за ~1500 px до верха): позицию держит якорь прокрутки — незаметно для глаза.
         if (!_loadingOlder && !_feedHidden && Scroller.VerticalOffset < 1500 && e.VerticalChange < 0 && _vm.HasMoreHistory)
@@ -312,6 +330,41 @@ public partial class ConversationView : UserControl
             try { await _vm.LoadOlderAsync(); }
             finally { _loadingOlder = false; }
         }
+    }
+
+    // Плашка закрепа следует за прокруткой: после остановки (150 мс) — ближайший закреп выше видимой части.
+    private DispatcherTimer? _pinnedTimerField;
+    private DispatcherTimer _pinnedTimer
+    {
+        get
+        {
+            if (_pinnedTimerField is not null) return _pinnedTimerField;
+            _pinnedTimerField = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+            _pinnedTimerField.Tick += (_, _) =>
+            {
+                _pinnedTimerField.Stop();
+                if (_vm is not null && TopVisibleMessageId() is { } id) _vm.SyncPinnedToViewport(id);
+            };
+            return _pinnedTimerField;
+        }
+    }
+
+    // Верхнее видимое сообщение: двоичный поиск по ленте (сообщения идут сверху вниз).
+    private int? TopVisibleMessageId()
+    {
+        if (_vm is null || _vm.Items.Count == 0) return null;
+        int lo = 0, hi = _vm.Items.Count - 1, found = -1;
+        while (lo <= hi)
+        {
+            var mid = (lo + hi) / 2;
+            if (Feed.ItemContainerGenerator.ContainerFromIndex(mid) is not FrameworkElement el || !el.IsVisible) return null;
+            var bottom = el.TransformToAncestor(Scroller).Transform(new Point(0, el.ActualHeight)).Y;
+            if (bottom > 0) { found = mid; hi = mid - 1; }
+            else lo = mid + 1;
+        }
+        for (var i = Math.Max(found, 0); i < _vm.Items.Count; i++)
+            if (_vm.Items[i] is MessageViewModel m) return m.Id;
+        return null;
     }
 
     private void Composer_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -620,6 +673,20 @@ public partial class ConversationView : UserControl
     {
         if (VideoPlayer.Duration is { } duration)
             VideoPlayer.Position = TimeSpan.FromSeconds(SeekSlider.Value * duration.TotalSeconds);
+    }
+
+    // Кнопка «копировать» у блока кода: на секунду-полторы превращается в галочку.
+    private async void CopyCode_Click(object sender, RoutedEventArgs e)
+    {
+        // Кнопка в шаблоне — событие ловит контейнер блоков кода.
+        if (e.OriginalSource is not Button { DataContext: TextSegment segment } button) return;
+        try { Clipboard.SetText(segment.Text); }
+        catch { return; } // буфер обмена занят другой программой
+        button.Content = "";
+        button.ToolTip = "Скопировано";
+        await Task.Delay(1500);
+        button.Content = "";
+        button.ToolTip = "Копировать";
     }
 
     private void UpdateVideoTime()

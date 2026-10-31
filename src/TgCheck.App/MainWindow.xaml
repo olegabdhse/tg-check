@@ -4,7 +4,7 @@
         xmlns:vm="clr-namespace:TgCheck.App.ViewModels"
         xmlns:views="clr-namespace:TgCheck.App.Views"
         Title="TG Check"
-        Width="1280" Height="820" MinWidth="720" MinHeight="560"
+        Width="1280" Height="820" MinWidth="460" MinHeight="420"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource BgBrush}"
         Foreground="{StaticResource TextBrush}"

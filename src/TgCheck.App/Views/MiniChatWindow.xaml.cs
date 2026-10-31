@@ -26,7 +26,13 @@ public partial class MiniChatWindow : Window
     {
         _back = back;
         InitializeComponent();
-        SourceInitialized += (_, _) => Helpers.WindowEffects.ApplyRoundedCorners(this, Color.FromRgb(0x2A, 0x38, 0x46));
+        SourceInitialized += (_, _) =>
+        {
+            Helpers.WindowEffects.ApplyRoundedCorners(this, Color.FromRgb(0x2A, 0x38, 0x46));
+            System.Windows.Interop.HwndSource.FromHwnd(new System.Windows.Interop.WindowInteropHelper(this).Handle)?.AddHook(WndProc);
+        };
+        StateChanged += (_, _) => OnStateChanged();
+        SizeChanged += (_, _) => { if (IsVisible && WindowState == WindowState.Normal) _userHeight = Height; };
         PrepareSpare();
         PreviewKeyDown += (_, e) =>
         {
@@ -49,19 +55,26 @@ public partial class MiniChatWindow : Window
             return;
         }
 
+        if (WindowState == WindowState.Maximized)
+        {
+            Card.Opacity = 1;
+            if (!IsVisible) Show();
+            Activate();
+            return;
+        }
         var area = Helpers.Monitors.WorkAreaAtCursor(this); // монитор, где нажали на островок
         // Открываем там, где окно оставили в прошлый раз (если это место ещё на экране).
         if (Helpers.UiSettings.MiniChatPosition is { } saved)
         {
             Left = saved.X;
             Top = saved.Y;
-            Height = Math.Min(720, area.Bottom - saved.Y - 8);
+            Height = Math.Min(_userHeight ?? 720, area.Bottom - saved.Y - 8);
         }
         else
         {
             Left = area.Left + (area.Width - Width) / 2;
             Top = top;
-            Height = Math.Min(720, area.Bottom - top - 8);
+            Height = Math.Min(_userHeight ?? 720, area.Bottom - top - 8);
         }
         Card.BeginAnimation(OpacityProperty, null);
         Card.Opacity = 1; // без анимации появления — окно сразу готовое
@@ -138,8 +151,71 @@ public partial class MiniChatWindow : Window
     private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ButtonState != MouseButtonState.Pressed) return;
+        if (e.ClickCount == 2) { ToggleMaximize(); return; }
+        if (WindowState == WindowState.Maximized)
+        {
+            // Развёрнутое окно тянут за полосу — оно возвращается к обычному размеру под курсором (как у Windows).
+            var cursor = PointToScreen(e.GetPosition(this));
+            var dpi = VisualTreeHelper.GetDpi(this);
+            var ratio = e.GetPosition(this).X / Math.Max(1, ActualWidth);
+            var restore = RestoreBounds;
+            WindowState = WindowState.Normal;
+            Left = cursor.X / dpi.DpiScaleX - restore.Width * ratio;
+            Top = cursor.Y / dpi.DpiScaleY - 12;
+        }
         DragMove();
-        Helpers.UiSettings.MiniChatPosition = new Point(Left, Top);
+        if (WindowState == WindowState.Normal) Helpers.UiSettings.MiniChatPosition = new Point(Left, Top);
+    }
+
+    // Высота, которую выбрал пользователь (растянул окно или прикрепил к краю) — при следующем открытии та же.
+    private double? _userHeight;
+
+    private void Max_Click(object sender, RoutedEventArgs e) => ToggleMaximize();
+
+    private void ToggleMaximize() => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private void OnStateChanged()
+    {
+        var max = WindowState == WindowState.Maximized;
+        MaxButton.Content = max ? "" : "";
+        MaxButton.ToolTip = max ? "Восстановить" : "Развернуть";
+        // Развёрнутое окно без рамки Windows выходит за экран на толщину рамки — отступаем на неё.
+        var frame = SystemParameters.WindowResizeBorderThickness;
+        Card.Margin = max ? new Thickness(frame.Left + 2, frame.Top + 2, frame.Right + 2, frame.Bottom + 2) : new Thickness(0);
+    }
+
+    // Кнопка «развернуть» отдаётся Windows как настоящая кнопка развёртывания: при наведении Windows 11
+    // показывает раскладки прикрепления окна, Win+стрелки и перетаскивание к краю экрана тоже работают.
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        const int WM_NCHITTEST = 0x84, WM_NCLBUTTONDOWN = 0xA1, WM_NCLBUTTONUP = 0xA2, HTMAXBUTTON = 9;
+        switch (msg)
+        {
+            case WM_NCHITTEST when IsOverMaxButton(lParam):
+                handled = true;
+                return HTMAXBUTTON;
+            case WM_NCLBUTTONDOWN when wParam.ToInt32() == HTMAXBUTTON:
+                handled = true;
+                break;
+            case WM_NCLBUTTONUP when wParam.ToInt32() == HTMAXBUTTON:
+                handled = true;
+                ToggleMaximize();
+                break;
+        }
+        return IntPtr.Zero;
+    }
+
+    private bool IsOverMaxButton(IntPtr lParam)
+    {
+        if (!MaxButton.IsVisible) return false;
+        var x = (short)(lParam.ToInt64() & 0xFFFF);
+        var y = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
+        try
+        {
+            var p = MaxButton.PointFromScreen(new Point(x, y));
+            return p.X >= 0 && p.Y >= 0 && p.X < MaxButton.ActualWidth && p.Y < MaxButton.ActualHeight;
+        }
+        catch (InvalidOperationException) { return false; }
     }
 
     private void Back_Click(object sender, RoutedEventArgs e)

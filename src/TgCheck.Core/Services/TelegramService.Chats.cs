@@ -197,21 +197,75 @@ public sealed partial class TelegramService
         }
         var all = new Messages_Dialogs { dialogs = [.. dialogs], messages = [.. messages], users = users, chats = chats };
         _cache.Save($"dialogs_{folder}", all);
+        lock (_dialogsCache) { _dialogsCache[folder] = all; _dialogsDirty[folder] = false; }
     }
 
     /// <summary>
     /// Верх списка чатов с сервера (последние ~60): точные счётчики непрочитанных и последние сообщения.
     /// Нужен для сверки: в больших группах Telegram присылает не все обновления.
     /// </summary>
-    public async Task<IReadOnlyList<ChatSummary>> GetRecentDialogsAsync(int limit = 60)
+    public async Task<IReadOnlyList<ChatSummary>> GetRecentDialogsAsync(int limit = 60, bool archived = false)
     {
-        var dialogs = await _client.Messages_GetDialogs(default, 0, null, limit, 0, folder_id: 0);
-        return await Task.Run(() => MapDialogs(dialogs, archived: false));
+        var dialogs = await _client.Messages_GetDialogs(default, 0, null, limit, 0, folder_id: archived ? 1 : 0);
+        return await Task.Run(() =>
+        {
+            PatchDialogsCache(archived ? 1 : 0, dialogs);
+            return MapDialogs(dialogs, archived);
+        });
     }
 
     /// <summary>Диалоги из локального кэша (мгновенно при запуске), null — кэша нет.</summary>
-    public IReadOnlyList<ChatSummary>? GetCachedDialogs(bool archived) =>
-        _cache.Load<Messages_DialogsBase>($"dialogs_{(archived ? 1 : 0)}") is { } cached ? MapDialogs(cached, archived) : null;
+    public IReadOnlyList<ChatSummary>? GetCachedDialogs(bool archived)
+    {
+        if (_cache.Load<Messages_DialogsBase>($"dialogs_{(archived ? 1 : 0)}") is not { } cached) return null;
+        lock (_dialogsCache) _dialogsCache[archived ? 1 : 0] ??= cached as Messages_Dialogs;
+        return MapDialogs(cached, archived);
+    }
+
+    // Кэш списка чатов живёт весь сеанс: свежий верх списка (сверка каждые 20 с) дописывается в него, и на диск
+    // он сохраняется раз в минуту и при выходе. Раньше кэш писался только при запуске — следующий запуск показывал
+    // список, каким он был в начале прошлого сеанса (старые сообщения, непрочитанные, порядок).
+    private readonly Messages_Dialogs?[] _dialogsCache = new Messages_Dialogs?[2];
+    private readonly bool[] _dialogsDirty = new bool[2];
+
+    private void PatchDialogsCache(int folder, Messages_DialogsBase fresh)
+    {
+        lock (_dialogsCache)
+        {
+            if (_dialogsCache[folder] is not { } cache) return;
+            var freshDialogs = fresh.Dialogs.OfType<Dialog>().ToList();
+            if (freshDialogs.Count == 0) return;
+            var keys = freshDialogs.Select(d => PeerRef.KeyOf(d.peer)).ToHashSet();
+            var dialogs = freshDialogs.Cast<DialogBase>().Concat(cache.dialogs.Where(d => !keys.Contains(PeerRef.KeyOf(d.Peer)))).ToArray();
+            // Из сообщений оставляем только последние сообщения диалогов — кэш не разрастается.
+            var tops = dialogs.Select(d => (PeerRef.KeyOf(d.Peer), d.TopMessage)).ToHashSet();
+            var messages = fresh.Messages.Concat(cache.messages)
+                .Where(m => tops.Contains((PeerRef.KeyOf(m.Peer), m.ID)))
+                .DistinctBy(m => (PeerRef.KeyOf(m.Peer), m.ID)).ToArray();
+            var users = new Dictionary<long, User>(cache.users);
+            var chats = new Dictionary<long, ChatBase>(cache.chats);
+            fresh.CollectUsersChats(users, chats);
+            _dialogsCache[folder] = new Messages_Dialogs { dialogs = dialogs, messages = messages, users = users, chats = chats };
+            _dialogsDirty[folder] = true;
+        }
+    }
+
+    /// <summary>Сохранить изменившийся за сеанс список чатов в кэш на диске (в фоне вызывать можно часто — пишет только изменения).</summary>
+    public void FlushDialogsCache()
+    {
+        for (var folder = 0; folder < 2; folder++)
+        {
+            Messages_Dialogs? snapshot;
+            lock (_dialogsCache)
+            {
+                if (!_dialogsDirty[folder] || _dialogsCache[folder] is null) continue;
+                snapshot = _dialogsCache[folder];
+                _dialogsDirty[folder] = false;
+            }
+            try { _cache.Save($"dialogs_{folder}", snapshot!); }
+            catch (Exception ex) { Logging.Write("dialogs cache: " + ex.Message); }
+        }
+    }
 
     private List<ChatSummary> MapDialogs(Messages_DialogsBase dialogs, bool archived)
     {
@@ -306,13 +360,15 @@ public sealed partial class TelegramService
     public async Task<MessageItem> SendTextAsync(PeerRef peer, string text, int? replyToId = null)
     {
         EnsureNotIgnored(peer);
-        var msg = await _client.SendMessageAsync(peer.Info.ToInputPeer(), text, reply_to_msg_id: replyToId ?? 0);
+        var (clean, entities) = MarkdownEntities.Parse(text);
+        var msg = await _client.SendMessageAsync(peer.Info.ToInputPeer(), clean, reply_to_msg_id: replyToId ?? 0, entities: entities);
         return MapMessage(msg);
     }
 
     public async Task EditTextAsync(PeerRef peer, int messageId, string text)
     {
-        var updates = await _client.Messages_EditMessage(peer.Info.ToInputPeer(), messageId, text);
+        var (clean, entities) = MarkdownEntities.Parse(text);
+        var updates = await _client.Messages_EditMessage(peer.Info.ToInputPeer(), messageId, clean, entities: entities);
         updates.CollectUsersChats(_users, _chats);
     }
 
@@ -386,6 +442,8 @@ public sealed partial class TelegramService
 
     internal static (Presence, DateTime?) MapStatus(UserStatus? status) => status switch
     {
+        // «В сети» действует до expires: если обновление «вышел» не пришло (обрыв связи), статус гаснет сам.
+        UserStatusOnline on when on.expires < DateTime.UtcNow => (Presence.Offline, on.expires),
         UserStatusOnline => (Presence.Online, null),
         UserStatusOffline off => (Presence.Offline, off.was_online),
         UserStatusRecently => (Presence.Recently, null),
@@ -533,6 +591,7 @@ public sealed partial class TelegramService
             GroupedId = msg.flags.HasFlag(Message.Flags.has_grouped_id) ? msg.grouped_id : 0,
             CustomEmoji = msg.entities?.OfType<MessageEntityCustomEmoji>()
                 .Select(e => new CustomEmojiSpan(e.offset, e.length, e.document_id)).ToList() ?? [],
+            Formatting = MapFormatting(msg.entities),
             InlineButtons = MapInline(msg.reply_markup as ReplyInlineMarkup),
             ReplyKeyboard = msg.reply_markup is ReplyKeyboardMarkup rk ? rk.rows.Select(r => (IReadOnlyList<BotButton>)r.buttons.Select(b => new BotButton { Text = b.text, Kind = BotButtonKind.Text }).ToList()).ToList() : null,
             KeyboardPlaceholder = (msg.reply_markup as ReplyKeyboardMarkup)?.placeholder,
@@ -545,6 +604,30 @@ public sealed partial class TelegramService
     }
 
 
+
+    private static IReadOnlyList<TextStyleSpan> MapFormatting(MessageEntity[]? entities)
+    {
+        if (entities is not { Length: > 0 }) return [];
+        var list = new List<TextStyleSpan>();
+        foreach (var e in entities)
+        {
+            TextStyleSpan? span = e switch
+            {
+                MessageEntityBold => new(TextStyleKind.Bold, e.offset, e.length),
+                MessageEntityItalic => new(TextStyleKind.Italic, e.offset, e.length),
+                MessageEntityUnderline => new(TextStyleKind.Underline, e.offset, e.length),
+                MessageEntityStrike => new(TextStyleKind.Strike, e.offset, e.length),
+                MessageEntityCode => new(TextStyleKind.Code, e.offset, e.length),
+                MessageEntityPre pre => new(TextStyleKind.Pre, e.offset, e.length, pre.language),
+                MessageEntityTextUrl url => new(TextStyleKind.TextUrl, e.offset, e.length, url.url),
+                MessageEntitySpoiler => new(TextStyleKind.Spoiler, e.offset, e.length),
+                MessageEntityBlockquote => new(TextStyleKind.Quote, e.offset, e.length),
+                _ => null,
+            };
+            if (span is not null && span.Length > 0) list.Add(span);
+        }
+        return list;
+    }
 
     private MessageItem WithMedia(MessageItem item, MessageMedia? media)
     {
@@ -592,7 +675,7 @@ public sealed partial class TelegramService
                     Id = geoItem.Id, PeerKey = geoItem.PeerKey, FromKey = geoItem.FromKey, From = geoItem.From, DateUtc = geoItem.DateUtc,
                     Text = geoItem.Text, IsOut = geoItem.IsOut, EditDateUtc = geoItem.EditDateUtc, ReplyToId = geoItem.ReplyToId,
                     ForwardedFrom = geoItem.ForwardedFrom, PostAuthor = geoItem.PostAuthor, Views = geoItem.Views, GroupedId = geoItem.GroupedId,
-                    CustomEmoji = geoItem.CustomEmoji, InlineButtons = geoItem.InlineButtons, Comments = geoItem.Comments, Reactions = geoItem.Reactions, Media = MediaKind.Location, MediaTitle = geoItem.MediaTitle,
+                    CustomEmoji = geoItem.CustomEmoji, Formatting = geoItem.Formatting, InlineButtons = geoItem.InlineButtons, Comments = geoItem.Comments, Reactions = geoItem.Reactions, Media = MediaKind.Location, MediaTitle = geoItem.MediaTitle,
                     Latitude = point.lat, Longitude = point.lon, GeoAccessHash = point.access_hash, VenueAddress = venue?.address,
                 };
             case MessageMediaWebPage:
@@ -679,7 +762,7 @@ public sealed partial class TelegramService
     {
         Id = i.Id, PeerKey = i.PeerKey, FromKey = i.FromKey, From = i.From, DateUtc = i.DateUtc, Text = i.Text,
         IsOut = i.IsOut, EditDateUtc = i.EditDateUtc, ReplyToId = i.ReplyToId, ThreadTopId = i.ThreadTopId, TopicId = i.TopicId, ForwardedFrom = i.ForwardedFrom,
-        PostAuthor = i.PostAuthor, Views = i.Views, GroupedId = i.GroupedId, CustomEmoji = i.CustomEmoji,
+        PostAuthor = i.PostAuthor, Views = i.Views, GroupedId = i.GroupedId, CustomEmoji = i.CustomEmoji, Formatting = i.Formatting,
         InlineButtons = i.InlineButtons, ReplyKeyboard = i.ReplyKeyboard, KeyboardPlaceholder = i.KeyboardPlaceholder, Comments = i.Comments, Reactions = i.Reactions,
         Media = kind, Photo = photo, Document = doc, MediaWidth = w, MediaHeight = h,
         MediaTitle = title, MediaSize = doc?.size ?? 0, StickerEmoji = emoji, DurationSeconds = duration, Waveform = waveform,

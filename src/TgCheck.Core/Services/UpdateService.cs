@@ -98,7 +98,15 @@ public sealed class UpdateService(string repo)
             "chcp 65001 >nul\r\n" +
             ":wait\r\n" +
             $"tasklist /FI \"PID eq {pid}\" 2>nul | find \"{pid}\" >nul && (timeout /t 1 /nobreak >nul & goto wait)\r\n" +
-            $"move /y \"{newExe}\" \"{exe}\" >nul\r\n" +
+            // exe может ещё несколько секунд держать антивирус или система — повторяем замену (до 30 с), затем запускаем.
+            "set n=0\r\n" +
+            ":move\r\n" +
+            $"move /y \"{newExe}\" \"{exe}\" >nul 2>&1 && goto run\r\n" +
+            "set /a n+=1\r\n" +
+            "if %n% geq 30 goto run\r\n" +
+            "timeout /t 1 /nobreak >nul\r\n" +
+            "goto move\r\n" +
+            ":run\r\n" +
             $"start \"\" \"{exe}\"\r\n" +
             "del \"%~f0\"\r\n");
 

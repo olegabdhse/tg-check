@@ -513,7 +513,8 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         {
             // Лента у старого сообщения — новое дописываем в сохранённый конец (покажется по «вниз»).
             if (_liveTail is { } tail && !tail.Any(t => t.Id == m.Id)) tail.Add(m);
-            if (!m.IsOut) PendingNewCount++;
+            if (m.IsOut) _ = JumpToBottom(); // своё сообщение — сразу к низу ленты, как в Telegram
+            else PendingNewCount++;
             return;
         }
         var atBottom = IsAtBottom?.Invoke() ?? true;
@@ -534,12 +535,13 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         if (vm.IsAlbum)
         {
             if (vm.Album.FirstOrDefault(a => a.Id == m.Id) is { } part) { part.Text = m.Text; }
-            if (m.Text.Length > 0) vm.Text = m.Text;
+            if (m.Text.Length > 0) { vm.Formatting = m.Formatting; vm.Text = m.Text; }
             return;
         }
         if (m.Poll is { } poll) vm.SetPoll(poll);
         if (!m.Reactions.SequenceEqual(vm.ReactionInfos)) vm.SetReactions(m.Reactions);
         if (vm.Text == m.Text && vm.IsEdited == (m.EditDateUtc is not null)) return;
+        vm.Formatting = m.Formatting;
         vm.Text = m.Text;
         vm.IsEdited = m.EditDateUtc is not null;
     }
@@ -1700,7 +1702,9 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         // Окно — сразу (WebView2 готовится, пока Telegram выдаёт адрес приложения), а не после ответа сервера.
         var appUrl = _tg.RequestWebAppAsync(Peer, bot, url, fromMenu);
         var window = new Views.WebAppWindow(title.Length > 0 ? title : bot.DisplayTitle, appUrl,
-            link => _ = _owner.Shell.OpenLinkAsync(link)) { Owner = Application.Current.MainWindow };
+            link => _ = _owner.Shell.OpenLinkAsync(link));
+        // Отдельное окно со своей кнопкой на панели задач: не сворачивается и не прячется вместе с основным.
+        Views.WindowPlacement.CenterOn(window, Application.Current.MainWindow);
         window.Show();
         try { await appUrl; }
         catch (Exception ex) { _owner.ShowToast(TgErrors.Describe(ex), true); }
@@ -1742,11 +1746,26 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     {
         var pinned = await _tg.GetPinnedAsync(Peer);
         Pinned.Clear();
-        foreach (var p in pinned) Pinned.Add(p);
+        foreach (var p in pinned.OrderByDescending(p => p.Id)) Pinned.Add(p); // от новых к старым
         PinnedIndex = 0;
         OnPropertyChanged(nameof(HasPinned));
         OnPropertyChanged(nameof(PinnedText));
         OnPropertyChanged(nameof(PinnedTitle));
+        PrefetchNextPinned();
+    }
+
+    /// <summary>
+    /// Прокрутили ленту: плашка показывает ближайший закреп выше видимой части (как в Telegram) — листаешь вверх,
+    /// она идёт к старым закрепам, вниз — возвращается к новым. Выше закрепов нет — самый новый.
+    /// </summary>
+    public void SyncPinnedToViewport(int topVisibleId)
+    {
+        if (Pinned.Count < 2) return;
+        var index = 0;
+        while (index < Pinned.Count && Pinned[index].Id >= topVisibleId) index++;
+        if (index >= Pinned.Count) index = 0;
+        if (index == PinnedIndex) return;
+        PinnedIndex = index;
         PrefetchNextPinned();
     }
 
@@ -1776,17 +1795,20 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
 
     public async Task JumpToMessageAsync(int id)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         if (!_byId.ContainsKey(id))
         {
             try
             {
                 // Уже подгружено заранее (следующий закреп) — без запроса; иначе — 40 сообщений вокруг (меньше пересборка).
                 var around = _aroundCache.Remove(id, out var prefetched) ? await prefetched : await _tg.GetHistoryAroundAsync(Peer, id, 40);
+                var fetched = sw.ElapsedMilliseconds;
                 // Конец ленты запоминаем (один раз — при первом уходе от него): «вниз» вернёт его мгновенно.
                 if (!_detached)
                     _liveTail = Items.OfType<MessageViewModel>().SelectMany(v => v.IsAlbum ? v.Album.Select(a => a.Item) : [v.Item]).TakeLast(60).ToList();
                 FeedResetting?.Invoke();
                 ResetItems(around, staged: false); // нужное сообщение — в середине, оно должно быть сразу
+                Logging.Write($"[perf] jump {id}: загрузка {fetched} мс, пересборка ленты {sw.ElapsedMilliseconds - fetched} мс");
                 HasMoreHistory = true;
                 _detached = true;
             }
@@ -1795,9 +1817,9 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         if (_byId.TryGetValue(id, out var vm))
         {
             ScrollToMessageRequested?.Invoke(vm);
+            // Подсветка гаснет сама — переход не ждёт её: следующий закреп или ответ открываются сразу.
             vm.IsHighlighted = true;
-            await Task.Delay(1600);
-            vm.IsHighlighted = false;
+            _ = Task.Delay(1600).ContinueWith(_ => vm.IsHighlighted = false, TaskScheduler.FromCurrentSynchronizationContext());
         }
         else ScrollToBottomRequested?.Invoke(false);
     }
@@ -2029,6 +2051,18 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
 
     [RelayCommand]
     private Task SaveViewer() => ViewerMessage is { } m ? Download(m) : Task.CompletedTask;
+
+    /// <summary>Открытое медиа — в отдельное окно (живёт независимо от основного); просмотр в чате закрывается.</summary>
+    [RelayCommand]
+    private void DetachViewer()
+    {
+        if (ViewerMessage is not { } m) return;
+        var list = _viewerList.Count > 0 ? _viewerList.ToList() : [m];
+        CloseViewer();
+        var window = new Views.MediaWindow(Peer.DisplayTitle, _tg.Media, list, m, Download);
+        Views.WindowPlacement.CenterOn(window, Application.Current.MainWindow);
+        window.Show();
+    }
 
     /// <summary>Видео, которое не открылось встроенным плеером, — в системном (там есть все установленные кодеки).</summary>
     [RelayCommand]

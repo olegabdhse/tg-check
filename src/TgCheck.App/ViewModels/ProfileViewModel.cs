@@ -269,6 +269,7 @@ public sealed partial class ProfileViewModel : ObservableObject
     [ObservableProperty] private bool _toastIsError;
 
     public int CountAll => Gifts.Count;
+    public string GiftsCaption => Fmt.Plural(CountAll, "подарок", "подарка", "подарков");
     public int CountRegular => Gifts.Count(g => !g.IsUnique);
     public int CountUnique => Gifts.Count(g => g.IsUnique);
     public int CountConvertible => Gifts.Count(g => g.CanConvert);
@@ -614,7 +615,7 @@ public sealed partial class ProfileViewModel : ObservableObject
 
     private void OnCountsChanged()
     {
-        foreach (var name in new[] { nameof(CountAll), nameof(CountRegular), nameof(CountUnique), nameof(CountConvertible),
+        foreach (var name in new[] { nameof(CountAll), nameof(GiftsCaption), nameof(CountRegular), nameof(CountUnique), nameof(CountConvertible),
                      nameof(CountHidden), nameof(ConvertibleStars), nameof(ConvertibleSummary) })
             OnPropertyChanged(name);
         OnSelectionChanged();

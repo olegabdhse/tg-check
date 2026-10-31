@@ -182,11 +182,14 @@ public sealed partial class StoriesViewModel : ObservableObject
 
         try
         {
-            Image = Images.FromBytes(await _tg.Media.GetMessagePreviewAsync(story));
-            if (Story != story) return;
+            var preview = Images.FromBytes(await _tg.Media.GetMessagePreviewAsync(story));
+            if (Story != story) return; // пока грузилось, перелистнули — не подменяем чужую историю
+            Image = preview;
             if (story.IsVideo)
             {
-                VideoPath = await _tg.Media.GetMediaFileAsync(story);
+                var path = await _tg.Media.GetMediaFileAsync(story);
+                if (Story != story) return;
+                VideoPath = path;
                 IsLoading = false;
                 return; // переход — по окончании видео (MediaEnded во view)
             }
@@ -195,8 +198,9 @@ public sealed partial class StoriesViewModel : ObservableObject
         }
         catch (Exception ex)
         {
+            if (Story != story) return;
             IsLoading = false;
-            TgErrors.Describe(ex);
+            Logging.Write($"story {story.Id}: {TgErrors.Describe(ex)}");
         }
     }
 

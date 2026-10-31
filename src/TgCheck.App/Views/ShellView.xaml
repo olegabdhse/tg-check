@@ -235,10 +235,9 @@
                       HorizontalAlignment="Center" MaxWidth="460">
                     <Border CornerRadius="16" Background="#101820" />
                     <Grid helpers:RoundClip.Radius="16">
-                        <Image Source="{Binding Image}" Stretch="UniformToFill" />
-                        <MediaElement x:Name="StoryVideo" LoadedBehavior="Manual" UnloadedBehavior="Close" Stretch="UniformToFill"
-                                      Source="{Binding VideoPath, Converter={StaticResource ToUri}}"
-                                      MediaOpened="StoryVideo_MediaOpened" MediaEnded="StoryVideo_MediaEnded" />
+                        <Image x:Name="StoryPreview" Source="{Binding Image}" Stretch="UniformToFill" />
+                        <!-- Видео истории: для каждой истории свой плеер (создаётся в коде), поверх превью -->
+                        <Grid x:Name="StoryVideoHost" />
                         <!-- Затемнение сверху и снизу для читаемости -->
                         <Border VerticalAlignment="Top" Height="110">
                             <Border.Background>

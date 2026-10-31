@@ -78,6 +78,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (_env is null) return Task.CompletedTask;
         AppEnv.SaveUserProxy(_env.DataDirectory, proxy);
+        try { _tg?.FlushDialogsCache(); } catch { }
         if (CurrentPage is ShellViewModel shell) shell.Dispose();
         if (CurrentPage is LoginViewModel login) login.Cancel();
         return InitializeAsync();
@@ -108,6 +109,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         Logging.Write("exit: программа закрывается, сессия сохраняется");
+        try { _tg?.FlushDialogsCache(); } catch { } // список чатов — каким он был при выходе
         if (CurrentPage is LoginViewModel login) login.Cancel();
         if (CurrentPage is ShellViewModel shell) shell.Dispose();
         if (_tg is not null) await _tg.DisposeAsync();

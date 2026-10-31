@@ -104,6 +104,12 @@ public sealed class PeerRef
 /// <summary>Кастомное эмодзи внутри текста сообщения.</summary>
 public sealed record CustomEmojiSpan(int Offset, int Length, long DocumentId);
 
+/// <summary>Оформление участка текста (как в Telegram): жирный, курсив, код, блок кода с языком, ссылка под текстом…</summary>
+public enum TextStyleKind { Bold, Italic, Underline, Strike, Code, Pre, TextUrl, Spoiler, Quote }
+
+/// <summary>Участок текста с оформлением: позиция в UTF-16, длина; Data — язык блока кода или адрес ссылки.</summary>
+public sealed record TextStyleSpan(TextStyleKind Kind, int Offset, int Length, string? Data = null);
+
 public enum MediaKind { None, Photo, Sticker, Video, Gif, Voice, VideoNote, Audio, Document, Poll, Contact, Location, WebPage, Other }
 
 /// <summary>Блок «сложного сообщения» Telegram (статья, коллаж, живые фото, музыка): по порядку, как в посте.</summary>
@@ -176,6 +182,8 @@ public sealed class MessageItem : MediaHolder
 
     /// <summary>Премиум (кастомные) эмодзи в тексте: позиция в UTF-16 и id документа.</summary>
     public IReadOnlyList<CustomEmojiSpan> CustomEmoji { get; init; } = [];
+    /// <summary>Оформление текста (жирный, код, блоки кода…).</summary>
+    public IReadOnlyList<TextStyleSpan> Formatting { get; init; } = [];
     /// <summary>Опрос/викторина (обновляется при голосовании).</summary>
     public PollInfo? Poll { get; set; }
 
