@@ -39,6 +39,8 @@ public sealed partial class TelegramService : IAsyncDisposable
         _session = new ProtectedSessionStore(Path.Combine(env.DataDirectory, "session.dat"));
         _cache = new LocalCache(Path.Combine(env.DataDirectory, "cache", "chats"));
         Logging.Init(Path.Combine(env.DataDirectory, "logs"));
+        // Свой туннель (Xray) — в фоне, чтобы не задерживать окно; подключение его дождётся.
+        _xrayStart = env.XrayLink is { } xray ? Task.Run(() => XrayTunnel.Start(xray)) : Task.FromResult<XrayTunnel?>(null);
         _client = CreateClient();
         Media = new MediaService(() => _client, Path.Combine(env.DataDirectory, "cache")) { RefreshDocument = RefreshDocumentAsync, RefreshPhoto = RefreshPhotoAsync };
     }
@@ -60,6 +62,7 @@ public sealed partial class TelegramService : IAsyncDisposable
         client.OnUpdates += _ => { MarkAlive(); return Task.CompletedTask; };
         // Подключение с тайм-аутом и keep-alive (и напрямую, и к MTProxy): мёртвый канал замечается быстро.
         client.TcpHandler = Socks5.ConnectDirectAsync;
+        _clientProxy = CurrentProxy;
         if (CurrentProxy is { } proxy)
         {
             if (AppEnv.IsMtProxy(proxy)) client.MTProxyUrl = proxy;
@@ -77,11 +80,26 @@ public sealed partial class TelegramService : IAsyncDisposable
     // Способы подключения по очереди: выбранный в программе, встроенный прокси, напрямую. РКН режет волнами — то прокси,
     // то прямое подключение; когда выбранный не проходит несколько раз подряд, пробуем следующий.
     private int _route;
-    private IReadOnlyList<string?> Routes => new[] { _env.Proxy, _env.BuiltInProxyUrl, null }.Distinct().ToList();
+    private IReadOnlyList<string?> Routes => new[] { XrayUrl, _env.Proxy, _env.BuiltInProxyUrl, null }.Where((r, i) => i > 0 || r is not null).Distinct().ToList();
+
+    // Свой туннель VLESS + Reality — первым (если он есть в сборке и запустился).
+    private readonly Task<XrayTunnel?> _xrayStart;
+    private string? _clientProxy; // через что создан текущий клиент
+    private string? XrayUrl => _xrayStart.IsCompletedSuccessfully && _xrayStart.Result is { IsAlive: true } t ? t.ProxyUrl : null;
+
+    // Туннель запустился уже после того, как клиент был создан (запуск — в фоне): пересоздать клиент через туннель.
+    private async Task UseXrayWhenReadyAsync()
+    {
+        if (await Task.WhenAny(_xrayStart, Task.Delay(8000)) != _xrayStart) return;
+        if (XrayUrl is null || _clientProxy == XrayUrl) return;
+        _route = 0;
+        Logging.Write("connection: через свой туннель");
+        await ResetClientAsync(deleteSession: false);
+    }
     private string? CurrentProxy => Routes[_route % Routes.Count];
 
     /// <summary>Как подключены сейчас: «встроенный прокси», «свой прокси», «напрямую».</summary>
-    public string RouteName => CurrentProxy is null ? "напрямую" : CurrentProxy == _env.BuiltInProxyUrl ? "встроенный прокси" : "свой прокси";
+    public string RouteName => CurrentProxy is null ? "напрямую" : CurrentProxy == XrayUrl ? "свой туннель" : CurrentProxy == _env.BuiltInProxyUrl ? "встроенный прокси" : "свой прокси";
 
     /// <summary>Подключились другим способом, чем выбран (выбранный не проходил).</summary>
     public bool OnFallbackRoute => _route % Routes.Count != 0;
@@ -124,6 +142,7 @@ public sealed partial class TelegramService : IAsyncDisposable
     {
         // Соединение с Telegram у некоторых провайдеров рвётся/тормозит — несколько попыток с таймаутом.
         const int attempts = 6;
+        await UseXrayWhenReadyAsync();
         for (var attempt = 1; ; attempt++)
         {
             try
@@ -733,6 +752,7 @@ public sealed partial class TelegramService : IAsyncDisposable
     {
         StopWatchdog();
         await _client.DisposeAsync();
+        if (_xrayStart.IsCompletedSuccessfully) _xrayStart.Result?.Dispose();
         _clientLock.Dispose();
     }
 }

@@ -33,6 +33,9 @@ public sealed class AppEnv
     /// <summary>Встроенный прокси — для запасного подключения, когда выбранный способ не проходит (в интерфейсе не показывается).</summary>
     internal string? BuiltInProxyUrl { get; init; }
 
+    /// <summary>Свой туннель VLESS + Reality (ссылка vless://…) — подключение первым (в интерфейсе не показывается).</summary>
+    internal string? XrayLink { get; init; }
+
     /// <summary>Подключаемся через встроенный прокси.</summary>
     public bool UsesBuiltInProxy => Proxy is not null && UserProxy is null;
 
@@ -106,6 +109,7 @@ public sealed class AppEnv
             UserProxy = userProxy,
             HasBuiltInProxy = builtIn is not null,
             BuiltInProxyUrl = builtIn is not null && IsSupportedProxy(builtIn) ? builtIn : null,
+            XrayLink = Get("TG_XRAY") is { } xray && xray.StartsWith("vless://", StringComparison.OrdinalIgnoreCase) ? xray : null,
             IgnoredUserIds = ParseIds(Get("TG_IGNORE_IDS")),
             UpdateRepo = Get("TG_UPDATE_REPO") ?? BuildInfo.UpdateRepo,
             ApiId = apiId,

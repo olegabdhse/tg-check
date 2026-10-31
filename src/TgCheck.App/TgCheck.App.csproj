@@ -64,6 +64,12 @@
     <EmbeddedResource Include="Native/vcruntime140.dll" LogicalName="TgCheck.vcruntime140.dll" />
   </ItemGroup>
 
+  <!-- Свой туннель VLESS + Reality: официальный xray.exe (XTLS/Xray-core, MPL-2.0, см. Native/XRAY-LICENSE.txt), сжатый;
+       распаковывается и сверяется с SHA-256 перед запуском (см. TgCheck.Core/Services/XrayTunnel.cs). -->
+  <ItemGroup>
+    <EmbeddedResource Include="Native/xray.exe.gz" LogicalName="TgCheck.xray.exe.gz" />
+  </ItemGroup>
+
   <!-- VLC для видео: нужная часть (~45 МБ) пакуется в zip и встраивается в exe; распаковывается один раз,
        при первом видео (см. Helpers\VlcRuntime.cs) — запуск программы от этого не замедляется. -->
   <PropertyGroup>
