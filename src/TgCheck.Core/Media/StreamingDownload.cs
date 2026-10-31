@@ -171,6 +171,7 @@ internal sealed class StreamingDownload
                 if (Idle)
                 {
                     // Никто не слушает: только предзагрузка начала (если просили), иначе пауза.
+                    if (_shouldYield()) { await _wake.WaitAsync(250); continue; } // предзагрузка — после превью и истории
                     int? unit;
                     lock (_lock) { unit = PrefetchUnit(); if (unit is { } u) _inflight[u] = true; }
                     if (unit is { } p) { _ = FetchAsync(dc, p, 1).ContinueWith(_ => _wake.Release(), TaskScheduler.Default); continue; }

@@ -420,7 +420,12 @@ public sealed class MediaService
     {
         var key = message.Photo is { } p ? $"msgphoto_{p.id}" : message.Document is { } d ? $"msgdoc_{d.id}" : null;
         if (key is null) return Task.FromResult<byte[]?>(null);
-        return Shared(key, () => Task.Run(() => LoadMessagePreviewAsync(message, key)));
+        return Shared(key, () => Task.Run(async () =>
+        {
+            Interlocked.Increment(ref _previewsLoading);
+            try { return await LoadMessagePreviewAsync(message, key); }
+            finally { Interlocked.Decrement(ref _previewsLoading); }
+        }));
     }
 
     private async Task<byte[]?> LoadMessagePreviewAsync(MediaHolder message, string key)
@@ -685,6 +690,12 @@ public sealed class MediaService
     private readonly ConcurrentDictionary<long, StreamingDownload> _storyStreams = new();
     private bool StoryIsLoading() => Volatile.Read(ref _storyActive) > 0 || _storyStreams.Values.Any(s => s.IsReading);
 
+    // Грузятся превью (картинки в чате, только что отправленное фото): фоновая докачка песни и предзагрузка следующей
+    // ждут — иначе 12 кусков песни по 1 МБ занимали соединение, и маленькое превью не успевало за 30 с.
+    // То, что проигрыватель ждёт прямо сейчас, качается всё равно — музыка не прерывается.
+    private int _previewsLoading;
+    private bool PreviewsLoading() => Volatile.Read(ref _previewsLoading) > 0;
+
     private Stream? OpenStreaming(MediaHolder media, Document doc)
     {
         var path = MediaFilePath(doc);
@@ -716,7 +727,7 @@ public sealed class MediaService
         var download = new StreamingDownload(_client, doc, part, path,
             () => RefreshDocument?.Invoke(media) ?? Task.FromResult<Document?>(null),
             // Видео истории сам никому не уступает; песни и прочее уступают ему.
-            media is StoryInfo ? () => false : StoryIsLoading,
+            media is StoryInfo ? () => false : () => StoryIsLoading() || PreviewsLoading(),
             () => _cancelledFiles.ContainsKey(doc.id));
         try { download.Start(); }
         catch (Exception ex)
