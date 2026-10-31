@@ -1382,6 +1382,19 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         FillForwardChats();
     }
 
+    /// <summary>Скопировать текст сообщения (меню сообщения).</summary>
+    [RelayCommand]
+    private void Copy(MessageViewModel? m)
+    {
+        if (m is null) return;
+        try
+        {
+            Clipboard.SetText(m.HasText ? m.Text : m.Item.Preview);
+            _owner.ShowToast("Скопировано");
+        }
+        catch { /* буфер занят */ }
+    }
+
     /// <summary>Скопировать текст выбранных — как в Telegram: «Имя, [время]» и текст.</summary>
     [RelayCommand]
     private void CopySelected()
@@ -1502,6 +1515,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
                 if (_songRequested != m.AudioKey) { stream.Dispose(); return; } // пока открывалась, выбрали другую песню
                 await Task.Run(() => MusicPlayer.Instance.PlayStream(m.AudioKey, stream));
                 MusicNow.Instance.Start(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush);
+                MusicViewModel.RecordTelegram(_tg, m.Item, m.Preview);
                 return;
             }
             var path = await _tg.Media.GetMediaFileAsync(m.Item, new Progress<double>(p => m.DownloadProgress = p));

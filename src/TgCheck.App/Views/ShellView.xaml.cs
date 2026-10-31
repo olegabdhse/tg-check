@@ -171,12 +171,13 @@ public partial class ShellView : UserControl
         FrameworkElement target;
         if (ReferenceEquals(page, _vm.Chats)) target = ChatsPage;
         else if (ReferenceEquals(page, _vm.MyProfile)) target = MyProfilePage;
+        else if (ReferenceEquals(page, _vm.Music)) target = MusicPage;
         else
         {
             PageHost.Content = page;
             target = PageHost;
         }
-        foreach (var el in new FrameworkElement[] { ChatsPage, MyProfilePage, PageHost })
+        foreach (var el in new FrameworkElement[] { ChatsPage, MyProfilePage, MusicPage, PageHost })
             el.Visibility = el == target ? Visibility.Visible : Visibility.Collapsed;
         if (target != PageHost) PageHost.Content = null;
         if (!animate) return;

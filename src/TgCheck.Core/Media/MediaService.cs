@@ -690,7 +690,26 @@ public sealed class MediaService
         var path = MediaFilePath(doc);
         if (File.Exists(path) && new FileInfo(path).Length == doc.size)
             return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        if (_streams.TryGetValue(doc.id, out var running) && !running.Done.IsCompleted) return new StreamingReadStream(running);
+        return StartStreaming(media, doc) is { } download ? new StreamingReadStream(download) : null;
+    }
+
+    /// <summary>
+    /// Тихо подкачать начало песни (следующей в очереди), чтобы переход на неё был почти мгновенным: только первые
+    /// <paramref name="bytes"/> байт и только пока их никто не слушает — дальше загрузка встаёт на паузу до воспроизведения.
+    /// </summary>
+    public void Prefetch(MediaHolder media, long bytes)
+    {
+        if (media.Document is not { size: > 0 } doc) return;
+        var path = MediaFilePath(doc);
+        if (File.Exists(path) && new FileInfo(path).Length == doc.size) return;
+        StartStreaming(media, doc)?.Prefetch(bytes);
+    }
+
+    // Загрузка по требованию для файла: уже идущая или новая (null — файл качается обычным способом).
+    private StreamingDownload? StartStreaming(MediaHolder media, Document doc)
+    {
+        var path = MediaFilePath(doc);
+        if (_streams.TryGetValue(doc.id, out var running) && !running.Done.IsCompleted) return running;
         if (_partPaths.ContainsKey(doc.id)) return null; // уже качается обычным способом — читаем его, как раньше
         _cancelledFiles.TryRemove(doc.id, out _);
         var part = path + "." + Guid.NewGuid().ToString("N")[..8] + ".part";
@@ -714,7 +733,7 @@ public sealed class MediaService
             _storyStreams.TryRemove(doc.id, out _);
             if (t.Result is null) _files.TryRemove(doc.id, out _);
         }, TaskScheduler.Default);
-        return new StreamingReadStream(download);
+        return download;
     }
 
     /// <summary>Остановить загрузку файла (крестик на ободке). Следующий запрос начнёт заново.</summary>

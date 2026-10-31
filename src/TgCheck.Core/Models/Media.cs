@@ -11,6 +11,8 @@ public abstract class MediaHolder
     internal Document? Document { get; init; }
 
     public bool CanDownload => Document is not null || Photo is not null;
+    /// <summary>У файла есть своя миниатюра (обложка песни, кадр видео).</summary>
+    public bool HasThumbnail => Document?.thumbs is { Length: > 0 } || Photo is not null;
     public long MediaId => Photo?.id ?? Document?.id ?? 0;
     /// <summary>Ссылка на файл (Telegram выдаёт её на время).</summary>
     internal byte[] FileReference => Document?.file_reference ?? Photo?.file_reference ?? [];

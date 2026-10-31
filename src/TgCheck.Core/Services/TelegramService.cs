@@ -56,6 +56,10 @@ public sealed partial class TelegramService : IAsyncDisposable
         // Одновременных загрузок у библиотеки по умолчанию мало — открытая песня или видео ждали в очереди за превью,
         // стикерами и аватарами. Больше параллельных — то, что открыто, качается сразу.
         client.ParallelTransfers = 12;
+        // Входящее из сети — связь жива (проверка связи тогда не нужна).
+        client.OnUpdates += _ => { MarkAlive(); return Task.CompletedTask; };
+        // Подключение с тайм-аутом и keep-alive (и напрямую, и к MTProxy): мёртвый канал замечается быстро.
+        client.TcpHandler = Socks5.ConnectDirectAsync;
         if (_env.Proxy is { } proxy)
         {
             if (AppEnv.IsMtProxy(proxy)) client.MTProxyUrl = proxy;

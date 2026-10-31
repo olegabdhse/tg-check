@@ -457,7 +457,7 @@
                         <Setter Property="ContentTemplate">
                             <Setter.Value>
                                 <DataTemplate>
-                                    <TextBlock helpers:RichText.Text="{Binding Text}" helpers:RichText.EmojiSize="18" TextWrapping="Wrap" FontSize="14"
+                                    <controls:SelectableTextBlock helpers:RichText.Text="{Binding Text}" helpers:RichText.EmojiSize="18" TextWrapping="Wrap" FontSize="14"
                                                Margin="0,2,0,4" MaxWidth="440" HorizontalAlignment="Left" />
                                 </DataTemplate>
                             </Setter.Value>
@@ -467,7 +467,7 @@
                                 <Setter Property="ContentTemplate">
                                     <Setter.Value>
                                         <DataTemplate>
-                                            <TextBlock helpers:RichText.Text="{Binding Text}" helpers:RichText.EmojiSize="20" TextWrapping="Wrap" FontSize="16"
+                                            <controls:SelectableTextBlock helpers:RichText.Text="{Binding Text}" helpers:RichText.EmojiSize="20" TextWrapping="Wrap" FontSize="16"
                                                        FontWeight="SemiBold" Margin="0,6,0,3" MaxWidth="440" HorizontalAlignment="Left" />
                                         </DataTemplate>
                                     </Setter.Value>
@@ -479,7 +479,7 @@
                                         <DataTemplate>
                                             <Border BorderBrush="{StaticResource AccentBrush}" BorderThickness="3,0,0,0" Padding="10,2,0,2" Margin="0,3,0,5" MaxWidth="440"
                                                     HorizontalAlignment="Left">
-                                                <TextBlock helpers:RichText.Text="{Binding Text}" helpers:RichText.EmojiSize="18" TextWrapping="Wrap" FontStyle="Italic" />
+                                                <controls:SelectableTextBlock helpers:RichText.Text="{Binding Text}" helpers:RichText.EmojiSize="18" TextWrapping="Wrap" FontStyle="Italic" />
                                             </Border>
                                         </DataTemplate>
                                     </Setter.Value>
@@ -836,7 +836,7 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock x:Name="Body" Grid.ColumnSpan="2" helpers:RichText.CustomEmoji="{Binding Item.CustomEmoji}" helpers:RichText.Formatting="{Binding Formatting}"
+                                <controls:SelectableTextBlock x:Name="Body" Grid.ColumnSpan="2" helpers:RichText.CustomEmoji="{Binding Item.CustomEmoji}" helpers:RichText.Formatting="{Binding Formatting}"
                                            helpers:RichText.Text="{Binding Text}" helpers:RichText.EmojiSize="{Binding TextEmojiSize}"
                                            helpers:RichText.TrailingSpace="{Binding ActualWidth, ElementName=Meta}"
                                            TextWrapping="Wrap" FontSize="14" LineHeight="21" HorizontalAlignment="Left"
@@ -859,7 +859,7 @@
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate DataType="{x:Type vm:TextSegment}">
                                             <Grid>
-                                                <TextBlock helpers:RichText.CustomEmoji="{Binding Emoji}" helpers:RichText.Formatting="{Binding Formatting}"
+                                                <controls:SelectableTextBlock helpers:RichText.CustomEmoji="{Binding Emoji}" helpers:RichText.Formatting="{Binding Formatting}"
                                                            helpers:RichText.Text="{Binding Text}" helpers:RichText.EmojiSize="20"
                                                            TextWrapping="Wrap" FontSize="14" LineHeight="21" Foreground="#F5F7FA" Margin="0,2"
                                                            Visibility="{Binding IsCode, Converter={StaticResource InvBoolToVis}}" />

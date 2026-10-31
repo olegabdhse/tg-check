@@ -410,6 +410,7 @@ public sealed partial class ProfileViewModel : ObservableObject
             }
             await Task.Run(() => MusicPlayer.Instance.PlayStream(requested, stream));
             MusicNow.Instance.Start(m.AudioKey, m.SongTitle, m.SongPerformer, m.Preview, m.CoverBrush);
+            MusicViewModel.RecordTelegram(_tg, m.Item, m.Preview);
         }
         catch (Exception ex)
         {

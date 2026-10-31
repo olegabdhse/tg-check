@@ -612,6 +612,8 @@ public sealed partial class MessageViewModel : ObservableObject
     public string? SongPerformer => Item.SongPerformer;
     /// <summary>Фон обложки, пока её нет или если её не нашлось: красивый градиент, всегда один и тот же для песни.</summary>
     public Brush CoverBrush => SongGradients[(int)((uint)StableHash(SongTitle + SongPerformer) % SongGradients.Length)];
+    /// <summary>Тот же градиент для песни вне чата (раздел «Музыка»).</summary>
+    public static Brush GradientFor(string title, string? performer) => SongGradients[(int)((uint)StableHash(title + performer) % SongGradients.Length)];
 
     private static readonly Brush[] SongGradients =
     [

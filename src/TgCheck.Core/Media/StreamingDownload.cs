@@ -90,6 +90,32 @@ internal sealed class StreamingDownload
     /// <summary>Файл нужен целиком (сохранить, открыть) — качать до конца, даже если его никто не слушает.</summary>
     public void Keep() { _keep = true; _wake.Release(); }
 
+    // Предзагрузка следующей песни: сколько кусочков с начала (и последний — служебный блок m4a) качать, пока никто не слушает.
+    private int _prefetchUnits;
+
+    /// <summary>Тихо подкачать первые bytes байт (и конец файла), даже если никто не слушает; не больше двух запросов разом.</summary>
+    public void Prefetch(long bytes)
+    {
+        var units = (int)Math.Min(_have.Length, (bytes + Unit - 1) / Unit);
+        lock (_lock) if (units > _prefetchUnits) _prefetchUnits = units;
+        _wake.Release();
+    }
+
+    // Следующий кусочек для предзагрузки (под замком); null — всё нужное уже есть или качается.
+    private int? PrefetchUnit()
+    {
+        if (_prefetchUnits == 0) return null;
+        var inflight = 0;
+        for (var i = 0; i < _inflight.Length; i++) if (_inflight[i]) inflight++;
+        if (inflight >= 2) return null;
+        for (var i = 0; i < _prefetchUnits; i++)
+            if (!_have[i] && !_inflight[i]) return i;
+        var last = _have.Length - 1;
+        return !_have[last] && !_inflight[last] ? last : null;
+    }
+
+    private bool Idle => Volatile.Read(ref _readers) <= 0 && !_keep;
+
 
     /// <summary>Есть ли кусочек с этим смещением; если нет — он идёт в загрузку первым.</summary>
     public bool Ensure(long position)
@@ -142,7 +168,15 @@ internal sealed class StreamingDownload
                 lock (_lock)
                     if (_left == 0 || _failed) break;
                 // Видео истории в просмотрщике — ему вся скорость; срочное (проигрыватель ждёт) не откладываем.
-                if (Volatile.Read(ref _readers) <= 0 && !_keep) { await _wake.WaitAsync(250); continue; }
+                if (Idle)
+                {
+                    // Никто не слушает: только предзагрузка начала (если просили), иначе пауза.
+                    int? unit;
+                    lock (_lock) { unit = PrefetchUnit(); if (unit is { } u) _inflight[u] = true; }
+                    if (unit is { } p) { _ = FetchAsync(dc, p, 1).ContinueWith(_ => _wake.Release(), TaskScheduler.Default); continue; }
+                    await _wake.WaitAsync(250);
+                    continue;
+                }
                 bool urgentWaiting;
                 lock (_lock) urgentWaiting = _urgent.Count > 0;
                 if (!urgentWaiting && _shouldYield()) { await Task.Delay(100); continue; }

@@ -8,7 +8,7 @@ using TgCheck.Core.Services;
 
 namespace TgCheck.App.ViewModels;
 
-public enum Section { Chats, Profile }
+public enum Section { Chats, Profile, Music }
 
 /// <summary>Главное окно после входа: навигация (чаты / мой профиль / чужие профили), поиск профилей, обновления.</summary>
 public sealed partial class ShellViewModel : ObservableObject, IDisposable
@@ -28,6 +28,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         Picker = new MediaPickerViewModel(tg, env.DataDirectory);
         Chats = new ChatsViewModel(tg, this);
         MyProfile = new ProfileViewModel(tg, null, LogoutAsync, this);
+        Music = MusicViewModel.Instance = new MusicViewModel(tg, (text, error) => ShowToast(text, error));
         Controls.AppServices.Media = tg.Media;
         Controls.AppServices.Tg = tg;
         _ = Task.Run(() => tg.Media.TrimMediaCache()); // обход папки кэша — не в потоке интерфейса
@@ -39,6 +40,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public ChatsViewModel Chats { get; }
     public MediaPickerViewModel Picker { get; }
     public ProfileViewModel MyProfile { get; }
+    /// <summary>Раздел «Музыка» (главная грузится при первом открытии).</summary>
+    public MusicViewModel Music { get; }
     public SettingsViewModel Settings { get; } = new();
     private OnlinePresence? _presence;
     [ObservableProperty] private bool _isSettingsOpen;
@@ -158,6 +161,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         if (IsSettingsOpen) { IsSettingsOpen = false; return true; }
         if (Proxy.IsOpen) { Proxy.IsOpen = false; return true; }
         if (CurrentPage is ChatsViewModel chats) return chats.HandleEscape();
+        if (CurrentPage is MusicViewModel music)
+        {
+            if (music.IsSearch) { music.Query = ""; return true; }
+            Section = Section.Chats;
+            return true;
+        }
         if (CurrentPage is ProfileViewModel profile)
         {
             if (profile.HandleEscape()) return true;
@@ -212,7 +221,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         _back.Clear();
         OnPropertyChanged(nameof(CanGoBack));
-        CurrentPage = value == Section.Chats ? Chats : MyProfile;
+        CurrentPage = value switch { Section.Chats => Chats, Section.Music => Music, _ => MyProfile };
+        if (value == Section.Music) Music.Activate();
     }
 
     // ===================================================================== Навигация

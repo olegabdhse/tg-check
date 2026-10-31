@@ -13,6 +13,15 @@ public sealed partial class TelegramService
     private volatile bool _disposed;
     private int _reconnecting;
     private Timer? _watchdog;
+    private long _lastAlive = Environment.TickCount64;
+    private int _failedChecks;
+
+    /// <summary>Из сети что-то пришло — связь жива.</summary>
+    private void MarkAlive()
+    {
+        Volatile.Write(ref _lastAlive, Environment.TickCount64);
+        _failedChecks = 0;
+    }
 
     /// <summary>Вход выполнен — с этого момента следим за связью.</summary>
     private void StartWatchdog()
@@ -25,7 +34,7 @@ public sealed partial class TelegramService
 
     private void OnNetworkChanged(object? sender, System.Net.NetworkInformation.NetworkAvailabilityEventArgs e)
     {
-        if (e.IsAvailable) _ = Task.Run(async () => { await Task.Delay(2000); await CheckConnectionAsync(); });
+        if (e.IsAvailable) _ = Task.Run(async () => { await Task.Delay(2000); await CheckConnectionAsync(force: true); });
     }
 
     // Библиотека сама переподключается несколько раз; если сдалась — сообщает ReactorError.
@@ -39,20 +48,26 @@ public sealed partial class TelegramService
         return Task.CompletedTask;
     }
 
-    // Раз в 30 с (и при появлении сети): живо ли соединение. Нет ответа за 15 с — переподключаемся.
-    private async Task CheckConnectionAsync()
+    // Раз в 30 с (и при появлении сети): живо ли соединение. Раньше хватало одного ответа дольше 15 с, чтобы пересоздать
+    // всё подключение, — на медленном или загруженном прокси (качается песня, видео) это случалось при живой связи,
+    // и переподключение обрывало загрузки и само мешало. Теперь: недавно что-то пришло — проверять не нужно;
+    // ответа нет 25 с — ещё не обрыв; переподключаемся после двух неудачных проверок подряд (или сразу после смены сети).
+    private async Task CheckConnectionAsync(bool force = false)
     {
         if (!_online || _disposed || Volatile.Read(ref _reconnecting) != 0) return;
+        if (!force && Environment.TickCount64 - Volatile.Read(ref _lastAlive) < 25_000) return;
         try
         {
             var ping = _client.Updates_GetState();
-            if (await Task.WhenAny(ping, Task.Delay(TimeSpan.FromSeconds(15))) != ping) throw new TimeoutException("нет ответа 15 с");
+            if (await Task.WhenAny(ping, Task.Delay(TimeSpan.FromSeconds(25))) != ping) throw new TimeoutException("нет ответа 25 с");
             await ping;
+            MarkAlive();
         }
         catch (Exception ex) when (!TgErrors.IsSessionDead(ex))
         {
-            Logging.Write($"connection: проверка не прошла ({ex.Message})");
-            await ReconnectAsync();
+            var failed = Interlocked.Increment(ref _failedChecks);
+            Logging.Write($"connection: проверка не прошла ({ex.Message}), подряд: {failed}");
+            if (force || failed >= 2) await ReconnectAsync();
         }
         catch { /* сессия завершена на сервере — это обработает интерфейс при следующем запросе */ }
     }
@@ -76,6 +91,7 @@ public sealed partial class TelegramService
                     if (client.UserId == 0) return; // сессии нет — переподключение не поможет
                     await client.Users_GetUsers(InputUser.Self);
                     Logging.Write($"connection: восстановлено (попытка {attempt})");
+                    MarkAlive();
                     break;
                 }
                 catch (Exception ex) when (!TgErrors.IsSessionDead(ex))

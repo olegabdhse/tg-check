@@ -111,6 +111,13 @@
                             <TextBlock Text="Профиль" FontSize="10" HorizontalAlignment="Center" Margin="0,3,0,0" />
                         </StackPanel>
                     </RadioButton>
+                    <RadioButton Style="{StaticResource RailButton}" GroupName="rail" ToolTip="Музыка"
+                                 IsChecked="{Binding Section, Converter={StaticResource EnumToBool}, ConverterParameter=Music}">
+                        <StackPanel>
+                            <TextBlock Text="&#xEC4F;" Style="{StaticResource Icon}" FontSize="20" HorizontalAlignment="Center" />
+                            <TextBlock Text="Музыка" FontSize="10" HorizontalAlignment="Center" Margin="0,3,0,0" />
+                        </StackPanel>
+                    </RadioButton>
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -146,6 +153,7 @@
             <Grid Grid.Row="2">
                 <views:ChatsView x:Name="ChatsPage" DataContext="{Binding Chats}" />
                 <views:ProfileView x:Name="MyProfilePage" DataContext="{Binding MyProfile}" Visibility="Collapsed" />
+                <views:MusicView x:Name="MusicPage" DataContext="{Binding Music}" Visibility="Collapsed" />
                 <ContentControl x:Name="PageHost" Focusable="False" Visibility="Collapsed" />
             </Grid>
         </Grid>
