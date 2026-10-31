@@ -336,6 +336,7 @@ public sealed partial class MusicViewModel : ObservableObject
         {
             _loaded = true;
             ShowCachedShelves();
+            _ = Task.Run(_tg.PrepareMusicBotsAsync); // боты — заранее, чтобы первый поиск ответил быстрее
             RequestNext(soon: true);
         }
         else RequestNext();

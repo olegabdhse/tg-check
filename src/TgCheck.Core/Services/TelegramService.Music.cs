@@ -18,24 +18,32 @@ public sealed partial class TelegramService
     // подготовка следующей песни) идут по одному, с паузой, и ждут, пока идёт поиск пользователя.
     private readonly SemaphoreSlim _musicBackground = new(1);
     private int _musicForeground;
+    // До какого момента фон молчит: пока пользователь ищет и ещё 10 с после (вдруг он печатает дальше).
+    private long _musicQuietUntil;
 
     private async Task<T> MusicRequestAsync<T>(bool background, Func<Task<T>> request)
     {
         if (!background)
         {
             Interlocked.Increment(ref _musicForeground);
+            Volatile.Write(ref _musicQuietUntil, Environment.TickCount64 + 10_000);
             try { return await request().ConfigureAwait(false); }
-            finally { Interlocked.Decrement(ref _musicForeground); }
+            finally
+            {
+                Interlocked.Decrement(ref _musicForeground);
+                Volatile.Write(ref _musicQuietUntil, Environment.TickCount64 + 10_000);
+            }
         }
         await _musicBackground.WaitAsync().ConfigureAwait(false);
         try
         {
-            while (Volatile.Read(ref _musicForeground) > 0) await Task.Delay(200).ConfigureAwait(false);
+            while (Volatile.Read(ref _musicForeground) > 0 || Environment.TickCount64 < Volatile.Read(ref _musicQuietUntil))
+                await Task.Delay(300).ConfigureAwait(false);
             return await request().ConfigureAwait(false);
         }
         finally
         {
-            _ = Task.Delay(400).ContinueWith(_ => _musicBackground.Release(), TaskScheduler.Default);
+            _ = Task.Delay(1000).ContinueWith(_ => _musicBackground.Release(), TaskScheduler.Default); // не чаще раза в секунду
         }
     }
 
@@ -86,6 +94,17 @@ public sealed partial class TelegramService
         return (IReadOnlyList<string>)KnownMusicBots.Concat(recent.Select(b => b.Peer.Username).OfType<string>())
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     });
+
+    /// <summary>Заранее найти музыкальных ботов по имени (раздел открыли) — первый поиск не тратит на это время.</summary>
+    public async Task PrepareMusicBotsAsync()
+    {
+        try
+        {
+            foreach (var name in (await MusicBotCandidatesAsync()).Take(6))
+                if (await ResolveInlineBotAsync(name) is null) _musicBots[name] = false;
+        }
+        catch (Exception ex) { Logging.Write($"music bots: {ex.Message}"); }
+    }
 
     /// <summary>Песни от музыкальных ботов (полные, не короче минуты); maxBots — сколько ботов спрашивать.</summary>
     /// <param name="partial">
