@@ -162,3 +162,21 @@ public sealed class ForumTopicInfo
     public bool IsGeneral => Id == 1;
     public MessageItem? Last { get; init; }
 }
+
+/// <summary>Бот с инлайн-режимом: Placeholder — подсказка в поле ввода («Поиск GIF…»).</summary>
+public sealed record InlineBot(PeerRef Peer, string Placeholder);
+
+/// <summary>Результат инлайн-бота: статья (заголовок, описание, картинка по ссылке) или медиа (фото, GIF, стикер…).</summary>
+public sealed class InlineResult : MediaHolder
+{
+    public required string Id { get; init; }
+    public string Type { get; init; } = "";
+    public string? Title { get; init; }
+    public string? Description { get; init; }
+    /// <summary>Картинка-превью по ссылке (у статей).</summary>
+    public string? ThumbUrl { get; init; }
+    public bool HasMedia => Photo is not null || Document is not null;
+}
+
+/// <summary>Ответ инлайн-бота: QueryId нужен для отправки; Gallery — показывать сеткой картинок.</summary>
+public sealed record InlineResults(long QueryId, IReadOnlyList<InlineResult> Items, string? NextOffset, bool Gallery);

@@ -361,15 +361,17 @@
                         </DockPanel>
                         <TextBlock Text="Историй пока нет" Style="{StaticResource Caption}" Margin="4,0,0,8"
                                    Visibility="{Binding ShowNoStories, Converter={StaticResource BoolToVis}}" />
-                        <ItemsControl ItemsSource="{Binding Stories}" Focusable="False">
+                        <!-- Сетка историй: три колонки на всю ширину, плитки 9:16 с одинаковыми отступами -->
+                        <ItemsControl ItemsSource="{Binding Stories}" Focusable="False" Margin="-3,0">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <WrapPanel />
+                                    <UniformGrid Columns="3" VerticalAlignment="Top" />
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="{x:Type vm:ProfileStoryViewModel}">
-                                    <Button Width="92" Height="150" Margin="0,0,6,6" Cursor="Hand" FocusVisualStyle="{x:Null}"
+                                    <Button Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}, Converter={StaticResource Mul}, ConverterParameter=1.7778}"
+                                            Margin="3" Cursor="Hand" FocusVisualStyle="{x:Null}"
                                             Command="{Binding DataContext.OpenStoryCommand, ElementName=Root}" CommandParameter="{Binding}">
                                         <Button.Template>
                                             <ControlTemplate TargetType="Button">
@@ -377,10 +379,21 @@
                                                     <Border Background="{StaticResource Surface2Brush}" />
                                                     <Image Source="{Binding Preview}" Stretch="UniformToFill" />
                                                     <Border x:Name="Hover" Background="#22FFFFFF" Visibility="Collapsed" />
-                                                    <TextBlock Text="&#xE768;" Style="{StaticResource Icon}" FontSize="12" Foreground="White"
-                                                               HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0"
+                                                    <!-- Затемнение снизу — дата читается на любой картинке -->
+                                                    <Border VerticalAlignment="Bottom" Height="40">
+                                                        <Border.Background>
+                                                            <LinearGradientBrush StartPoint="0,1" EndPoint="0,0">
+                                                                <GradientStop Color="#99000000" Offset="0" />
+                                                                <GradientStop Color="#00000000" Offset="1" />
+                                                            </LinearGradientBrush>
+                                                        </Border.Background>
+                                                    </Border>
+                                                    <Ellipse Width="22" Height="22" Fill="#66000000" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0"
+                                                             Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}" />
+                                                    <TextBlock Text="&#xE768;" Style="{StaticResource Icon}" FontSize="10" Foreground="White"
+                                                               HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,12,0"
                                                                Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}" />
-                                                    <TextBlock Text="{Binding DateText}" FontSize="11" Foreground="White" Margin="6,0,0,5"
+                                                    <TextBlock Text="{Binding DateText}" FontSize="11" FontWeight="SemiBold" Foreground="White" Margin="7,0,0,6"
                                                                VerticalAlignment="Bottom" />
                                                 </Grid>
                                                 <ControlTemplate.Triggers>
@@ -676,18 +689,22 @@
                                 <TextBlock Text="{Binding Item.Message}" TextWrapping="Wrap" FontStyle="Italic" />
                             </Border>
 
-                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Margin="0,16,0,0">
-                                <ItemsControl ItemsSource="{Binding Details}">
+                            <!-- Таблица как в Telegram: колонка подписей по самой длинной подписи (общая для всех строк),
+                                 подписи на чуть выделенном фоне, между колонками и строками — тонкие линии -->
+                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Margin="0,16,0,0" helpers:RoundClip.Radius="12">
+                                <ItemsControl ItemsSource="{Binding Details}" Grid.IsSharedSizeScope="True" Margin="0,0,0,-1" Focusable="False">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate DataType="{x:Type vm:DetailRow}">
-                                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="14,9">
+                                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="140" />
+                                                        <ColumnDefinition Width="Auto" SharedSizeGroup="GiftLabel" />
                                                         <ColumnDefinition Width="*" />
                                                     </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="{Binding Label}" Style="{StaticResource Caption}" FontSize="13" />
-                                                    <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" FontSize="13" />
+                                                    <Border Background="#0DFFFFFF" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0" Padding="14,9">
+                                                        <TextBlock Text="{Binding Label}" Style="{StaticResource Caption}" FontSize="13" MaxWidth="190" TextWrapping="Wrap" />
+                                                    </Border>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" FontSize="13" Margin="12,9,12,9" VerticalAlignment="Center" />
                                                 </Grid>
                                             </Border>
                                         </DataTemplate>

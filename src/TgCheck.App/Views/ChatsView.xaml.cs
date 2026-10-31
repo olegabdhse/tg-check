@@ -63,7 +63,23 @@ public partial class ChatsView : UserControl
 
     private void Root_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (_vm is not null) _vm.IsCompact = ActualWidth < CompactWidth;
+        // Открыты настройки (список сжат до аватарок) — узкий режим не включаем: иначе при сдвиге раскладка «прыгала».
+        if (_vm is not null) _vm.IsCompact = !_listCollapsed && ActualWidth < CompactWidth;
+        ApplyLayout();
+    }
+
+    // Открыты настройки: список чатов сжат до аватарок (поиск, истории, вкладки и плеер скрыты).
+    private bool _listCollapsed;
+
+    public void SetListCollapsed(bool collapsed)
+    {
+        if (_listCollapsed == collapsed) return;
+        _listCollapsed = collapsed;
+        var rows = collapsed ? new GridLength(0) : GridLength.Auto;
+        SearchRow.Height = StoriesRow.Height = TabsRow.Height = PlayerRow.Height = rows;
+        // Без полосы прокрутки — она обрезала аватарки (прокрутка колесом остаётся).
+        ScrollViewer.SetVerticalScrollBarVisibility(ChatList, collapsed ? ScrollBarVisibility.Hidden : ScrollBarVisibility.Auto);
+        if (_vm is not null) _vm.IsCompact = !collapsed && ActualWidth < CompactWidth;
         ApplyLayout();
     }
 
@@ -75,7 +91,7 @@ public partial class ChatsView : UserControl
         foreach (var view in _views.Values) { view.ShowBack = compact; view.IsCompactPanel = compact; }
         if (!compact)
         {
-            ListColumn.Width = new GridLength(ActualWidth < 1050 ? 300 : 350);
+            ListColumn.Width = new GridLength(_listCollapsed ? 82 : ActualWidth < 1050 ? 300 : 350);
             GapColumn.Width = new GridLength(14);
             ChatColumn.Width = new GridLength(1, GridUnitType.Star);
             ListPanel.Visibility = Visibility.Visible;
@@ -213,5 +229,16 @@ public partial class ChatsView : UserControl
     private void ConfirmCheck_Click(object sender, MouseButtonEventArgs e)
     {
         if (sender is FrameworkElement { DataContext: ConfirmCheck check }) check.IsChecked = !check.IsChecked;
+    }
+
+    // Окно с полем ввода — курсор сразу в поле, текст выделен (можно сразу печатать новый).
+    private void ConfirmInputBox_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is not true) return;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () =>
+        {
+            ConfirmInputBox.Focus();
+            ConfirmInputBox.SelectAll();
+        });
     }
 }

@@ -12,8 +12,8 @@ using TgCheck.Core.Models;
 namespace TgCheck.App.Controls;
 
 /// <summary>
-/// Стикер Telegram: анимированные (.tgs/Lottie) проигрываются через Skottie прямо в WriteableBitmap,
-/// статичные и видео-стикеры показываются картинкой. Анимация идёт только пока контрол на экране.
+/// Стикер Telegram: анимированные (.tgs/Lottie) проигрываются через Skottie прямо в WriteableBitmap, видео-стикеры (webm VP9
+/// с прозрачностью) — своим декодером (Helpers/Vp9), статичные показываются картинкой. Анимация идёт только пока контрол на экране.
 /// </summary>
 public sealed class StickerView : Image
 {
@@ -70,6 +70,10 @@ public sealed class StickerView : Image
     public event EventHandler? Finished;
 
     private Animation? _animation;
+    private Vp9.Player? _video;
+    private byte[]? _videoBuffer;
+    private bool _videoBusy;
+    private bool _videoReleased;
     private WriteableBitmap? _bitmap;
     private TimeSpan _start;
     private int _version;
@@ -80,19 +84,37 @@ public sealed class StickerView : Image
         Loaded += (_, _) =>
         {
             // Снова на экране (меню реакций открыли ещё раз) — однократная анимация играет заново.
-            if (Once && _onceDone && _animation is null) { _onceDone = false; Reload(); }
+            if (_videoReleased) { _videoReleased = false; Reload(); }
+            else if (Once && _onceDone && _animation is null) { _onceDone = false; Reload(); }
             else UpdateActive();
         };
-        Unloaded += (_, _) => { Active.Remove(this); };
+        Unloaded += (_, _) =>
+        {
+            Active.Remove(this);
+            // Декодер видео-стикера держит память вне .NET — освобождаем, при возвращении на экран запустится заново.
+            if (_video is null) return;
+            _video.Dispose();
+            _video = null;
+            _videoReleased = true;
+        };
         IsVisibleChanged += (_, _) => UpdateActive();
     }
 
+    // Ошибка загрузки или разбора стикера не должна ронять приложение — стикер просто останется картинкой.
     private async void Reload()
+    {
+        try { await ReloadAsync(); }
+        catch (Exception ex) { TgCheck.Core.Services.Logging.Write("sticker: " + ex.Message); }
+    }
+
+    private async Task ReloadAsync()
     {
         var version = ++_version;
         Active.Remove(this);
         _animation?.Dispose();
         _animation = null;
+        _video?.Dispose();
+        _video = null;
         var media = Media;
         // Уже показанная статичная картинка того же стикера (общая картинка эмодзи, последний кадр) остаётся — без мигания;
         // у переиспользованной ячейки сетки картинка чужая — её убираем.
@@ -118,7 +140,7 @@ public sealed class StickerView : Image
         if (version != _version) return;
         if (!PlayOnce) Source = image;
 
-        if (media.StickerFormat != StickerFormat.Animated)
+        if (media.StickerFormat == StickerFormat.Static || (media.StickerFormat == StickerFormat.Video && !Animate))
         {
             if (!Animate && image is not null) FrameCache.Put((media.MediaId, px), image);
             return;
@@ -130,6 +152,11 @@ public sealed class StickerView : Image
             return;
         }
     animation:
+        if (media.StickerFormat == StickerFormat.Video)
+        {
+            if (Animate) await StartVideoAsync(media, service, px, version);
+            return;
+        }
         if (media.StickerFormat != StickerFormat.Animated) return;
         var json = await LoadJsonAsync(media, service);
         if (version != _version || json is null) return;
@@ -151,6 +178,30 @@ public sealed class StickerView : Image
             frozen.Freeze();
             FrameCache.Put((media.MediaId, px), frozen);
         }
+    }
+
+    // Видео-стикер: файл (webm) из кэша или с сервера, разбор и первый кадр — в фоне; дальше кадры рисуются по времени.
+    private async Task StartVideoAsync(MediaHolder media, Core.Media.MediaService service, int px, int version)
+    {
+        // Файл — с низким приоритетом: фото, голосовые, видео и истории качаются раньше видео-стикеров и эмодзи.
+        var bytes = await service.GetVideoStickerBytesAsync(media);
+        if (version != _version || bytes is null) return;
+        var buffer = new byte[px * px * 4];
+        var player = await Task.Run(() =>
+        {
+            var p = Vp9.Player.Create(bytes);
+            p?.DecodeInto(0, buffer, px);
+            return p;
+        });
+        if (version != _version) { player?.Dispose(); return; }
+        if (player is null) return; // декодер недоступен — остаётся статичная картинка
+        _video = player;
+        _videoBuffer = buffer;
+        _bitmap = new WriteableBitmap(px, px, 96, 96, PixelFormats.Pbgra32, null);
+        _bitmap.WritePixels(new Int32Rect(0, 0, px, px), buffer, px * 4, 0);
+        Source = _bitmap;
+        _start = TimeSpan.Zero;
+        UpdateActive();
     }
 
     /// <summary>Готовые статичные кадры стикеров/эмодзи (общие для всех контролов), не больше Capacity.</summary>
@@ -193,7 +244,7 @@ public sealed class StickerView : Image
 
     private void UpdateActive()
     {
-        if (_animation is not null && IsLoaded && IsVisible) Active.Add(this);
+        if ((_animation is not null || _video is not null) && IsLoaded && IsVisible) Active.Add(this);
         else Active.Remove(this);
         if (!_hooked && Active.Count > 0)
         {
@@ -220,6 +271,7 @@ public sealed class StickerView : Image
 
     private void RenderFrame(TimeSpan now)
     {
+        if (_video is not null) { RenderVideo(now); return; }
         if (_animation is null || _bitmap is null) return;
         if (_start == TimeSpan.Zero) _start = now;
         var duration = _animation.Duration.TotalSeconds;
@@ -245,6 +297,37 @@ public sealed class StickerView : Image
         var t = duration > 0 ? elapsed % duration : 0;
         _animation.SeekFrameTime(t, null);
         Draw();
+    }
+
+    private void RenderVideo(TimeSpan now)
+    {
+        if (_video is null || _bitmap is null) return;
+        if (_start == TimeSpan.Zero) _start = now;
+        var elapsed = (now - _start).TotalSeconds;
+        if ((PlayOnce || Once) && elapsed >= _video.Duration)
+        {
+            Active.Remove(this);
+            _video.Dispose();
+            _video = null;
+            if (PlayOnce) { Visibility = Visibility.Collapsed; Finished?.Invoke(this, EventArgs.Empty); }
+            else _onceDone = true; // последний кадр остаётся
+            return;
+        }
+        // Кадр декодируется в фоне (окно не ждёт), сюда — только копирование готовой картинки. Один кадр за раз.
+        if (_videoBusy || _videoBuffer is null) return;
+        _videoBusy = true;
+        var player = _video;
+        var buffer = _videoBuffer;
+        var bitmap = _bitmap;
+        var t = elapsed % player.Duration;
+        var size = bitmap.PixelWidth;
+        Task.Run(() => player.DecodeInto(t, buffer, size)).ContinueWith(task =>
+        {
+            _videoBusy = false;
+            if (!task.IsCompletedSuccessfully || !task.Result || _video != player || _bitmap != bitmap) return;
+            bitmap.WritePixels(new Int32Rect(0, 0, size, size), buffer, size * 4, 0);
+            if (!ReferenceEquals(Source, bitmap)) Source = bitmap;
+        }, TaskScheduler.FromCurrentSynchronizationContext());
     }
 
     private void Draw()

@@ -82,7 +82,7 @@ internal sealed class OrderedFileStream(FileStream file) : Stream
 /// Чтение файла, который ещё качается: длина — полный размер; если читаем дальше скачанного — ждём новые данные
 /// (или конца загрузки). Перемотка вперёд за скачанное тоже ждёт.
 /// </summary>
-public sealed class GrowingFileStream : Stream
+public sealed class GrowingFileStream : Stream, IStreamingSource
 {
     private readonly FileStream _file;
     private readonly long _total;
@@ -150,6 +150,11 @@ internal sealed class BytesCache(long capacity)
             _order.AddFirst(node);
             return node.Value.Bytes;
         }
+    }
+
+    public void Clear()
+    {
+        lock (_lock) { _map.Clear(); _order.Clear(); _size = 0; }
     }
 
     public void Put(string key, byte[] bytes)

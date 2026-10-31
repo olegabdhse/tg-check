@@ -43,6 +43,8 @@ public sealed partial class StoriesViewModel : ObservableObject
     [ObservableProperty] private int _storyIndex;
     [ObservableProperty] private ImageSource? _image;
     [ObservableProperty] private string? _videoPath;
+    /// <summary>Видео, которое ещё качается: играет потоком сразу (как в Telegram), не дожидаясь файла целиком.</summary>
+    [ObservableProperty] private System.IO.Stream? _videoStream;
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private bool _isPaused;
 
@@ -172,6 +174,7 @@ public sealed partial class StoriesViewModel : ObservableObject
         Story = story;
         Image = null;
         VideoPath = null;
+        VideoStream = null;
         IsLoading = true;
 
         if (story.Id > Current.Stories.MaxReadId)
@@ -187,9 +190,16 @@ public sealed partial class StoriesViewModel : ObservableObject
             Image = preview;
             if (story.IsVideo)
             {
-                var path = await _tg.Media.GetMediaFileAsync(story);
-                if (Story != story) return;
-                VideoPath = path;
+                // Уже в кэше — файлом; иначе — потоком: нужные куски качаются первыми, видео начинается сразу.
+                var stream = await _tg.Media.OpenMediaStreamAsync(story);
+                if (Story != story) { stream?.Dispose(); return; }
+                if (stream is System.IO.FileStream file)
+                {
+                    var path = file.Name;
+                    file.Dispose();
+                    VideoPath = path;
+                }
+                else if (stream is not null) VideoStream = stream;
                 IsLoading = false;
                 return; // переход — по окончании видео (MediaEnded во view)
             }

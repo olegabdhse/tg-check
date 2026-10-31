@@ -592,6 +592,7 @@ public sealed partial class TelegramService
             CustomEmoji = msg.entities?.OfType<MessageEntityCustomEmoji>()
                 .Select(e => new CustomEmojiSpan(e.offset, e.length, e.document_id)).ToList() ?? [],
             Formatting = MapFormatting(msg.entities),
+            ViaBot = msg.flags.HasFlag(Message.Flags.has_via_bot_id) && _users.TryGetValue(msg.via_bot_id, out var viaBot) ? viaBot.MainUsername : null,
             InlineButtons = MapInline(msg.reply_markup as ReplyInlineMarkup),
             ReplyKeyboard = msg.reply_markup is ReplyKeyboardMarkup rk ? rk.rows.Select(r => (IReadOnlyList<BotButton>)r.buttons.Select(b => new BotButton { Text = b.text, Kind = BotButtonKind.Text }).ToList()).ToList() : null,
             KeyboardPlaceholder = (msg.reply_markup as ReplyKeyboardMarkup)?.placeholder,
@@ -675,7 +676,7 @@ public sealed partial class TelegramService
                     Id = geoItem.Id, PeerKey = geoItem.PeerKey, FromKey = geoItem.FromKey, From = geoItem.From, DateUtc = geoItem.DateUtc,
                     Text = geoItem.Text, IsOut = geoItem.IsOut, EditDateUtc = geoItem.EditDateUtc, ReplyToId = geoItem.ReplyToId,
                     ForwardedFrom = geoItem.ForwardedFrom, PostAuthor = geoItem.PostAuthor, Views = geoItem.Views, GroupedId = geoItem.GroupedId,
-                    CustomEmoji = geoItem.CustomEmoji, Formatting = geoItem.Formatting, InlineButtons = geoItem.InlineButtons, Comments = geoItem.Comments, Reactions = geoItem.Reactions, Media = MediaKind.Location, MediaTitle = geoItem.MediaTitle,
+                    CustomEmoji = geoItem.CustomEmoji, Formatting = geoItem.Formatting, ViaBot = geoItem.ViaBot, InlineButtons = geoItem.InlineButtons, Comments = geoItem.Comments, Reactions = geoItem.Reactions, Media = MediaKind.Location, MediaTitle = geoItem.MediaTitle,
                     Latitude = point.lat, Longitude = point.lon, GeoAccessHash = point.access_hash, VenueAddress = venue?.address,
                 };
             case MessageMediaWebPage:
@@ -762,7 +763,7 @@ public sealed partial class TelegramService
     {
         Id = i.Id, PeerKey = i.PeerKey, FromKey = i.FromKey, From = i.From, DateUtc = i.DateUtc, Text = i.Text,
         IsOut = i.IsOut, EditDateUtc = i.EditDateUtc, ReplyToId = i.ReplyToId, ThreadTopId = i.ThreadTopId, TopicId = i.TopicId, ForwardedFrom = i.ForwardedFrom,
-        PostAuthor = i.PostAuthor, Views = i.Views, GroupedId = i.GroupedId, CustomEmoji = i.CustomEmoji, Formatting = i.Formatting,
+        PostAuthor = i.PostAuthor, Views = i.Views, GroupedId = i.GroupedId, CustomEmoji = i.CustomEmoji, Formatting = i.Formatting, ViaBot = i.ViaBot,
         InlineButtons = i.InlineButtons, ReplyKeyboard = i.ReplyKeyboard, KeyboardPlaceholder = i.KeyboardPlaceholder, Comments = i.Comments, Reactions = i.Reactions,
         Media = kind, Photo = photo, Document = doc, MediaWidth = w, MediaHeight = h,
         MediaTitle = title, MediaSize = doc?.size ?? 0, StickerEmoji = emoji, DurationSeconds = duration, Waveform = waveform,

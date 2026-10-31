@@ -8,6 +8,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <AssemblyName>TgCheck</AssemblyName>
@@ -55,6 +56,13 @@
       <EmbeddedResource Include="$(EnvBlob)" LogicalName="TgCheck.embedded.env" />
     </ItemGroup>
   </Target>
+
+  <!-- Декодер видео-стикеров (webm VP9 с прозрачностью): libvpx (BSD) и среда выполнения VC++, без которой он не грузится.
+       Встроены в exe и распаковываются при первом видео-стикере (см. Helpers/Vp9.cs). -->
+  <ItemGroup>
+    <EmbeddedResource Include="Native/vpxmd.dll" LogicalName="TgCheck.vpxmd.dll" />
+    <EmbeddedResource Include="Native/vcruntime140.dll" LogicalName="TgCheck.vcruntime140.dll" />
+  </ItemGroup>
 
   <!-- VLC для видео: нужная часть (~45 МБ) пакуется в zip и встраивается в exe; распаковывается один раз,
        при первом видео (см. Helpers\VlcRuntime.cs) — запуск программы от этого не замедляется. -->

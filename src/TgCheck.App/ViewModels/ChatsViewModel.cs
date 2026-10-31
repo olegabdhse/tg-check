@@ -197,6 +197,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     partial void OnSelectedChatChanged(ChatItemViewModel? value)
     {
         if (value is null) return;
+        if (_reselecting) return; // строку только переставили в списке — открытый чат (и тема форума) остаётся как был
         if (Search.Trim().Length > 0) AddRecentSearch(value); // открыт из результатов поиска
         var conv = GetConversation(value.Peer, value.ReadOutboxMaxId);
         if (Conversation == conv) return;
@@ -524,12 +525,19 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     }
 
     // Удалить и добавить заново: представление вставит строку сразу в нужное место (и применит фильтр).
+    private bool _reselecting;
+
     private void MoveItem(ChatItemViewModel chat)
     {
         var selected = ReferenceEquals(SelectedChat, chat);
-        Chats.Remove(chat);
-        Chats.Add(chat);
-        if (selected) SelectedChat = chat;
+        _reselecting = selected;
+        try
+        {
+            Chats.Remove(chat);
+            Chats.Add(chat);
+            if (selected) SelectedChat = chat;
+        }
+        finally { _reselecting = false; }
         OnPropertyChanged(nameof(IsListEmpty));
     }
 
@@ -876,6 +884,16 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
             conv.OnMediaListened(ids);
         if (_thread is { } t && (peerKey is null || t.Peer.Key == peerKey)) t.OnMediaListened(ids);
     });
+
+    /// <summary>Чат удалён или покинут: закрыть его и убрать из списка.</summary>
+    public void RemoveChat(long peerKey)
+    {
+        if (Conversation?.Peer.Key == peerKey) { Conversation = null; SelectedChat = null; }
+        _conversations.Remove(peerKey);
+        if (_byKey.Remove(peerKey, out var chat)) Chats.Remove(chat);
+        NotifyArchive();
+        OnPropertyChanged(nameof(IsListEmpty));
+    }
 
     public void OnLocalDeleted(long peerKey)
     {

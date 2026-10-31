@@ -59,6 +59,13 @@ public partial class App : Application
     {
         e.Handled = true;
         Logging.Write("unhandled: " + e.Exception);
+        // После входа — всплывашкой: модальное окно с ошибкой крутит свой цикл сообщений, и вторая ошибка, пришедшая,
+        // пока оно открыто, роняла приложение (так было с тайм-аутом загрузки стикера).
+        if (Current?.MainWindow?.DataContext is ViewModels.MainViewModel { CurrentPage: ViewModels.ShellViewModel shell })
+        {
+            shell.ShowToast(TgErrors.Describe(e.Exception), isError: true);
+            return;
+        }
         if (_errorShown) return;
         _errorShown = true;
         MessageBox.Show(TgErrors.Describe(e.Exception), "TG Check — ошибка", MessageBoxButton.OK, MessageBoxImage.Error);

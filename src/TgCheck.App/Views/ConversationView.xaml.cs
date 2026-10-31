@@ -85,6 +85,7 @@ public partial class ConversationView : UserControl
         _vm.ScrollToMessageRequested += ScrollToMessage;
         _vm.FeedResetting += HideFeed;
         _vm.InsertTextRequested += InsertText;
+        _vm.ComposerFocusRequested += FocusComposerEnd;
         _vm.PropertyChanged += OnVmPropertyChanged;
         _vm.IsAtBottom = () => IsNearBottom(Scroller.VerticalOffset);
         _vm.VisibleMaxId = VisibleMaxId;
@@ -100,9 +101,23 @@ public partial class ConversationView : UserControl
         if (_vm.Items.Count == 0) HideFeed();
         _stickToBottom = true;
         ScrollToBottom(false);
+        RequestPreviewsSoon();
     }
 
     private void OnPreviewSeek(double fraction) => _vm?.SeekPreview(fraction);
+
+    private void FocusComposerEnd()
+    {
+        Composer.Focus();
+        Composer.CaretIndex = Composer.Text.Length;
+    }
+
+    // Результаты инлайн-бота: долистали до конца — следующая страница.
+    private async void InlineScroll_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (_vm is null || e.VerticalChange <= 0 || InlineScroll.VerticalOffset < InlineScroll.ScrollableHeight - 60) return;
+        await _vm.LoadMoreInlineAsync();
+    }
 
     private void Detach()
     {
@@ -111,6 +126,7 @@ public partial class ConversationView : UserControl
         _vm.ScrollToMessageRequested -= ScrollToMessage;
         _vm.FeedResetting -= HideFeed;
         _vm.InsertTextRequested -= InsertText;
+        _vm.ComposerFocusRequested -= FocusComposerEnd;
         _vm.PropertyChanged -= OnVmPropertyChanged;
         _vm.IsAtBottom = null;
         _vm.VisibleMaxId = null;
@@ -176,6 +192,7 @@ public partial class ConversationView : UserControl
 
     private void OnItemsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
+        RequestPreviewsSoon();
         if (_anchorPending || _feedHidden || _stickToBottom || !Scroller.IsLoaded) return;
         _anchors.Clear();
         foreach (var (el, top) in VisibleContainers(fromEnd: false))
@@ -321,6 +338,7 @@ public partial class ConversationView : UserControl
         if (Anim.GetShow(JumpButton) != showJump) Anim.SetShow(JumpButton, showJump);
         if (e.VerticalChange != 0 || e.ExtentHeightChange != 0) MarkReadSoon();
         if (e.VerticalChange != 0 && _vm.HasPinned) { _pinnedTimer.Stop(); _pinnedTimer.Start(); }
+        if (e.VerticalChange != 0 || e.ViewportHeightChange != 0) RequestPreviewsSoon();
 
         // Фоновая подгрузка истории заранее (за ~1500 px до верха): позицию держит якорь прокрутки — незаметно для глаза.
         if (!_loadingOlder && !_feedHidden && Scroller.VerticalOffset < 1500 && e.VerticalChange < 0 && _vm.HasMoreHistory)
@@ -346,6 +364,56 @@ public partial class ConversationView : UserControl
                 if (_vm is not null && TopVisibleMessageId() is { } id) _vm.SyncPinnedToViewport(id);
             };
             return _pinnedTimerField;
+        }
+    }
+
+    // ===================================================================== Превью — сначала то, что видно
+    // Превью запрашиваются для сообщений на экране и в запасе на экран выше и ниже. Очередь загрузок отдаёт
+    // приоритет последнему запросу, поэтому сначала просим запас (по два экрана выше и ниже), а видимые — последними: они скачаются первыми.
+
+    private DispatcherTimer? _previewTimer;
+
+    private void RequestPreviewsSoon()
+    {
+        if (_previewTimer is null)
+        {
+            _previewTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
+            _previewTimer.Tick += (_, _) => { _previewTimer.Stop(); RequestVisiblePreviews(); };
+        }
+        _previewTimer.Stop();
+        _previewTimer.Start();
+    }
+
+    private void RequestVisiblePreviews()
+    {
+        if (_vm is null || _vm.Items.Count == 0 || !Scroller.IsLoaded) return;
+        var count = _vm.Items.Count;
+        var vh = Math.Max(200, Scroller.ViewportHeight);
+        // Простой проход по ленте: скрытые элементы (служебные, разделители) пропускаются, а не обрывают поиск —
+        // раньше из‑за них просились только последние 15 сообщений, и превью выше оставались серыми.
+        var visible = new List<int>();
+        var near = new List<int>();
+        for (var i = 0; i < count; i++)
+        {
+            if (Feed.ItemContainerGenerator.ContainerFromIndex(i) is not FrameworkElement el || !el.IsVisible || el.ActualHeight <= 0) continue;
+            var top = el.TransformToAncestor(Scroller).Transform(new Point(0, 0)).Y;
+            var bottom = top + el.ActualHeight;
+            if (bottom > 0 && top < vh) visible.Add(i);
+            else if (bottom > -vh * 2 && top < vh * 3) near.Add(i);
+        }
+        if (visible.Count == 0)
+        {
+            // Лента ещё не разложена — просим последние сообщения (их покажут первыми).
+            for (var i = count - 1; i >= Math.Max(0, count - 15); i--) Ensure(i);
+            return;
+        }
+        // Запас — сначала, видимые — последними: очередь загрузок отдаёт их первыми.
+        foreach (var i in near) Ensure(i);
+        for (var k = visible.Count - 1; k >= 0; k--) Ensure(visible[k]);
+
+        void Ensure(int i)
+        {
+            if (_vm.Items[i] is MessageViewModel m) m.EnsureAllPreviews(_vm.Media);
         }
     }
 
@@ -687,6 +755,16 @@ public partial class ConversationView : UserControl
         await Task.Delay(1500);
         button.Content = "";
         button.ToolTip = "Копировать";
+    }
+
+    // ⋮ в шапке: меню чата под кнопкой; перед показом — свежие «уведомления» и «заблокирован».
+    private async void ChatMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm is null || ChatMenuButton.ContextMenu is not { } menu) return;
+        menu.DataContext = _vm;
+        menu.PlacementTarget = ChatMenuButton;
+        menu.IsOpen = true;
+        await _vm.PrepareChatMenuAsync();
     }
 
     private void UpdateVideoTime()

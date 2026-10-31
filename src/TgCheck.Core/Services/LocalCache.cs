@@ -75,6 +75,9 @@ internal sealed class LocalCache(string dir)
         }
     }
 
+    /// <summary>Папка кэша (для выборочной очистки).</summary>
+    public string Folder => dir;
+
     public void Clear()
     {
         try { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); }

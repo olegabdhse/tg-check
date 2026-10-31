@@ -357,11 +357,11 @@ public sealed partial class MessageViewModel : ObservableObject
         if (Album.Count == 0)
         {
             var first = Clone();
-            first.EnsurePreview(media);
+            if (_previewsWanted) first.EnsurePreview(media);
             Album.Add(first);
         }
         Album.Add(part);
-        part.EnsurePreview(media);
+        if (_previewsWanted) part.EnsurePreview(media); // альбом уже на экране — часть, пришедшая позже, грузится сразу
         var ordered = Album.OrderBy(a => a.Id).ToList();
         Album.Clear();
         foreach (var a in ordered) Album.Add(a);
@@ -384,6 +384,19 @@ public sealed partial class MessageViewModel : ObservableObject
     public bool IsRich => Item.Rich is { Count: > 0 };
     /// <summary>Все фото/видео сложного сообщения — для просмотрщика.</summary>
     public IEnumerable<MessageViewModel> RichMedia => RichBlocks.SelectMany(b => b.Slides.Count > 0 ? b.Slides : b.Media is null ? [] : b.Media.IsAlbum ? b.Media.Album.AsEnumerable() : [b.Media]).Where(m => m.IsVisualMedia);
+
+    // Превью запрашиваются, когда сообщение на экране или рядом (а не при создании) — видимое качается первым.
+    private bool _previewsWanted;
+
+    /// <summary>Сообщение на экране или рядом: превью самого сообщения, частей альбома и блоков сложного сообщения.</summary>
+    public void EnsureAllPreviews(MediaService media)
+    {
+        if (_previewsWanted) return;
+        _previewsWanted = true;
+        EnsurePreview(media);
+        foreach (var part in Album) part.EnsurePreview(media);
+        if (IsRich) EnsureRichPreviews(media);
+    }
 
     public void EnsureRichPreviews(MediaService media)
     {
@@ -548,6 +561,8 @@ public sealed partial class MessageViewModel : ObservableObject
     private static Color Rgb(int v) => Color.FromRgb((byte)(v >> 16), (byte)(v >> 8), (byte)v);
     private static Brush Frozen(Brush b) { b.Freeze(); return b; }
     public bool HasText => !string.IsNullOrEmpty(Text);
+    /// <summary>«с помощью @бот» — сообщение отправлено через инлайн-бота.</summary>
+    public string? ViaBotText => Item.ViaBot is { } bot ? $"с помощью @{bot}" : null;
 
     // ---- блоки кода: текст режется на куски «текст / код», блоки кода — отдельными элементами во всю ширину пузыря
     public bool HasCodeBlocks => HasText && Formatting.Any(f => f.Kind == TextStyleKind.Pre);

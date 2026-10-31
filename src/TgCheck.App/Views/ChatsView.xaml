@@ -69,11 +69,11 @@
         <Border x:Name="ListPanel" Style="{StaticResource Panel}" Padding="0">
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
+                    <RowDefinition x:Name="SearchRow" Height="Auto" />
+                    <RowDefinition x:Name="StoriesRow" Height="Auto" />
+                    <RowDefinition x:Name="TabsRow" Height="Auto" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
+                    <RowDefinition x:Name="PlayerRow" Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <!-- Поиск -->
@@ -439,9 +439,24 @@
                         <CheckBox DockPanel.Dock="Left" Style="{StaticResource RoundCheck}" IsChecked="{Binding IsChecked}" IsHitTestVisible="False" />
                         <TextBlock Text="{Binding Text}" FontSize="14" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
                     </DockPanel>
+                    <!-- Поле ввода (новое название, описание) -->
+                    <TextBox x:Name="ConfirmInputBox" Margin="0,16,0,0" Padding="10,8" FontSize="14" DataContext="{Binding Confirm.Input}"
+                             Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="{Binding IsMultiline}" TextWrapping="Wrap"
+                             MaxHeight="160" VerticalScrollBarVisibility="Auto" Background="{StaticResource Surface2Brush}" Foreground="{StaticResource TextBrush}"
+                             CaretBrush="{StaticResource TextBrush}" BorderThickness="0"
+                             Visibility="{Binding Converter={StaticResource NullToVis}}" IsVisibleChanged="ConfirmInputBox_IsVisibleChanged" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
                         <Button Content="Отмена" Style="{StaticResource SecondaryButton}" Margin="0,0,10,0" Command="{Binding CancelConfirmCommand}" />
-                        <Button Style="{StaticResource DangerButton}" MinWidth="120" Command="{Binding AcceptConfirmCommand}">
+                        <Button MinWidth="120" Command="{Binding AcceptConfirmCommand}" IsDefault="{Binding Confirm.Input, Converter={x:Static views:ChatsView.NotNull}}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource DangerButton}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Confirm.IsDanger}" Value="False">
+                                            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
                             <Grid>
                                 <TextBlock Text="{Binding Confirm.ActionText}" Visibility="{Binding IsWorking, Converter={StaticResource InvBoolToVis}}" />
                                 <views:Spinner Width="18" Height="18" Visibility="{Binding IsWorking, Converter={StaticResource BoolToVis}}" />

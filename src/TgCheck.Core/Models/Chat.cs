@@ -28,6 +28,10 @@ public sealed class PeerRef
                 MembersCount = c.participants_count;
                 CanWrite = !c.IsChannel || c.flags.HasFlag(Channel.Flags.creator) || c.admin_rights is not null;
                 CanDeleteOthers = c.flags.HasFlag(Channel.Flags.creator) || c.admin_rights?.flags.HasFlag(ChatAdminRights.Flags.delete_messages) == true;
+                IsCreator = c.flags.HasFlag(Channel.Flags.creator);
+                IsAdmin = IsCreator || c.admin_rights is not null;
+                CanChangeInfo = IsCreator || c.admin_rights?.flags.HasFlag(ChatAdminRights.Flags.change_info) == true;
+                CanInvite = IsCreator || c.admin_rights?.flags.HasFlag(ChatAdminRights.Flags.invite_users) == true;
                 IsBasicGroup = false;
                 Title = c.title ?? "";
                 HasPhoto = c.photo is ChatPhoto;
@@ -39,6 +43,10 @@ public sealed class PeerRef
                 MembersCount = (c as Chat)?.participants_count ?? 0;
                 IsBasicGroup = true;
                 CanDeleteOthers = c is Chat bc && (bc.flags.HasFlag(Chat.Flags.creator) || bc.admin_rights is not null);
+                IsCreator = c is Chat cc && cc.flags.HasFlag(Chat.Flags.creator);
+                IsAdmin = IsCreator || (c as Chat)?.admin_rights is not null;
+                CanChangeInfo = IsAdmin;
+                CanInvite = IsAdmin;
                 Title = c.Title ?? "";
                 HasPhoto = (c as Chat)?.photo is ChatPhoto;
                 PhotoId = ((c as Chat)?.photo as ChatPhoto)?.photo_id ?? 0;
@@ -75,6 +83,14 @@ public sealed class PeerRef
     public bool CanDeleteOthers { get; } = true;
     /// <summary>Удаление можно выбрать «только у меня» или «у всех» (личка, бот, обычная группа); в супергруппах и каналах — всегда у всех.</summary>
     public bool CanRevoke => Info is not Channel;
+    /// <summary>Создатель группы или канала.</summary>
+    public bool IsCreator { get; }
+    /// <summary>Администратор группы или канала (в т.ч. создатель).</summary>
+    public bool IsAdmin { get; }
+    /// <summary>Может менять название и описание.</summary>
+    public bool CanChangeInfo { get; }
+    /// <summary>Может приглашать (ссылка-приглашение).</summary>
+    public bool CanInvite { get; }
     /// <summary>Обычная (не супер-) группа: id сообщений в ней глобальные, как в личке.</summary>
     public bool IsBasicGroup { get; }
     /// <summary>Группа с темами (форум): вместо одной ленты — список тем.</summary>
@@ -184,6 +200,8 @@ public sealed class MessageItem : MediaHolder
     public IReadOnlyList<CustomEmojiSpan> CustomEmoji { get; init; } = [];
     /// <summary>Оформление текста (жирный, код, блоки кода…).</summary>
     public IReadOnlyList<TextStyleSpan> Formatting { get; init; } = [];
+    /// <summary>Отправлено через инлайн-бота: его @имя («с помощью @бот»).</summary>
+    public string? ViaBot { get; init; }
     /// <summary>Опрос/викторина (обновляется при голосовании).</summary>
     public PollInfo? Poll { get; set; }
 

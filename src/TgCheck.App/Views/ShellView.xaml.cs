@@ -38,6 +38,42 @@ public partial class ShellView : UserControl
     {
         if (e.PropertyName == nameof(ShellViewModel.CurrentPage)) ShowPage(animate: true);
         if (e.PropertyName == nameof(ShellViewModel.StoryViewer)) AttachStories(_vm?.StoryViewer);
+        if (e.PropertyName == nameof(ShellViewModel.IsSettingsOpen)) ShowSettings(_vm?.IsSettingsOpen == true);
+    }
+
+    // ===================================================================== Настройки
+    // Панель выезжает слева, контент сдвигается на её ширину, список чатов сжимается до аватарок.
+
+    private const double SettingsWidth = 340;
+
+    // Раскладка меняется один раз (сразу), а движение — только сдвигом картинки (без пересчёта раскладки каждый кадр):
+    // раньше каждый кадр менялась ширина, список и чат перестраивались и запускали свои анимации — выходило дёргано.
+    private readonly System.Windows.Media.TranslateTransform _contentShift = new();
+
+    private void ShowSettings(bool open)
+    {
+        var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+        var time = TimeSpan.FromMilliseconds(open ? 260 : 220);
+        ContentArea.RenderTransform = _contentShift;
+        SettingsPanel.Visibility = Visibility.Visible;
+        SettingsShade.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        ContentArea.Margin = new Thickness(open ? SettingsWidth : 0, 0, 0, 0);
+        ChatsPage.SetListCollapsed(open);
+        // Контент уже на новом месте — визуально он стартует со старого и доезжает вместе с панелью.
+        var shift = new System.Windows.Media.Animation.DoubleAnimation(open ? -SettingsWidth : SettingsWidth, 0, time) { EasingFunction = ease };
+        _contentShift.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty, shift);
+        var slide = new System.Windows.Media.Animation.DoubleAnimation(open ? 0 : -SettingsWidth, time) { EasingFunction = ease };
+        slide.Completed += (_, _) =>
+        {
+            if (_vm?.IsSettingsOpen != true) SettingsPanel.Visibility = Visibility.Collapsed;
+        };
+        SettingsShift.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty, slide);
+    }
+
+    private void SettingsShade_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        if (_vm is { IsSettingsOpen: true }) _vm.IsSettingsOpen = false;
     }
 
     // ===================================================================== Видео историй
@@ -67,9 +103,10 @@ public partial class ShellView : UserControl
             return;
         }
         if (e.PropertyName == nameof(StoriesViewModel.VideoPath)) ShowStoryVideo(s.VideoPath);
+        if (e.PropertyName == nameof(StoriesViewModel.VideoStream) && s.VideoStream is { } stream) ShowStoryVideo(null, stream);
     }
 
-    private void ShowStoryVideo(string? path)
+    private void ShowStoryVideo(string? path, System.IO.Stream? stream = null)
     {
         _storyTimer.Stop();
         if (_storyVideo is { } old)
@@ -79,7 +116,7 @@ public partial class ShellView : UserControl
             old.Release();
         }
         StoryPreview.Effect = null;
-        if (path is null) return;
+        if (path is null && stream is null) return;
         // Видео целиком (как в Telegram), без обрезки краёв; по бокам или сверху-снизу — размытое превью той же истории.
         var video = new VlcVideoView { Stretch = System.Windows.Media.Stretch.Uniform, Opacity = 0 };
         video.FirstFrame += (_, _) =>
@@ -114,6 +151,13 @@ public partial class ShellView : UserControl
         };
         _storyVideo = video;
         StoryVideoHost.Children.Add(video);
+        if (stream is not null)
+        {
+            // Ещё качается — потоком: видео начинается, как только пришли нужные куски (как в Telegram).
+            video.PlayStream(stream);
+            if (_storyVm?.IsPaused == true) video.Pause();
+            return;
+        }
         video.SourcePath = path; // сначала файл: смена файла сбрасывает «играть»
         if (_storyVm?.IsPaused != true) video.Play();
     }

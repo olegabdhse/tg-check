@@ -25,6 +25,7 @@ public static class UiSettings
         public double? IslandAlong { get; set; }
         public string? IslandScreen { get; set; }
         public Dictionary<long, int>? ForumUnread { get; set; }
+        public List<string>? RecentInlineBots { get; set; }
     }
 
     private static Data _data = Load();
@@ -50,6 +51,19 @@ public static class UiSettings
     /// <summary>Островок с чатами при сворачивании окна.</summary>
     public static bool ShowIsland { get => !_data.HideIsland; set { _data.HideIsland = !value; Save(); } }
     /// <summary>Плеер музыки в островке (по умолчанию включён).</summary>
+    /// <summary>Инлайн-боты, которыми пользовались последними (@имена, новые — первыми).</summary>
+    public static IReadOnlyList<string> RecentInlineBots => _data.RecentInlineBots ?? [];
+
+    public static void RememberInlineBot(string username)
+    {
+        var list = _data.RecentInlineBots ?? [];
+        list.RemoveAll(u => string.Equals(u, username, StringComparison.OrdinalIgnoreCase));
+        list.Insert(0, username);
+        if (list.Count > 10) list.RemoveRange(10, list.Count - 10);
+        _data.RecentInlineBots = list;
+        Save();
+    }
+
     public static bool ShowIslandMusic { get => !_data.HideIslandMusic; set { _data.HideIslandMusic = !value; Save(); } }
 
     /// <summary>Всплывающие уведомления о новых сообщениях.</summary>

@@ -115,8 +115,8 @@
             </DockPanel>
         </Border>
 
-        <!-- ================================================= Контент -->
-        <Grid Grid.Column="1">
+        <!-- ================================================= Контент (при открытых настройках сдвигается вправо) -->
+        <Grid x:Name="ContentArea" Grid.Column="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -150,6 +150,57 @@
             </Grid>
         </Grid>
 
+        <!-- ================================================= Очистка кэша: вопрос → утка с веником и полоска → итог -->
+        <Grid Grid.ColumnSpan="2" Panel.ZIndex="20" Visibility="Collapsed" helpers:Anim.Mode="Scale" helpers:Anim.Show="{Binding IsClearDialogOpen}"
+              DataContext="{Binding Settings}">
+            <Border Background="{StaticResource OverlayBrush}">
+                <Border.InputBindings>
+                    <MouseBinding MouseAction="LeftClick" Command="{Binding CloseClearDialogCommand}" />
+                </Border.InputBindings>
+            </Border>
+            <Border Width="360" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="18" Padding="26,22,26,22"
+                    Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="40" ShadowDepth="0" Opacity="0.5" />
+                </Border.Effect>
+                <StackPanel>
+                    <Grid Width="130" Height="130" HorizontalAlignment="Center">
+                        <TextBlock Text="&#xE74D;" Style="{StaticResource Icon}" FontSize="56" Foreground="{StaticResource AccentBrush}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Visibility="{Binding CleanupSticker, Converter={StaticResource InvNullToVis}}" />
+                        <controls:StickerView Media="{Binding CleanupSticker}" Animate="True"
+                                              Visibility="{Binding CleanupSticker, Converter={StaticResource NullToVis}}" />
+                    </Grid>
+                    <TextBlock Text="{Binding ClearTitle}" FontSize="19" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,12,0,0" />
+                    <TextBlock Style="{StaticResource Caption}" FontSize="13" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="0,6,0,0"
+                               Visibility="{Binding IsConfirmStage, Converter={StaticResource BoolToVis}}">
+                        <Run Text="Сейчас кэш занимает" /> <Run Text="{Binding CacheSizeText, Mode=OneWay}" FontWeight="SemiBold" />
+                    </TextBlock>
+                    <TextBlock Text="{Binding ClearResultText}" Style="{StaticResource Caption}" FontSize="13" HorizontalAlignment="Center" Margin="0,6,0,0"
+                               Visibility="{Binding IsDoneStage, Converter={StaticResource BoolToVis}}" />
+
+                    <!-- Полоска прогресса -->
+                    <Grid Height="6" Margin="0,18,0,0" Visibility="{Binding IsConfirmStage, Converter={StaticResource InvBoolToVis}}">
+                        <Border CornerRadius="3" Background="{StaticResource Surface2Brush}" />
+                        <Border CornerRadius="3" Background="{StaticResource AccentBrush}" HorizontalAlignment="Left" RenderTransformOrigin="0,0.5"
+                                Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Grid}}">
+                            <Border.RenderTransform>
+                                <ScaleTransform ScaleX="{Binding ClearProgress}" />
+                            </Border.RenderTransform>
+                        </Border>
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,20,0,0"
+                                Visibility="{Binding IsConfirmStage, Converter={StaticResource BoolToVis}}">
+                        <Button Content="Отмена" Style="{StaticResource SecondaryButton}" MinWidth="120" Margin="0,0,10,0" Command="{Binding CloseClearDialogCommand}" />
+                        <Button Content="Очистить" Style="{StaticResource DangerButton}" MinWidth="120" Command="{Binding ClearCacheCommand}" />
+                    </StackPanel>
+                    <Button Content="Готово" Style="{StaticResource PrimaryButton}" MinWidth="140" HorizontalAlignment="Center" Margin="0,20,0,0"
+                            Command="{Binding CloseClearDialogCommand}" Visibility="{Binding IsDoneStage, Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
         <!-- ================================================= Прокси -->
         <Grid Grid.ColumnSpan="2" Visibility="Collapsed" helpers:Anim.Mode="Fade" helpers:Anim.Show="{Binding IsOpen}" DataContext="{Binding Proxy}">
             <Border Background="{StaticResource OverlayBrush}">
@@ -170,61 +221,184 @@
             </Border>
         </Grid>
 
-        <!-- ================================================= Настройки -->
-        <Grid Grid.ColumnSpan="2" Visibility="Collapsed" helpers:Anim.Mode="Fade" helpers:Anim.Show="{Binding IsSettingsOpen}">
-            <Border Background="{StaticResource OverlayBrush}">
-                <Border.InputBindings>
-                    <MouseBinding MouseAction="LeftClick" Command="{Binding ToggleSettingsCommand}" />
-                </Border.InputBindings>
-            </Border>
-            <Border Width="420" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="16" Padding="12,10,12,14"
-                    Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                    DataContext="{Binding Settings}">
+        <!-- ================================================= Настройки: тёмная панель выезжает слева, контент сдвигается,
+             список чатов сжимается до аватарок; клик вне панели — закрыть -->
+        <Border x:Name="SettingsShade" Grid.Column="1" Background="#33000000" Visibility="Collapsed" Margin="340,0,0,0"
+                MouseLeftButtonDown="SettingsShade_MouseDown" />
+        <Border x:Name="SettingsPanel" Grid.Column="1" Width="340" HorizontalAlignment="Left" Visibility="Collapsed"
+                Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0" Margin="-1,0,0,0"
+                DataContext="{Binding Settings}">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="SettingsShift" X="-340" />
+            </Border.RenderTransform>
+            <Border.Resources>
+                <!-- Как в Telegram Desktop: ровные строки во всю ширину (иконка, текст, переключатель), разделы — тёмными полосами -->
+                <Style x:Key="TgSwitch" TargetType="CheckBox">
+                    <Setter Property="Cursor" Value="Hand" />
+                    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                    <Setter Property="FontSize" Value="14" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="CheckBox">
+                                <Border x:Name="Row" Background="Transparent" Padding="22,10,20,10">
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Left" Text="{TemplateBinding Tag}" Style="{StaticResource Icon}" FontSize="19"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" Width="22" Margin="0,0,18,0" VerticalAlignment="Center" />
+                                        <Grid DockPanel.Dock="Right" Width="34" Height="18" VerticalAlignment="Center" Margin="12,0,0,0">
+                                            <Border x:Name="Track" CornerRadius="9" Background="{StaticResource Surface3Brush}" />
+                                            <Ellipse Width="12" Height="12" Fill="White" HorizontalAlignment="Left" Margin="3,0">
+                                                <Ellipse.RenderTransform>
+                                                    <TranslateTransform x:Name="KnobShift" />
+                                                </Ellipse.RenderTransform>
+                                            </Ellipse>
+                                        </Grid>
+                                        <ContentPresenter VerticalAlignment="Center" />
+                                    </DockPanel>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Row" Property="Background" Value="#0DFFFFFF" />
+                                    </Trigger>
+                                    <Trigger Property="IsChecked" Value="True">
+                                        <Setter TargetName="Track" Property="Background" Value="{StaticResource AccentBrush}" />
+                                        <Trigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetName="KnobShift" Storyboard.TargetProperty="X" To="16" Duration="0:0:0.15" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </Trigger.EnterActions>
+                                        <Trigger.ExitActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetName="KnobShift" Storyboard.TargetProperty="X" To="0" Duration="0:0:0.15" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </Trigger.ExitActions>
+                                    </Trigger>
+                                    <Trigger Property="IsEnabled" Value="False">
+                                        <Setter Property="Opacity" Value="0.45" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+                <Style x:Key="TgRow" TargetType="Button">
+                    <Setter Property="Cursor" Value="Hand" />
+                    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                    <Setter Property="FontSize" Value="14" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="Row" Background="Transparent" Padding="22,12,20,12">
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Left" Text="{TemplateBinding Tag}" Style="{StaticResource Icon}" FontSize="19"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" Width="22" Margin="0,0,18,0" VerticalAlignment="Center" />
+                                        <ContentPresenter VerticalAlignment="Center" />
+                                    </DockPanel>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Row" Property="Background" Value="#0DFFFFFF" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+                <Style x:Key="TgSection" TargetType="TextBlock">
+                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                    <Setter Property="FontWeight" Value="SemiBold" />
+                    <Setter Property="FontSize" Value="14" />
+                    <Setter Property="Margin" Value="22,14,0,4" />
+                </Style>
+                <!-- Разделитель разделов — тонкая светлая линия -->
+                <Style x:Key="TgDivider" TargetType="Border">
+                    <Setter Property="Height" Value="1" />
+                    <Setter Property="Background" Value="#24FFFFFF" />
+                    <Setter Property="Margin" Value="22,8,0,0" />
+                </Style>
+            </Border.Resources>
+            <DockPanel>
+                <!-- Шапка: заголовок и закрыть -->
+                <DockPanel DockPanel.Dock="Top" Margin="22,14,12,4">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" ToolTip="Закрыть (Esc)"
+                            Command="{Binding DataContext.ToggleSettingsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                    <TextBlock Text="Настройки" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" />
+                </DockPanel>
+                <TextBlock DockPanel.Dock="Bottom" Text="{Binding DataContext.VersionText, RelativeSource={RelativeSource AncestorType=UserControl}, StringFormat=TG Check {0}}"
+                           Style="{StaticResource Caption}" Margin="22,10,0,14" />
+                <ScrollViewer VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True">
                 <StackPanel>
-                    <DockPanel Margin="8,4,0,8">
-                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" ToolTip="Закрыть (Esc)"
-                                Command="{Binding DataContext.ToggleSettingsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
-                        <TextBlock Text="Настройки" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    </DockPanel>
+                    <!-- Профиль: аватар, имя, @ник — клик открывает свой профиль -->
+                    <Button Cursor="Hand" FocusVisualStyle="{x:Null}" Foreground="{StaticResource TextBrush}"
+                            Command="{Binding DataContext.OpenMyProfileFromSettingsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="Row" Background="Transparent" Padding="22,12,20,14">
+                                    <ContentPresenter />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Row" Property="Background" Value="#0DFFFFFF" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <DockPanel DataContext="{Binding DataContext.MyProfile, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                            <controls:AvatarView DockPanel.Dock="Left" Width="64" Height="64" Source="{Binding Avatar}" Fill="{Binding AvatarBrush}" Initials="{Binding Initials}" />
+                            <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
+                                <TextBlock helpers:RichText.Text="{Binding NameText}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding UsernameText}" Foreground="{StaticResource AccentBrush}" FontSize="13" Margin="0,3,0,0" />
+                                <TextBlock Text="{Binding StatusText}" Style="{StaticResource Caption}" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </DockPanel>
+                    </Button>
 
-                    <TextBlock Text="Уведомления" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="13" Margin="12,6,0,2" />
-                    <CheckBox Style="{StaticResource SettingSwitch}" IsChecked="{Binding Notifications}">
+                    <Border Style="{StaticResource TgDivider}" Margin="22,0,0,0" />
+                    <TextBlock Text="Уведомления" Style="{StaticResource TgSection}" />
+                    <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xEA8F;" IsChecked="{Binding Notifications}">
                         <StackPanel>
                             <TextBlock Text="Всплывающие уведомления" />
-                            <TextBlock Text="Когда окно свёрнуто, закрыто или не в фокусе" Style="{StaticResource Caption}" />
+                            <TextBlock Text="Когда окно свёрнуто или не в фокусе" Style="{StaticResource Caption}" Margin="0,2,0,0" />
                         </StackPanel>
                     </CheckBox>
-                    <CheckBox Style="{StaticResource SettingSwitch}" IsChecked="{Binding NotificationSound}" IsEnabled="{Binding Notifications}"
-                              Content="Звук уведомления" />
-                    <CheckBox Style="{StaticResource SettingSwitch}" IsChecked="{Binding NotifyArchived}" IsEnabled="{Binding Notifications}">
+                    <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE767;" IsChecked="{Binding NotificationSound}" IsEnabled="{Binding Notifications}"
+                              Content="Звук уведомлений" />
+                    <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE7B8;" IsChecked="{Binding NotifyArchived}" IsEnabled="{Binding Notifications}">
                         <StackPanel>
                             <TextBlock Text="Чаты из архива" />
-                            <TextBlock Text="Чаты без звука не уведомляют никогда" Style="{StaticResource Caption}" />
+                            <TextBlock Text="Чаты без звука не уведомляют" Style="{StaticResource Caption}" Margin="0,2,0,0" />
                         </StackPanel>
                     </CheckBox>
 
-                    <TextBlock Text="Окно" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="13" Margin="12,12,0,2" />
-                    <CheckBox Style="{StaticResource SettingSwitch}" IsChecked="{Binding ShowStories}">
-                        <StackPanel>
-                            <TextBlock Text="Истории над списком чатов" />
-                            <TextBlock Text="Выключите, чтобы скрыть полосу историй" Style="{StaticResource Caption}" />
-                        </StackPanel>
-                    </CheckBox>
-                    <CheckBox Style="{StaticResource SettingSwitch}" IsChecked="{Binding ShowIsland}">
+                    <Border Style="{StaticResource TgDivider}" />
+                    <TextBlock Text="Интерфейс" Style="{StaticResource TgSection}" />
+                    <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE8B9;" IsChecked="{Binding ShowStories}" Content="Истории над списком чатов" />
+                    <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE737;" IsChecked="{Binding ShowIsland}">
                         <StackPanel>
                             <TextBlock Text="Островок при сворачивании" />
-                            <TextBlock Text="Последние чаты сверху экрана, пока окно свёрнуто" Style="{StaticResource Caption}" />
+                            <TextBlock Text="Последние чаты сверху экрана" Style="{StaticResource Caption}" Margin="0,2,0,0" />
                         </StackPanel>
                     </CheckBox>
-                    <CheckBox Style="{StaticResource SettingSwitch}" IsChecked="{Binding ShowIslandMusic}">
-                        <StackPanel>
-                            <TextBlock Text="Плеер музыки в островке" />
-                            <TextBlock Text="Обложка играющей песни с волнами; по клику — управление" Style="{StaticResource Caption}" />
-                        </StackPanel>
-                    </CheckBox>
+                    <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE8D6;" IsChecked="{Binding ShowIslandMusic}" Content="Плеер музыки в островке" />
+
+                    <Border Style="{StaticResource TgDivider}" />
+                    <TextBlock Text="Данные и память" Style="{StaticResource TgSection}" />
+                    <Button Style="{StaticResource TgRow}" Tag="&#xE74D;" Command="{Binding AskClearCacheCommand}">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding CacheSizeText}" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="Очистить кэш" VerticalAlignment="Center" />
+                        </DockPanel>
+                    </Button>
                 </StackPanel>
-            </Border>
-        </Grid>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
 
         <!-- ================================================= Истории -->
         <Grid Grid.ColumnSpan="2" Visibility="Collapsed" helpers:Anim.Mode="Scale" helpers:Anim.Show="{Binding IsStoriesOpen}">

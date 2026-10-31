@@ -192,7 +192,18 @@ public static class Fmt
 
 public static class Shell
 {
+    /// <summary>Открытие ссылок Telegram внутри приложения (задаёт оболочка после входа); true — ссылка обработана.</summary>
+    public static Func<string, bool>? InAppLinks { get; set; }
+
+    /// <summary>Открыть ссылку: Telegram (t.me, tg://) — внутри приложения, остальное — в браузере / системе.</summary>
     public static void Open(string target)
+    {
+        if (InAppLinks?.Invoke(target) == true) return;
+        OpenExternal(target);
+    }
+
+    /// <summary>Открыть в браузере / системе, минуя приложение.</summary>
+    public static void OpenExternal(string target)
     {
         try { Process.Start(new ProcessStartInfo(target) { UseShellExecute = true }); }
         catch { /* нет обработчика — молча игнорируем */ }

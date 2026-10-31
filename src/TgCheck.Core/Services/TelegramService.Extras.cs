@@ -305,6 +305,90 @@ public sealed partial class TelegramService
                 mute_until = muted ? DateTime.UtcNow.AddYears(30) : DateTime.UnixEpoch,
             });
 
+    /// <summary>Свой статус «в сети» (true) или «был(а) недавно» (false).</summary>
+    public async Task SetOnlineAsync(bool online)
+    {
+        try { await _client.Account_UpdateStatus(offline: !online); }
+        catch (Exception ex) { Logging.Write("status: " + ex.Message); }
+    }
+
+    // ===================================================================== Управление чатом
+
+    /// <summary>Очистить историю (чат остаётся). forEveryone — и у собеседника (личка, бот, обычная группа).</summary>
+    public async Task ClearHistoryAsync(PeerRef peer, bool forEveryone)
+    {
+        EnsureNotIgnored(peer);
+        if (peer.Info is Channel ch) { await _client.Channels_DeleteHistory(ch, 0, for_everyone: true); return; }
+        await DeleteHistoryAllAsync(peer, justClear: true, revoke: forEveryone);
+    }
+
+    /// <summary>
+    /// Удалить чат: личка и бот — история целиком (forEveryone — и у собеседника); обычная группа — выйти и удалить;
+    /// супергруппа и канал — покинуть, а создатель с forEveryone — удалить для всех.
+    /// </summary>
+    public async Task DeleteChatAsync(PeerRef peer, bool forEveryone)
+    {
+        EnsureNotIgnored(peer);
+        switch (peer.Info)
+        {
+            case Channel ch when peer.IsCreator && forEveryone:
+                await _client.Channels_DeleteChannel(ch);
+                break;
+            case Channel ch:
+                await _client.Channels_LeaveChannel(ch);
+                break;
+            case ChatBase chat:
+                try { await _client.Messages_DeleteChatUser(chat.ID, InputUser.Self, revoke_history: true); }
+                catch (RpcException ex) when (ex.Message.Contains("USER_NOT_PARTICIPANT")) { }
+                await DeleteHistoryAllAsync(peer, justClear: false, revoke: false);
+                break;
+            default:
+                await DeleteHistoryAllAsync(peer, justClear: false, revoke: forEveryone);
+                break;
+        }
+    }
+
+    // Сервер удаляет историю порциями: повторяем, пока он сообщает, что осталось ещё.
+    private async Task DeleteHistoryAllAsync(PeerRef peer, bool justClear, bool revoke)
+    {
+        for (var i = 0; i < 100; i++)
+        {
+            var res = await _client.Messages_DeleteHistory(peer.Info.ToInputPeer(), 0, just_clear: justClear, revoke: revoke);
+            if (res.offset <= 0) break;
+        }
+    }
+
+    /// <summary>Заблокирован ли пользователь (из полного профиля).</summary>
+    public async Task<bool> IsBlockedAsync(PeerRef peer)
+    {
+        if (peer.Info is not User u) return false;
+        var full = await _client.Users_GetFullUser(u);
+        return full.full_user.flags.HasFlag(UserFull.Flags.blocked);
+    }
+
+    public async Task SetBlockedAsync(PeerRef peer, bool blocked)
+    {
+        if (blocked) await _client.Contacts_Block(peer.Info.ToInputPeer());
+        else await _client.Contacts_Unblock(peer.Info.ToInputPeer());
+        _freshFull.TryRemove(peer.Id, out _); // в профиле — свежее состояние
+        _freshProfiles.TryRemove(peer.Id, out _);
+    }
+
+    /// <summary>Новое название группы или канала.</summary>
+    public async Task EditTitleAsync(PeerRef peer, string title)
+    {
+        if (peer.Info is Channel ch) await _client.Channels_EditTitle(ch, title);
+        else await _client.Messages_EditChatTitle(peer.Id, title);
+    }
+
+    /// <summary>Новое описание группы или канала.</summary>
+    public async Task EditAboutAsync(PeerRef peer, string about) =>
+        await _client.Messages_EditChatAbout(peer.Info.ToInputPeer(), about);
+
+    /// <summary>Ссылка-приглашение (основная, без срока).</summary>
+    public async Task<string?> GetInviteLinkAsync(PeerRef peer) =>
+        (await _client.Messages_ExportChatInvite(peer.Info.ToInputPeer()) as ChatInviteExported)?.link;
+
     // ===================================================================== Реакции
 
     internal static IReadOnlyList<ReactionInfo> MapReactions(MessageReactions? reactions)

@@ -40,7 +40,7 @@ public sealed partial class TelegramService : IAsyncDisposable
         _cache = new LocalCache(Path.Combine(env.DataDirectory, "cache", "chats"));
         Logging.Init(Path.Combine(env.DataDirectory, "logs"));
         _client = CreateClient();
-        Media = new MediaService(() => _client, Path.Combine(env.DataDirectory, "cache")) { RefreshDocument = RefreshDocumentAsync };
+        Media = new MediaService(() => _client, Path.Combine(env.DataDirectory, "cache")) { RefreshDocument = RefreshDocumentAsync, RefreshPhoto = RefreshPhotoAsync };
     }
 
     public MediaService Media { get; }

@@ -1,3 +1,4 @@
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -110,11 +111,23 @@ public sealed class VlcVideoView : Image
         _version++;
         var player = _player;
         var media = _media;
+        var input = _input;
+        var inputStream = _inputStream;
         _media = null;
+        _input = null;
+        _inputStream = null;
         // Stop у VLC может ждать свои потоки — не в потоке интерфейса. Остановки идут строго по очереди:
         // иначе ранняя остановка могла закончиться уже после запуска следующего файла и остановить его.
         if (player is not null)
-            _stopTask = _stopTask.ContinueWith(_ => { try { player.Stop(); } catch { } media?.Dispose(); }, TaskScheduler.Default);
+            _stopTask = _stopTask.ContinueWith(_ =>
+            {
+                // Сначала поток: проигрыватель мог ждать в нём ещё не скачанный кусок — иначе остановка ждала бы загрузку.
+                inputStream?.Dispose();
+                try { player.Stop(); } catch { }
+                media?.Dispose();
+                input?.Dispose();
+            }, TaskScheduler.Default);
+        else { input?.Dispose(); inputStream?.Dispose(); }
         Source = null;
         _opened = false;
         _firstFrame = false;
@@ -147,10 +160,22 @@ public sealed class VlcVideoView : Image
 
     // ===================================================================== Источник
 
-    private async void OnSourceChanged(string? path)
+    /// <summary>Играть из потока (видео, которое ещё качается, — как истории в Telegram: начинает сразу).</summary>
+    public void PlayStream(Stream stream)
+    {
+        OnSourceChanged(null, stream);
+        Play();
+    }
+
+    private StreamMediaInput? _input;
+    private Stream? _inputStream;
+
+    private async void OnSourceChanged(string? path, Stream? stream = null)
     {
         Stop();
-        if (string.IsNullOrEmpty(path)) return;
+        if (string.IsNullOrEmpty(path) && stream is null) return;
+        if (stream is not null) { _input = new StreamMediaInput(stream); _inputStream = stream; }
+        var input = _input;
         var version = _version;
         var vlc = await VlcRuntime.GetAsync();
         await _stopTask; // прежний файл остановлен — не остановим заодно новый
@@ -172,7 +197,7 @@ public sealed class VlcVideoView : Image
             _player.EncounteredError += (_, _) => Ui(() => MediaFailed?.Invoke(this, "Ошибка воспроизведения."));
         }
         _player.Mute = _muted;
-        _media = new Media(vlc, path, FromType.FromPath);
+        _media = input is not null ? new Media(vlc, input) : new Media(vlc, path!, FromType.FromPath);
         _player.Media = _media;
         _opened = false;
         if (_playRequested) _player.Play();

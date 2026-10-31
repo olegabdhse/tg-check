@@ -40,10 +40,24 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public MediaPickerViewModel Picker { get; }
     public ProfileViewModel MyProfile { get; }
     public SettingsViewModel Settings { get; } = new();
+    private OnlinePresence? _presence;
     [ObservableProperty] private bool _isSettingsOpen;
 
     [RelayCommand]
     private void ToggleSettings() => IsSettingsOpen = !IsSettingsOpen;
+
+    /// <summary>Клик по своему профилю в настройках — закрыть настройки и открыть профиль.</summary>
+    [RelayCommand]
+    private void OpenMyProfileFromSettings()
+    {
+        IsSettingsOpen = false;
+        Section = Section.Profile;
+    }
+
+    partial void OnIsSettingsOpenChanged(bool value)
+    {
+        if (value) _ = Settings.RefreshCacheSizeAsync();
+    }
 
     public string VersionText => "v" + BuildInfo.VersionText;
 
@@ -140,6 +154,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public bool HandleEscape()
     {
         if (StoryViewer is { } stories) { stories.Close(); return true; }
+        if (Settings.IsClearDialogOpen) { Settings.CloseClearDialogCommand.Execute(null); return true; }
         if (IsSettingsOpen) { IsSettingsOpen = false; return true; }
         if (Proxy.IsOpen) { Proxy.IsOpen = false; return true; }
         if (CurrentPage is ChatsViewModel chats) return chats.HandleEscape();
@@ -158,6 +173,19 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _ = LoadTelegramEmojiAsync();
         Chats.UnreadChanged += () => OnPropertyChanged(nameof(ChatsUnread));
         Settings.StoriesSettingChanged += Chats.OnStoriesSettingChanged;
+        Settings.GetCacheSize = _tg.GetCacheSizeAsync;
+        // Оставляем 5 последних личных чатов (с людьми), а также стикеры и эмодзи — это решает ядро.
+        Settings.ClearCacheAction = (progress, alsoKeep) => _tg.ClearCacheAsync(Chats.Chats.Where(c => c.IsPersonal && !c.Peer.IsSelf)
+            .OrderByDescending(c => c.SortDate).Take(5).Select(c => c.Peer).ToList(), progress, alsoKeep);
+        Settings.GetCleanupSticker = _tg.GetCleanupStickerAsync;
+        _presence ??= new OnlinePresence(_tg); // «в сети», пока окно активно и с ним работают
+        // Ссылки Telegram (в тексте сообщений, описаниях, кнопках) — открываются внутри приложения.
+        Helpers.Shell.InAppLinks = url =>
+        {
+            if (!TelegramService.IsTelegramLink(url)) return false;
+            _ = OpenLinkAsync(url);
+            return true;
+        };
         // Профиль (с подарками — это десятки запросов) — после основного списка чатов: при первом входе не отнимает у него сеть.
         _ = Chats.MainLoaded.ContinueWith(_ => MyProfile.LoadAsync(), TaskScheduler.FromCurrentSynchronizationContext());
         _ = ReactionCatalog.LoadAsync(_tg);
@@ -222,20 +250,66 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Ссылка t.me/… или tg://… — открыть чат внутри приложения, остальное — в браузере.</summary>
+    /// <summary>
+    /// Ссылка Telegram — внутри приложения, как в официальном клиенте: чат, канал, бот, сообщение (с переходом к нему),
+    /// приглашение (с вопросом «Вступить?»), набор стикеров. Остальные ссылки и то, что открыть нельзя, — в браузере.
+    /// </summary>
     public async Task OpenLinkAsync(string link)
     {
-        if (!link.Contains("t.me/", StringComparison.OrdinalIgnoreCase) && !link.StartsWith("tg://", StringComparison.OrdinalIgnoreCase))
+        if (!TelegramService.IsTelegramLink(link))
         {
-            Helpers.Shell.Open(link);
+            Helpers.Shell.OpenExternal(link);
             return;
         }
         try
         {
-            var peer = await _tg.ResolveAsync(link);
-            if (peer is null) Helpers.Shell.Open(link);
-            else OpenChat(peer);
+            switch (await _tg.ParseLinkAsync(link))
+            {
+                case { Kind: TgLinkKind.Peer, Peer: { } peer } l:
+                    OpenChat(peer);
+                    if (l.MessageId is { } id) await JumpWhenOpenAsync(peer, id);
+                    break;
+                case { Kind: TgLinkKind.Invite, InviteHash: { } hash } inv:
+                    var what = inv.InviteIsChannel ? "канал" : "группу";
+                    Chats.Confirm = new ConfirmRequest($"Вступить в {what} «{inv.InviteTitle}»?",
+                        $"{Fmt.N(inv.InviteMembers)} {Fmt.Plural(inv.InviteMembers, "участник", "участника", "участников")}", "Вступить", false, async () =>
+                        {
+                            if (await _tg.JoinInviteAsync(hash) is { } joined) OpenChat(joined);
+                        });
+                    if (Section != Section.Chats) Section = Section.Chats;
+                    break;
+                case { Kind: TgLinkKind.StickerSet, StickerPack: { } pack }:
+                    if (Chats.Conversation is { } conv) conv.ShowStickerPack(pack.Info, pack.Stickers, pack.Installed);
+                    else Helpers.Shell.OpenExternal(link);
+                    break;
+                default:
+                    Helpers.Shell.OpenExternal(link);
+                    break;
+            }
         }
-        catch { Helpers.Shell.Open(link); }
+        catch (PeerNotFoundException ex)
+        {
+            ShowToast(ex.Message, true);
+        }
+        catch (Exception ex)
+        {
+            Logging.Write("open link: " + ex.Message);
+            Helpers.Shell.OpenExternal(link);
+        }
+    }
+
+    // Ссылка на сообщение: чат только что открылся — переходим к сообщению, когда лента загрузилась.
+    private async Task JumpWhenOpenAsync(PeerRef peer, int messageId)
+    {
+        for (var i = 0; i < 40; i++)
+        {
+            if (Chats.Conversation is { Peer: var p, IsLoading: false } conv && p.Key == peer.Key)
+            {
+                await conv.JumpToMessageAsync(messageId);
+                return;
+            }
+            await Task.Delay(100);
+        }
     }
 
     public void OpenChat(PeerRef peer)
@@ -363,6 +437,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _updateTimer.Stop();
+        _presence?.Dispose();
         _tg.ConnectionChanged -= OnConnectionChanged;
         Chats.Dispose();
     }

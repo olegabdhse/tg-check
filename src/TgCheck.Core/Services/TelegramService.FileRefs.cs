@@ -36,18 +36,79 @@ public sealed partial class TelegramService
         }
 
         // Сообщение заново.
-        Messages_MessagesBase res;
-        var key = item.PeerKey;
-        if (key < -1_000_000_000_000)
+        var fresh = await RefetchMessageAsync(item.PeerKey, item.Id);
+        return fresh?.media switch
         {
-            if (!_chats.TryGetValue(-1_000_000_000_000 - key, out var chat) || chat is not Channel channel) return null;
-            res = await _client.Channels_GetMessages(channel, new InputMessageID { id = item.Id }).ConfigureAwait(false);
+            MessageMediaDocument { document: Document d } when d.id == mediaId => d,
+            MessageMediaWebPage { webpage: WebPage { document: Document wd } } when wd.id == mediaId => wd,
+            _ => null,
+        };
+    }
+
+    /// <summary>Свежая ссылка на фото сообщения (превью и полное фото из кэша истории).</summary>
+    private async Task<Photo?> RefreshPhotoAsync(MediaHolder holder)
+    {
+        // Фото-история из кэша списка историй — запросить историю заново.
+        if (holder is StoryInfo { Owner: { } owner } story)
+        {
+            var stories = await _client.Stories_GetStoriesByID(owner.Info.ToInputPeer(), story.Id).ConfigureAwait(false);
+            await Task.Yield();
+            return stories.stories.OfType<StoryItem>().Select(s => s.media).OfType<MessageMediaPhoto>()
+                .Select(m => m.photo).OfType<Photo>().FirstOrDefault(p => p.id == story.MediaId);
         }
-        else res = await _client.Messages_GetMessages(new InputMessageID { id = item.Id }).ConfigureAwait(false);
-        await Task.Yield();
-        res.CollectUsersChats(_users, _chats);
-        foreach (var m in res.Messages.OfType<Message>())
-            if (m.media is MessageMediaDocument { document: Document d } && d.id == mediaId) return d;
-        return null;
+        if (holder is not MessageItem { Id: > 0 } item) return null;
+        var mediaId = item.MediaId;
+        var fresh = await RefetchMessageAsync(item.PeerKey, item.Id);
+        return fresh?.media switch
+        {
+            MessageMediaPhoto { photo: Photo p } when p.id == mediaId => p,
+            MessageMediaWebPage { webpage: WebPage { photo: Photo wp } } when wp.id == mediaId => wp,
+            _ => null,
+        };
+    }
+
+    // Сообщения заново — пачкой по чату: после очистки кэша (или в давно открытом чате) устаревают ссылки
+    // сразу у десятков превью; по запросу на каждое Telegram начал бы притормаживать.
+    private readonly Dictionary<long, (HashSet<int> Ids, Task<Dictionary<int, Message>> Task)> _refetch = [];
+
+    private async Task<Message?> RefetchMessageAsync(long peerKey, int id)
+    {
+        Task<Dictionary<int, Message>> batch;
+        lock (_refetch)
+        {
+            if (_refetch.TryGetValue(peerKey, out var open) && open.Ids.Count < 100) { open.Ids.Add(id); batch = open.Task; }
+            else
+            {
+                var ids = new HashSet<int> { id };
+                batch = Task.Run(async () =>
+                {
+                    await Task.Delay(120); // собираем запросы, пришедшие следом
+                    int[] snapshot;
+                    lock (_refetch)
+                    {
+                        snapshot = [.. ids];
+                        _refetch.Remove(peerKey);
+                    }
+                    var input = snapshot.Select(i => (InputMessage)new InputMessageID { id = i }).ToArray();
+                    Messages_MessagesBase res;
+                    if (peerKey < -1_000_000_000_000)
+                    {
+                        if (!_chats.TryGetValue(-1_000_000_000_000 - peerKey, out var chat) || chat is not Channel channel) return [];
+                        res = await _client.Channels_GetMessages(channel, input).ConfigureAwait(false);
+                    }
+                    else res = await _client.Messages_GetMessages(input).ConfigureAwait(false);
+                    await Task.Yield();
+                    res.CollectUsersChats(_users, _chats);
+                    return res.Messages.OfType<Message>().ToDictionary(m => m.id);
+                });
+                _refetch[peerKey] = (ids, batch);
+            }
+        }
+        try { return (await batch).GetValueOrDefault(id); }
+        catch (Exception ex)
+        {
+            Logging.Write("refetch messages: " + ex.Message);
+            return null;
+        }
     }
 }

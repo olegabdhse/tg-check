@@ -207,7 +207,7 @@ public sealed class MediaService
         try
         {
             using var ms = new MemoryStream();
-            await Timed(_client().DownloadFileAsync(doc, ms, thumb));
+            await Timed(_client().DownloadFileAsync(doc, ms, thumb), Small);
             await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
             return SKImage.FromEncodedData(ms.ToArray());
         }
@@ -286,20 +286,35 @@ public sealed class MediaService
         try
         {
             if (File.Exists(path)) return (await File.ReadAllBytesAsync(path), doc.mime_type);
-            using var ms = new MemoryStream();
-            var mime = await Timed(_client().DownloadFileAsync(doc, ms));
-            await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
-            var bytes = ms.ToArray();
-            var tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-            await File.WriteAllBytesAsync(tmp, bytes);
-            File.Move(tmp, path, overwrite: true);
-            return (bytes, mime ?? doc.mime_type);
+            return await DownloadToCacheAsync(doc, path);
+        }
+        catch (Exception ex)
+        {
+            // Сбой или тайм-аут — не ошибка для вызывающих (стикер, эмодзи, подарок останутся картинкой и запросятся снова);
+            // раньше исключение доходило до интерфейса и роняло приложение.
+            Logging.Write($"document {doc.id}: {ex.Message}");
+            return (null, null);
         }
         finally { gate.Release(); }
     }
 
+    private async Task<(byte[]? Bytes, string? Mime)> DownloadToCacheAsync(Document doc, string path)
+    {
+        using var ms = new MemoryStream();
+        var mime = await Timed(_client().DownloadFileAsync(doc, ms), Small);
+        await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
+        var bytes = ms.ToArray();
+        var tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        await File.WriteAllBytesAsync(tmp, bytes);
+        File.Move(tmp, path, overwrite: true);
+        return (bytes, mime ?? doc.mime_type);
+    }
+
     // Мелкие загрузки (превью, стикеры, аватары, эмодзи) не ждут вечно: после обрыва связи зависшая загрузка держала
     // место в очереди навсегда, и новые стикеры и картинки переставали грузиться. Ошибка — повтор при следующем показе.
+    // Мелкие файлы приходят за секунды: нет ответа 20 с — соединение с медиасервером оборвалось, быстрее повторить.
+    private const int Small = 20;
+
     private static async Task<T> Timed<T>(Task<T> download, int seconds = 60)
     {
         if (await Task.WhenAny(download, Task.Delay(TimeSpan.FromSeconds(seconds))) != download)
@@ -348,7 +363,7 @@ public sealed class MediaService
             try
             {
                 using var ms = new MemoryStream();
-                await Timed(_client().DownloadProfilePhotoAsync(peer, ms, big: big));
+                await Timed(_client().DownloadProfilePhotoAsync(peer, ms, big: big), Small);
                 await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
                 if (ms.Length == 0) return null;
                 var bytes = ms.ToArray();
@@ -417,17 +432,8 @@ public sealed class MediaService
             byte[]? bytes = null;
             if (message.Photo is { } photo)
             {
-                var size = photo.sizes.OfType<PhotoSize>().Where(s => s.w <= 1280).MaxBy(s => s.w)
-                           ?? photo.LargestPhotoSize;
-                await _downloads.WaitAsync();
-                try
-                {
-                    using var ms = new MemoryStream();
-                    await Timed(_client().DownloadFileAsync(photo, ms, size));
-                    await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
-                    bytes = ms.ToArray();
-                }
-                finally { _downloads.Release(); }
+                bytes = await DownloadPhotoAsync(message, photo, p => p.sizes.OfType<PhotoSize>().Where(s => s.w <= 1280).MaxBy(s => s.w)
+                                                                     ?? p.LargestPhotoSize, _downloads);
             }
             else if (message.Document is { } doc)
             {
@@ -440,17 +446,9 @@ public sealed class MediaService
                         bytes = data.ToArray();
                     }
                 }
-                else if (doc.thumbs?.OfType<PhotoSize>().MaxBy(t => t.w) is { } thumb)
+                else if (doc.thumbs?.OfType<PhotoSize>().Any() == true)
                 {
-                    await _downloads.WaitAsync();
-                    try
-                    {
-                        using var ms = new MemoryStream();
-                        await Timed(_client().DownloadFileAsync(doc, ms, thumb));
-                        await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
-                        bytes = ms.ToArray();
-                    }
-                    finally { _downloads.Release(); }
+                    bytes = await DownloadDocThumbAsync(message, doc);
                 }
                 else if (doc.thumbs?.OfType<PhotoCachedSize>().FirstOrDefault() is { } cached)
                 {
@@ -636,6 +634,18 @@ public sealed class MediaService
     // Открытое пользователем (песня, видео) качается — фоновые загрузки (голосовые на экране, набор эмодзи) ждут.
     private int _priorityActive;
 
+    // Качается видео истории (открыта в просмотрщике): ему — вся скорость, загрузка песни ждёт. Превью историй
+    // (сетка в профиле, полоса историй) сюда не относятся — иначе песня ждала, пока грузится любая картинка истории.
+    private int _storyActive;
+
+    private async Task<T> AsStory<T>(MediaHolder media, Func<Task<T>> load)
+    {
+        if (media is not StoryInfo) return await load();
+        Interlocked.Increment(ref _storyActive);
+        try { return await load(); }
+        finally { Interlocked.Decrement(ref _storyActive); }
+    }
+
     private async Task WhilePriorityAsync()
     {
         while (Volatile.Read(ref _priorityActive) > 0) await Task.Delay(250);
@@ -650,6 +660,8 @@ public sealed class MediaService
     public async Task<Stream?> OpenMediaStreamAsync(MediaHolder media)
     {
         if (media.Document is not { } doc) return null;
+        if (doc.mime_type is { } mime && (mime.StartsWith("audio/") || mime.StartsWith("video/")) && doc.size > 0 && OpenStreaming(media, doc) is { } streaming)
+            return streaming;
         var done = GetMediaFileAsync(media);
         // Ждём начала загрузки и первых ~64 КБ (заголовок файла), либо конца загрузки.
         for (var i = 0; i < 400 && !done.IsCompleted; i++)
@@ -663,6 +675,46 @@ public sealed class MediaService
         }
         var path = await done;
         return path is null ? null : new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+    }
+
+    // Песни и видео (истории) — потоком по требованию, как в Telegram Desktop: проигрыватель сразу получает поток,
+    // нужные ему места качаются первыми, и воспроизведение начинается, не дожидаясь файла целиком.
+    private readonly ConcurrentDictionary<long, StreamingDownload> _streams = new();
+
+    // Песни уступают только истории, которую смотрят прямо сейчас (брошенная при листании стоит на паузе и не в счёт).
+    private readonly ConcurrentDictionary<long, StreamingDownload> _storyStreams = new();
+    private bool StoryIsLoading() => Volatile.Read(ref _storyActive) > 0 || _storyStreams.Values.Any(s => s.IsReading);
+
+    private Stream? OpenStreaming(MediaHolder media, Document doc)
+    {
+        var path = MediaFilePath(doc);
+        if (File.Exists(path) && new FileInfo(path).Length == doc.size)
+            return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        if (_streams.TryGetValue(doc.id, out var running) && !running.Done.IsCompleted) return new StreamingReadStream(running);
+        if (_partPaths.ContainsKey(doc.id)) return null; // уже качается обычным способом — читаем его, как раньше
+        _cancelledFiles.TryRemove(doc.id, out _);
+        var part = path + "." + Guid.NewGuid().ToString("N")[..8] + ".part";
+        var download = new StreamingDownload(_client, doc, part, path,
+            () => RefreshDocument?.Invoke(media) ?? Task.FromResult<Document?>(null),
+            // Видео истории сам никому не уступает; песни и прочее уступают ему.
+            media is StoryInfo ? () => false : StoryIsLoading,
+            () => _cancelledFiles.ContainsKey(doc.id));
+        try { download.Start(); }
+        catch (Exception ex)
+        {
+            Logging.Write($"stream {doc.id}: {ex.Message}");
+            return null;
+        }
+        _streams[doc.id] = download;
+        if (media is StoryInfo) _storyStreams[doc.id] = download;
+        _files[doc.id] = download.Done; // другие запросы этого файла ждут эту же загрузку, а не качают заново
+        _ = download.Done.ContinueWith(t =>
+        {
+            _streams.TryRemove(doc.id, out _);
+            _storyStreams.TryRemove(doc.id, out _);
+            if (t.Result is null) _files.TryRemove(doc.id, out _);
+        }, TaskScheduler.Default);
+        return new StreamingReadStream(download);
     }
 
     /// <summary>Остановить загрузку файла (крестик на ободке). Следующий запрос начнёт заново.</summary>
@@ -694,7 +746,13 @@ public sealed class MediaService
     public Task<string?> GetMediaFileAsync(MediaHolder media, IProgress<double>? progress = null, bool priority = true)
     {
         if (media.Document is not { } doc) return Task.FromResult<string?>(null);
-        var task = _files.GetOrAdd(doc.id, _ => Task.Run(() => DownloadFreshAsync(media, doc, progress, priority)));
+        // Уже идёт потоковая загрузка (песня, история) — нужен файл целиком: пусть докачивается, ждём её.
+        if (_streams.TryGetValue(doc.id, out var streaming) && !streaming.Done.IsCompleted)
+        {
+            streaming.Keep();
+            return streaming.Done;
+        }
+        var task = _files.GetOrAdd(doc.id, _ => Task.Run(() => AsStory(media, () => DownloadFreshAsync(media, doc, progress, priority))));
         if (task.IsFaulted || (task.IsCompleted && task.Result is null)) _files.TryRemove(doc.id, out _);
         return task;
     }
@@ -708,7 +766,7 @@ public sealed class MediaService
     public Task<byte[]?> GetFullPhotoAsync(MediaHolder media, bool priority = true)
     {
         if (media.Photo is not { } photo) return Task.FromResult<byte[]?>(null);
-        var task = _fullPhotos.GetOrAdd(photo.id, _ => Task.Run(() => DownloadFullPhotoAsync(photo, priority)));
+        var task = _fullPhotos.GetOrAdd(photo.id, _ => Task.Run(() => DownloadFullPhotoAsync(media, photo, priority)));
         if (task.IsFaulted || (task.IsCompleted && task.Result is null)) _fullPhotos.TryRemove(photo.id, out _);
         // В памяти держим немного — остальное читается с диска.
         if (_fullPhotos.Count > 12)
@@ -717,7 +775,70 @@ public sealed class MediaService
         return task;
     }
 
-    private async Task<byte[]?> DownloadFullPhotoAsync(Photo photo, bool priority)
+    // ---- устаревшие ссылки на фото и превью: берём сообщение заново и повторяем; свежую ссылку запоминаем
+    //      (превью и полное фото того же сообщения следом качаются уже по ней).
+
+    /// <summary>Свежая ссылка на фото сообщения. Задаёт TelegramService.</summary>
+    internal Func<MediaHolder, Task<Photo?>>? RefreshPhoto { get; set; }
+    private readonly ConcurrentDictionary<long, Photo> _freshPhotos = new();
+    private readonly ConcurrentDictionary<long, Document> _freshDocs = new();
+
+    private static bool IsReferenceExpired(Exception ex) =>
+        ex.Message.Contains("FILE_REFERENCE_") || ex.InnerException?.Message.Contains("FILE_REFERENCE_") == true;
+
+    // gate — очередь загрузок (превью); на время повторного запроса сообщения слот не занимаем — видимое не ждёт.
+    private async Task<byte[]> DownloadPhotoAsync(MediaHolder holder, Photo photo, Func<Photo, PhotoSizeBase> size, LifoGate? gate = null)
+    {
+        photo = _freshPhotos.GetValueOrDefault(photo.id) ?? photo;
+        try { return await LoadPhotoAsync(photo, size(photo), gate); }
+        catch (Exception ex) when (IsReferenceExpired(ex) && RefreshPhoto is not null)
+        {
+            if (await RefreshPhoto(holder) is not { } fresh) throw;
+            _freshPhotos[fresh.id] = fresh;
+            return await LoadPhotoAsync(fresh, size(fresh), gate);
+        }
+    }
+
+    private async Task<byte[]> LoadPhotoAsync(Photo photo, PhotoSizeBase size, LifoGate? gate)
+    {
+        if (gate is not null) await gate.WaitAsync();
+        try
+        {
+            using var ms = new MemoryStream();
+            await Timed(_client().DownloadFileAsync(photo, ms, size), 30);
+            await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
+            return ms.ToArray();
+        }
+        finally { gate?.Release(); }
+    }
+
+    private async Task<byte[]?> DownloadDocThumbAsync(MediaHolder holder, Document doc)
+    {
+        doc = _freshDocs.GetValueOrDefault(doc.id) ?? doc;
+        try { return await LoadDocThumbAsync(doc); }
+        catch (Exception ex) when (IsReferenceExpired(ex) && RefreshDocument is not null)
+        {
+            if (await RefreshDocument(holder) is not { } fresh) throw;
+            _freshDocs[fresh.id] = fresh;
+            return await LoadDocThumbAsync(fresh);
+        }
+    }
+
+    private async Task<byte[]?> LoadDocThumbAsync(Document doc)
+    {
+        if (doc.thumbs?.OfType<PhotoSize>().MaxBy(t => t.w) is not { } thumb) return null;
+        await _downloads.WaitAsync();
+        try
+        {
+            using var ms = new MemoryStream();
+            await Timed(_client().DownloadFileAsync(doc, ms, thumb), Small);
+            await Task.Yield();
+            return ms.ToArray();
+        }
+        finally { _downloads.Release(); }
+    }
+
+    private async Task<byte[]?> DownloadFullPhotoAsync(MediaHolder media, Photo photo, bool priority)
     {
         var dir = Path.Combine(_cacheDir, "media");
         Directory.CreateDirectory(dir);
@@ -732,10 +853,7 @@ public sealed class MediaService
             if (!priority) await _backgroundFiles.WaitAsync();
             try
             {
-                using var ms = new MemoryStream();
-                await Timed(_client().DownloadFileAsync(photo, ms, photo.LargestPhotoSize));
-                await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
-                var bytes = ms.ToArray();
+                var bytes = await DownloadPhotoAsync(media, photo, p => p.LargestPhotoSize);
                 await File.WriteAllBytesAsync(path, bytes);
                 return bytes;
             }
@@ -753,7 +871,8 @@ public sealed class MediaService
 
     private readonly SemaphoreSlim _backgroundFiles = new(2, 2);
 
-    private async Task<string?> DownloadMediaFileAsync(Document doc, IProgress<double>? progress, bool priority)
+    // Путь готового файла в кэше: {id}.{расширение по типу}.
+    private string MediaFilePath(Document doc)
     {
         var dir = Path.Combine(_cacheDir, "media");
         Directory.CreateDirectory(dir);
@@ -768,7 +887,13 @@ public sealed class MediaService
             "application/x-tgsticker" => ".tgs",
             _ => Path.GetExtension(doc.Filename ?? "") is { Length: > 0 } e ? e : ".bin",
         };
-        var path = Path.Combine(dir, $"{doc.id}{ext}");
+        return Path.Combine(dir, $"{doc.id}{ext}");
+    }
+
+    private async Task<string?> DownloadMediaFileAsync(Document doc, IProgress<double>? progress, bool priority)
+    {
+        var isAudio = doc.mime_type?.StartsWith("audio/") == true;
+        var path = MediaFilePath(doc);
         try
         {
             if (File.Exists(path) && new FileInfo(path).Length == doc.size)
@@ -787,7 +912,8 @@ public sealed class MediaService
                 await using (var ordered = new OrderedFileStream(fs))
                 {
                     _partPaths[doc.id] = part;
-                    await _client().DownloadFileAsync(doc, ordered, (PhotoSizeBase?)null,
+                    if (isAudio) await DownloadAudioAsync(doc, ordered, progress);
+                    else await _client().DownloadFileAsync(doc, ordered, (PhotoSizeBase?)null,
                         (done, total) =>
                         {
                             // Крестик на ободке загрузки — остановить (исключение из обратного вызова прерывает загрузку).
@@ -817,7 +943,74 @@ public sealed class MediaService
         }
     }
 
+    // Песни качаем своими частями по 1 МБ (до 12 одновременно): перед каждой частью — уступить видео истории.
+    // Иначе песня занимала все параллельные загрузки, и истории ждали её целиком. Ожидание — асинхронное,
+    // сетевые потоки библиотеки не блокируются.
+    private async Task DownloadAudioAsync(Document doc, Stream output, IProgress<double>? progress)
+    {
+        // Части по 1 МБ (максимум, что отдаёт Telegram за запрос): вдвое меньше запросов и вдвое больше данных в пути,
+        // 12 частей одновременно — как у библиотеки.
+        const int Chunk = 1024 * 1024;
+        const int ParallelParts = 12;
+        long done = 0;
+        try
+        {
+            var dc = await _client().GetClientForDC(-doc.dc_id, true);
+            var location = new InputDocumentFileLocation { id = doc.id, access_hash = doc.access_hash, file_reference = doc.file_reference, thumb_size = "" };
+            var running = new List<Task>();
+            // Первый мегабайт — частями по 128 КБ: начало песни приходит быстро, и она начинает играть сразу.
+            const int Head = 128 * 1024;
+            for (long offset = 0; offset < doc.size;)
+            {
+                var limit = offset < Chunk ? Head : Chunk;
+                while (running.Count >= ParallelParts)
+                {
+                    var finished = await Task.WhenAny(running);
+                    running.Remove(finished);
+                    await finished;
+                }
+                running.Add(Part(dc, location, offset, limit));
+                offset += limit;
+            }
+            await Task.WhenAll(running);
+        }
+        catch (Exception ex) when (Interlocked.Read(ref done) == 0 && ex is not OperationCanceledException && !ex.Message.Contains("FILE_REFERENCE"))
+        {
+            // Свой загрузчик не завёлся (ничего ещё не записано) — качаем как раньше, средствами библиотеки.
+            Logging.Write($"audio {doc.id}: {ex.Message}, качаем обычным способом");
+            await _client().DownloadFileAsync(doc, output, (PhotoSizeBase?)null);
+        }
+
+        async Task Part(WTelegram.Client dc, InputDocumentFileLocation location, long offset, int limit)
+        {
+            while (StoryIsLoading() && !_cancelledFiles.ContainsKey(doc.id)) await Task.Delay(100);
+            if (_cancelledFiles.ContainsKey(doc.id)) throw new OperationCanceledException();
+            if (await dc.Upload_GetFile(location, offset, limit) is not Upload_File file) throw new IOException("файл песни отдаётся через CDN");
+            lock (output)
+            {
+                output.Position = offset;
+                output.Write(file.bytes);
+            }
+            progress?.Report(doc.size > 0 ? (double)Interlocked.Add(ref done, file.bytes.Length) / doc.size : 0);
+        }
+    }
+
     /// <summary>Исходные байты документа (например, .tgs для анимации стикера).</summary>
+    // Видео-стикеры и видео-эмодзи (webm): с низким приоритетом — пока качается открытое (фото, голосовое, видео, история),
+    // они ждут, и одновременно их качается не больше двух.
+    private readonly LifoGate _videoStickerDownloads = new(2);
+
+    public async Task<byte[]?> GetVideoStickerBytesAsync(MediaHolder media)
+    {
+        if (media.Document is not { } doc) return null;
+        var (bytes, _) = await Task.Run(async () =>
+        {
+            await WhilePriorityAsync();
+            return await DownloadDocumentAsync(doc, _videoStickerDownloads);
+        });
+        return bytes;
+    }
+
     public async Task<byte[]?> GetDocumentBytesAsync(MediaHolder media)
     {
         if (media.Document is not { } doc) return null;
@@ -883,6 +1076,68 @@ public sealed class MediaService
         result[^2] = 0xFF;
         result[^1] = 0xD9;
         return result;
+    }
+
+    /// <summary>
+    /// Очистка кэша с сохранением нужного: картинки эмодзи (emo_) — всегда; документы и превью — из keepDocs
+    /// (стикеры, эмодзи, медиа сохраняемых чатов); фото — из keepPhotos; аватары — пиров из keepPeers. Возвращает освобождённые байты.
+    /// </summary>
+    public long ClearCacheExcept(IReadOnlySet<long> keepDocs, IReadOnlySet<long> keepPhotos, IReadOnlySet<long> keepPeers, IProgress<double>? progress = null)
+    {
+        _recent.Clear();
+        // Забываем и то, что держим в памяти о файлах на диске (готовые пути, полные фото, завершённые загрузки) —
+        // иначе после очистки отдавались бы пути к удалённым файлам. Идущие сейчас загрузки не трогаем.
+        static void DropDone<TKey, TValue>(ConcurrentDictionary<TKey, Task<TValue>> map) where TKey : notnull
+        {
+            foreach (var (key, task) in map)
+                if (task.IsCompleted) map.TryRemove(key, out _);
+        }
+        DropDone(_inflight);
+        DropDone(_docInflight);
+        DropDone(_files);
+        DropDone(_fullPhotos);
+        long freed = 0;
+        var media = Path.Combine(_cacheDir, "media");
+        var files = Directory.EnumerateFiles(_cacheDir).ToList();
+        var mediaFiles = Directory.Exists(media) ? Directory.EnumerateFiles(media).ToList() : [];
+        var total = Math.Max(1, files.Count + mediaFiles.Count);
+        var done = 0;
+        void Step() { if (++done % 40 == 0) progress?.Report((double)done / total); }
+        static long IdAt(string name, int index) => name.Split('_', '.') is var parts && parts.Length > index && long.TryParse(parts[index], out var id) ? id : 0;
+        foreach (var path in files)
+        {
+            Step();
+            var name = Path.GetFileName(path);
+            var keep = name.StartsWith("emo_")
+                || (name.StartsWith("doc_") && keepDocs.Contains(IdAt(name, 1)))
+                || (name.StartsWith("msgdoc_") && keepDocs.Contains(IdAt(name, 1)))
+                || ((name.StartsWith("msgphoto_") || name.StartsWith("photo_")) && keepPhotos.Contains(IdAt(name, 1)))
+                || ((name.StartsWith("ava_") || name.StartsWith("avabig_")) && keepPeers.Contains(IdAt(name, 1)));
+            if (!keep) freed += TryDelete(path);
+        }
+        foreach (var path in mediaFiles)
+        {
+            Step();
+            var name = Path.GetFileName(path);
+            // Полные фото лежат как p{id}.jpg, файлы — как {id}.ext.
+            var keep = name.StartsWith('p') ? keepPhotos.Contains(IdAt(name[1..], 0)) : keepDocs.Contains(IdAt(name, 0));
+            if (!keep) freed += TryDelete(path);
+        }
+        foreach (var (id, part) in _partPaths)
+            if (!File.Exists(part)) _partPaths.TryRemove(id, out _);
+        progress?.Report(1);
+        return freed;
+    }
+
+    private static long TryDelete(string path)
+    {
+        try
+        {
+            var size = new FileInfo(path).Length;
+            File.Delete(path);
+            return size;
+        }
+        catch { return 0; } // файл сейчас открыт (играет видео, качается) — останется
     }
 
     /// <summary>Очищает кэш картинок.</summary>

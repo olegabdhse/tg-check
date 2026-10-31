@@ -51,6 +51,15 @@ public sealed record ConfirmRequest(string Title, string Text, string ActionText
 {
     /// <summary>Галочка в окне (например, «Также удалить у …»); null — без неё.</summary>
     public ConfirmCheck? Check { get; init; }
+    /// <summary>Поле ввода в окне (например, новое название группы); null — без него.</summary>
+    public ConfirmInput? Input { get; init; }
+}
+
+/// <summary>Поле ввода в окне подтверждения.</summary>
+public sealed partial class ConfirmInput(string text, bool multiline = false) : ObservableObject
+{
+    [ObservableProperty] private string _text = text;
+    public bool IsMultiline { get; } = multiline;
 }
 
 /// <summary>Галочка в окне подтверждения.</summary>
@@ -212,7 +221,7 @@ public sealed partial class ProfileViewModel : ObservableObject
     private async Task LoadStoriesAsync()
     {
         if (Profile?.Peer is not { } peer) return;
-        var stories = await _tg.GetProfileStoriesAsync(peer, archive: ShowStoryArchive && peer.IsSelf);
+        var stories = await WithRetry(() => _tg.GetProfileStoriesAsync(peer, archive: ShowStoryArchive && peer.IsSelf));
         Stories.Clear();
         foreach (var s in stories)
         {
@@ -457,7 +466,7 @@ public sealed partial class ProfileViewModel : ObservableObject
             // Чужой профиль показываем, не дожидаясь большого фото: сначала маленькая аватарка (обычно уже в кэше),
             // большое — следом, в фоне (раньше вся страница ждала его скачивания).
             var started = Environment.TickCount64;
-            var profile = await _tg.GetProfileAsync(_peer, withAvatar: IsSelf && !IsCompact);
+            var profile = await WithRetry(() => _tg.GetProfileAsync(_peer, withAvatar: IsSelf && !IsCompact));
             Logging.Write($"[perf] profile {_peer?.Id ?? 0}: данные за {Environment.TickCount64 - started} мс");
             var avatar = profile.Avatar is { } bytes ? await Task.Run(() => Images.FromBytes(bytes, 256)) : null;
             // Профиль — сразу, не дожидаясь аватарки (её загрузка с диска или из сети раньше задерживала всю страницу).
@@ -540,6 +549,26 @@ public sealed partial class ProfileViewModel : ObservableObject
         if (ShowGifts) _ = LoadGiftsAsync();
     }
 
+    // Связь моргнула (переподключение) — часть запросов теряется или не получает ответа: профиль оставался
+    // без подарков и историй. Ждём ответа до 25 с и повторяем (до трёх попыток); явный отказ Telegram не повторяем.
+    private static async Task<T> WithRetry<T>(Func<Task<T>> load)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                var task = load();
+                if (await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(25))) == task) return await task;
+                throw new TimeoutException("Telegram не ответил за 25 секунд.");
+            }
+            catch (Exception ex) when (attempt < 3 && ex is not TL.RpcException { Code: 400 or 403 })
+            {
+                Logging.Write($"profile: попытка {attempt} не удалась ({ex.Message}), повторяем");
+                await Task.Delay(TimeSpan.FromSeconds(2 * attempt));
+            }
+        }
+    }
+
     private async Task LoadGiftsAsync()
     {
         IsGiftsLoading = true;
@@ -548,7 +577,7 @@ public sealed partial class ProfileViewModel : ObservableObject
             // Уже показаны из кэша — обновляем молча и целиком в конце; иначе — по мере прихода страниц.
             var progressive = Gifts.Count == 0;
             var pages = progressive ? new Progress<IReadOnlyList<GiftItem>>(AppendGifts) : null;
-            var all = await _tg.GetGiftsAsync(_peer, pages: pages);
+            var all = await WithRetry(() => _tg.GetGiftsAsync(_peer, pages: pages));
             if (progressive) await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background); // последние страницы дошли до сетки
             if (!progressive || Gifts.Count != all.Count) SetGifts(all);
         }

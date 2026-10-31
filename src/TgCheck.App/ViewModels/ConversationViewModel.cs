@@ -453,10 +453,9 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     private MessageViewModel Create(MessageItem m)
     {
         var vm = new MessageViewModel(m, Peer) { IsRead = m.IsOut && m.Id <= _readOutboxMaxId };
-        vm.EnsurePreview(_tg.Media);
+        // Превью — не здесь: лента запрашивает их для сообщений на экране (иначе подгружаемая выше история обгоняла видимое).
         if (vm.IsRich)
         {
-            vm.EnsureRichPreviews(_tg.Media);
             foreach (var b in vm.RichBlocks) if (b.Media is { } rm && (rm.IsAudio || rm.IsVoice)) VoicePlayback.Attach(rm); // музыка в посте играет как обычное аудио
         }
         vm.EnsureSenderAvatar(_tg.Media);
@@ -672,6 +671,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     {
         OnPropertyChanged(nameof(ShowMic));
         if (value.Length > 0 && Editing is null) _ = _tg.NotifyTypingAsync(Peer);
+        UpdateInline(value);
     }
 
     private bool CanSend() => (!string.IsNullOrWhiteSpace(Draft) || HasAttachments) && !IsSending;
@@ -1194,6 +1194,10 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         catch (Exception ex) { _owner.ShowToast(TgErrors.Describe(ex), true); }
     }
 
+    /// <summary>Показать набор стикеров (по ссылке t.me/addstickers/…).</summary>
+    public void ShowStickerPack(StickerSetInfo info, IReadOnlyList<StickerItem> stickers, bool installed) =>
+        StickerPack = new StickerPackViewModel(info, stickers, installed);
+
     [RelayCommand]
     private void CloseStickerPack() => StickerPack = null;
 
@@ -1582,6 +1586,154 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         SideProfile = vm;
         _ = vm.LoadAsync();
         _ = LoadSharedAsync(SharedTab);
+    }
+
+    // ===================================================================== Меню чата (⋮): уведомления, очистка, удаление, блокировка, группа
+
+    public MediaService Media => _tg.Media;
+    public bool IsMuted => _owner.FindChat(Peer.Key)?.IsMuted == true;
+    public bool IsPersonalChat => Peer.Kind is PeerKind.User or PeerKind.Bot && !Peer.IsSelf;
+    public bool CanClearHistory => Peer.CanRevoke || Peer.CanDeleteOthers; // в супергруппе и канале — только админу с правом удаления
+    public bool CanEditInfo => !Peer.IsUser && Peer.CanChangeInfo;
+    public bool CanCopyInvite => !Peer.IsUser && Peer.CanInvite;
+    public string DeleteChatText => Peer.Kind switch
+    {
+        PeerKind.Channel => Peer.IsCreator ? "Удалить канал" : "Покинуть канал",
+        PeerKind.Group when !Peer.IsBasicGroup => Peer.IsCreator ? "Удалить группу" : "Покинуть группу",
+        PeerKind.Group => "Удалить и покинуть группу",
+        _ => "Удалить чат",
+    };
+    /// <summary>Заблокирован ли собеседник (узнаём при открытии меню).</summary>
+    [ObservableProperty] private bool _isBlocked;
+
+    /// <summary>Меню открывается: свежее состояние уведомлений и блокировки.</summary>
+    public async Task PrepareChatMenuAsync()
+    {
+        OnPropertyChanged(nameof(IsMuted));
+        if (!IsPersonalChat) return;
+        try { IsBlocked = await _tg.IsBlockedAsync(Peer); } catch { /* не критично: пункт останется «Заблокировать» */ }
+    }
+
+    [RelayCommand]
+    private async Task ToggleChatMute()
+    {
+        var mute = !IsMuted;
+        try
+        {
+            await _tg.SetMutedAsync(Peer, mute);
+            if (_owner.FindChat(Peer.Key) is { } chat) chat.IsMuted = mute;
+            OnPropertyChanged(nameof(IsMuted));
+            _owner.ShowToast(mute ? "Уведомления выключены" : "Уведомления включены");
+        }
+        catch (Exception ex) { _owner.ShowToast(TgErrors.Describe(ex), true); }
+    }
+
+    [RelayCommand]
+    private void ClearHistory()
+    {
+        var check = Peer.CanRevoke && !Peer.IsSelf && Peer.Kind != PeerKind.Group
+            ? new ConfirmCheck(Peer.Kind == PeerKind.Bot ? $"Также очистить у бота {Peer.DisplayTitle}" : $"Также очистить у {Peer.DisplayTitle}", false)
+            : null;
+        _owner.Confirm = new ConfirmRequest("Очистить историю?", !Peer.CanRevoke ? "Сообщения будут удалены для всех участников." : "Сообщения будут удалены, сам чат останется.",
+            "Очистить", true, async () =>
+            {
+                await _tg.ClearHistoryAsync(Peer, check?.IsChecked == true);
+                ResetItems([], staged: false);
+                if (_owner.FindChat(Peer.Key) is { } chat) { chat.Last = null; chat.Unread = 0; }
+                _owner.ShowToast("История очищена");
+            })
+        { Check = check };
+    }
+
+    [RelayCommand]
+    private void DeleteChat()
+    {
+        var forAll = Peer.Kind switch
+        {
+            PeerKind.User when !Peer.IsSelf => new ConfirmCheck($"Также удалить у {Peer.DisplayTitle}", false),
+            PeerKind.Bot => new ConfirmCheck($"Также удалить у бота {Peer.DisplayTitle}", false),
+            PeerKind.Channel or PeerKind.Group when Peer.IsCreator && !Peer.IsBasicGroup =>
+                new ConfirmCheck(Peer.Kind == PeerKind.Channel ? "Удалить канал для всех подписчиков" : "Удалить группу для всех участников", false),
+            _ => null,
+        };
+        var title = DeleteChatText + "?";
+        var text = Peer.Kind switch
+        {
+            PeerKind.Channel or PeerKind.Group when !Peer.IsBasicGroup => Peer.IsCreator
+                ? "Без галочки вы просто покинете чат; с галочкой он будет удалён у всех — это нельзя отменить."
+                : "Вернуться можно будет только по ссылке или приглашению.",
+            PeerKind.Group => "Вы покинете группу, история удалится у вас.",
+            _ => "История переписки будет удалена.",
+        };
+        _owner.Confirm = new ConfirmRequest(title, text, Peer.IsUser ? "Удалить" : DeleteChatText.Split(' ')[0], true, async () =>
+        {
+            await _tg.DeleteChatAsync(Peer, forAll?.IsChecked == true);
+            _owner.RemoveChat(Peer.Key);
+            _owner.ShowToast(Peer.IsUser ? "Чат удалён" : "Готово");
+        })
+        { Check = forAll };
+    }
+
+    [RelayCommand]
+    private void ToggleBlock()
+    {
+        var block = !IsBlocked;
+        if (!block) { _ = SetBlockedAsync(false); return; }
+        _owner.Confirm = new ConfirmRequest($"Заблокировать {Peer.DisplayTitle}?",
+            Peer.Kind == PeerKind.Bot ? "Бот больше не сможет вам писать." : "Этот пользователь больше не сможет писать вам и звонить.",
+            "Заблокировать", true, () => SetBlockedAsync(true));
+    }
+
+    private async Task SetBlockedAsync(bool block)
+    {
+        try
+        {
+            await _tg.SetBlockedAsync(Peer, block);
+            IsBlocked = block;
+            _owner.ShowToast(block ? "Заблокирован" : "Разблокирован");
+        }
+        catch (Exception ex) { _owner.ShowToast(TgErrors.Describe(ex), true); }
+    }
+
+    [RelayCommand]
+    private void EditTitle()
+    {
+        var input = new ConfirmInput(Peer.Title);
+        _owner.Confirm = new ConfirmRequest(Peer.Kind == PeerKind.Channel ? "Название канала" : "Название группы", null!, "Сохранить", false, async () =>
+        {
+            var title = input.Text.Trim();
+            if (title.Length == 0 || title == Peer.Title) return;
+            await _tg.EditTitleAsync(Peer, title);
+            _owner.ShowToast("Название изменено");
+        })
+        { Input = input };
+    }
+
+    [RelayCommand]
+    private async Task EditAbout()
+    {
+        string about;
+        try { about = (await _tg.GetProfileAsync(Peer))?.Bio ?? ""; }
+        catch { about = ""; }
+        var input = new ConfirmInput(about, multiline: true);
+        _owner.Confirm = new ConfirmRequest("Описание", null!, "Сохранить", false, async () =>
+        {
+            await _tg.EditAboutAsync(Peer, input.Text.Trim());
+            _owner.ShowToast("Описание изменено");
+        })
+        { Input = input };
+    }
+
+    [RelayCommand]
+    private async Task CopyInviteLink()
+    {
+        try
+        {
+            if (await _tg.GetInviteLinkAsync(Peer) is not { } link) return;
+            Clipboard.SetText(link);
+            _owner.ShowToast("Ссылка-приглашение скопирована");
+        }
+        catch (Exception ex) { _owner.ShowToast(TgErrors.Describe(ex), true); }
     }
 
     // ===================================================================== Боты: кнопки, клавиатура, меню, мини-приложения

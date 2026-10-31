@@ -39,7 +39,7 @@ public sealed class MusicPlayer
     public bool Loop { get; set; }
     /// <summary>Песня открывается или догружается — в плеере вместо «стоп» показывается загрузка.</summary>
     public bool IsBuffering =>
-        _player is { State: VLCState.Opening or VLCState.Buffering } || (_source as GrowingFileStream)?.IsWaiting == true;
+        _player is { State: VLCState.Opening or VLCState.Buffering } || (_source as IStreamingSource)?.IsWaiting == true;
 
     /// <summary>Состояние изменилось (~20 раз в секунду, пока играет). Из фонового потока.</summary>
     public event Action? Changed;
@@ -109,7 +109,7 @@ public sealed class MusicPlayer
             Key = key;
             _player.Play(_media);
             // Песня не скачалась (ошибка сети, устаревшая ссылка) — плеер закрывается, а не крутит загрузку вечно.
-            if (source is GrowingFileStream growing)
+            if (source is IStreamingSource growing)
                 _ = growing.Done.ContinueWith(t =>
                 {
                     if (t.IsCompletedSuccessfully && t.Result is not null) return;
@@ -229,10 +229,10 @@ public sealed class MusicPlayer
         // Остановка VLC может занять время (ждёт свои потоки) — не в потоке интерфейса.
         ThreadPool.QueueUserWorkItem(_ =>
         {
+            source?.Dispose(); // сначала поток: VLC мог ждать в нём ещё не скачанный кусок, и остановка ждала бы загрузку
             try { player.Stop(); } catch { }
             player.Dispose();
             media?.Dispose();
-            source?.Dispose();
         });
     }
 
