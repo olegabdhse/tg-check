@@ -32,8 +32,8 @@ public static class TgErrors
         "Не удаётся подключиться к серверам Telegram — соединение обрывается.\n\n" +
         "Что проверить:\n" +
         "• интернет работает и официальный Telegram Desktop на этом ПК подключается;\n" +
-        "• если Telegram у провайдера работает плохо — включите VPN или пропишите прокси в .env: " +
-        "TG_PROXY=socks5://хост:порт или MTProxy-ссылку https://t.me/proxy?server=…;\n" +
+        "• если Telegram у провайдера работает плохо — выберите ниже встроенный или свой прокси (ссылка MTProxy или SOCKS5) " +
+        "либо включите VPN;\n" +
         "• антивирус/фаервол не блокирует TgCheck.exe.";
 
     public static bool IsSessionDead(Exception ex) =>

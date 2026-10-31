@@ -416,17 +416,26 @@ public sealed class MediaService
     /// <summary>Превью документа уже скачано (лежит в кэше на диске).</summary>
     public bool HasCachedDocumentPreview(long documentId) => File.Exists(Path.Combine(_cacheDir, $"msgdoc_{documentId}.img"));
 
-    public Task<byte[]?> GetMessagePreviewAsync(MediaHolder message)
+    // Кто ждёт превью с кружком загрузки: одна загрузка на всех, доля скачанного — каждому.
+    private readonly ConcurrentDictionary<string, Action<double>> _previewProgress = new();
+
+    public Task<byte[]?> GetMessagePreviewAsync(MediaHolder message, IProgress<double>? progress = null)
     {
         var key = message.Photo is { } p ? $"msgphoto_{p.id}" : message.Document is { } d ? $"msgdoc_{d.id}" : null;
         if (key is null) return Task.FromResult<byte[]?>(null);
-        return Shared(key, () => Task.Run(async () =>
+        if (progress is not null) _previewProgress.AddOrUpdate(key, progress.Report, (_, a) => a + progress.Report);
+        var task = Shared(key, () => Task.Run(async () =>
         {
             Interlocked.Increment(ref _previewsLoading);
             try { return await LoadMessagePreviewAsync(message, key); }
-            finally { Interlocked.Decrement(ref _previewsLoading); }
+            finally { Interlocked.Decrement(ref _previewsLoading); _previewProgress.TryRemove(key, out _); }
         }));
+        if (task.IsCompleted) _previewProgress.TryRemove(key, out _);
+        return task;
     }
+
+    private Client.ProgressCallback PreviewProgress(string key) =>
+        (done, total) => { if (total > 0 && _previewProgress.TryGetValue(key, out var report)) report((double)done / total); };
 
     private async Task<byte[]?> LoadMessagePreviewAsync(MediaHolder message, string key)
     {
@@ -438,7 +447,7 @@ public sealed class MediaService
             if (message.Photo is { } photo)
             {
                 bytes = await DownloadPhotoAsync(message, photo, p => p.sizes.OfType<PhotoSize>().Where(s => s.w <= 1280).MaxBy(s => s.w)
-                                                                     ?? p.LargestPhotoSize, _downloads);
+                                                                     ?? p.LargestPhotoSize, _downloads, PreviewProgress(key));
             }
             else if (message.Document is { } doc)
             {
@@ -453,7 +462,7 @@ public sealed class MediaService
                 }
                 else if (doc.thumbs?.OfType<PhotoSize>().Any() == true)
                 {
-                    bytes = await DownloadDocThumbAsync(message, doc);
+                    bytes = await DownloadDocThumbAsync(message, doc, PreviewProgress(key));
                 }
                 else if (doc.thumbs?.OfType<PhotoCachedSize>().FirstOrDefault() is { } cached)
                 {
@@ -819,51 +828,52 @@ public sealed class MediaService
         ex.Message.Contains("FILE_REFERENCE_") || ex.InnerException?.Message.Contains("FILE_REFERENCE_") == true;
 
     // gate — очередь загрузок (превью); на время повторного запроса сообщения слот не занимаем — видимое не ждёт.
-    private async Task<byte[]> DownloadPhotoAsync(MediaHolder holder, Photo photo, Func<Photo, PhotoSizeBase> size, LifoGate? gate = null)
+    private async Task<byte[]> DownloadPhotoAsync(MediaHolder holder, Photo photo, Func<Photo, PhotoSizeBase> size, LifoGate? gate = null,
+                                                  Client.ProgressCallback? progress = null)
     {
         photo = _freshPhotos.GetValueOrDefault(photo.id) ?? photo;
-        try { return await LoadPhotoAsync(photo, size(photo), gate); }
+        try { return await LoadPhotoAsync(photo, size(photo), gate, progress); }
         catch (Exception ex) when (IsReferenceExpired(ex) && RefreshPhoto is not null)
         {
             if (await RefreshPhoto(holder) is not { } fresh) throw;
             _freshPhotos[fresh.id] = fresh;
-            return await LoadPhotoAsync(fresh, size(fresh), gate);
+            return await LoadPhotoAsync(fresh, size(fresh), gate, progress);
         }
     }
 
-    private async Task<byte[]> LoadPhotoAsync(Photo photo, PhotoSizeBase size, LifoGate? gate)
+    private async Task<byte[]> LoadPhotoAsync(Photo photo, PhotoSizeBase size, LifoGate? gate, Client.ProgressCallback? progress = null)
     {
         if (gate is not null) await gate.WaitAsync();
         try
         {
             using var ms = new MemoryStream();
-            await Timed(_client().DownloadFileAsync(photo, ms, size), 30);
+            await Timed(_client().DownloadFileAsync(photo, ms, size, progress), 30);
             await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
             return ms.ToArray();
         }
         finally { gate?.Release(); }
     }
 
-    private async Task<byte[]?> DownloadDocThumbAsync(MediaHolder holder, Document doc)
+    private async Task<byte[]?> DownloadDocThumbAsync(MediaHolder holder, Document doc, Client.ProgressCallback? progress = null)
     {
         doc = _freshDocs.GetValueOrDefault(doc.id) ?? doc;
-        try { return await LoadDocThumbAsync(doc); }
+        try { return await LoadDocThumbAsync(doc, progress); }
         catch (Exception ex) when (IsReferenceExpired(ex) && RefreshDocument is not null)
         {
             if (await RefreshDocument(holder) is not { } fresh) throw;
             _freshDocs[fresh.id] = fresh;
-            return await LoadDocThumbAsync(fresh);
+            return await LoadDocThumbAsync(fresh, progress);
         }
     }
 
-    private async Task<byte[]?> LoadDocThumbAsync(Document doc)
+    private async Task<byte[]?> LoadDocThumbAsync(Document doc, Client.ProgressCallback? progress = null)
     {
         if (doc.thumbs?.OfType<PhotoSize>().MaxBy(t => t.w) is not { } thumb) return null;
         await _downloads.WaitAsync();
         try
         {
             using var ms = new MemoryStream();
-            await Timed(_client().DownloadFileAsync(doc, ms, thumb), Small);
+            await Timed(_client().DownloadFileAsync(doc, ms, thumb, progress), Small);
             await Task.Yield();
             return ms.ToArray();
         }

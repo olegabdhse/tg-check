@@ -8,6 +8,12 @@
              x:Name="Root" AllowDrop="True" Drop="Root_Drop" DragOver="Root_DragOver">
 
     <UserControl.Resources>
+        <!-- Медиа и файлы в боковой панели: правый клик — показать сообщение в ленте -->
+        <ContextMenu x:Key="SharedItemMenu" x:Shared="False">
+            <MenuItem Header="Показать в чате" Tag="&#xE8BD;"
+                      Command="{Binding PlacementTarget.Tag.ShowInChatCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+        </ContextMenu>
         <SolidColorBrush x:Key="OutBubble" Color="#2B5278" />
         <SolidColorBrush x:Key="InBubble" Color="#182533" />
         <SolidColorBrush x:Key="ChatBg" Color="#0E1621" />
@@ -141,6 +147,8 @@
                             Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}">
                         <TextBlock Text="{Binding DurationText}" FontSize="11" Foreground="White" />
                     </Border>
+                    <controls:ProgressArc Width="48" Height="48" Progress="{Binding PreviewProgress}"
+                                          Visibility="{Binding IsPreviewLoading, Converter={StaticResource BoolToVis}}" />
                 </Grid>
             </Button>
         </DataTemplate>
@@ -395,6 +403,8 @@
                                         Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}">
                                     <TextBlock Text="&#xE768;" Style="{StaticResource Icon}" FontSize="15" Foreground="White" HorizontalAlignment="Center" />
                                 </Border>
+                                <controls:ProgressArc Width="40" Height="40" Progress="{Binding PreviewProgress}"
+                                                      Visibility="{Binding IsPreviewLoading, Converter={StaticResource BoolToVis}}" />
                             </Grid>
                         </Button>
                     </DataTemplate>
@@ -751,6 +761,12 @@
                                 <MenuItem Header="Выделить" Tag="&#xE73A;"
                                           Command="{Binding PlacementTarget.Tag.ToggleSelectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}" />
+                                <MenuItem Header="Закрепить" Tag="&#xE718;"
+                                          Command="{Binding PlacementTarget.Tag.PinCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}" Visibility="{Binding IsPinned, Converter={StaticResource InvBoolToVis}}" />
+                                <MenuItem Header="Открепить" Tag="&#xE77A;"
+                                          Command="{Binding PlacementTarget.Tag.UnpinCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}" Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}" />
                                 <MenuItem Header="Переслать" Tag="&#xE72D;"
                                           Command="{Binding PlacementTarget.Tag.ForwardCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}" />
@@ -2290,7 +2306,8 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="{x:Type vm:MessageViewModel}">
                                     <Button Style="{StaticResource BareButton}" Height="92" Margin="1.5"
-                                            Command="{Binding DataContext.OpenMediaCommand, ElementName=Root}" CommandParameter="{Binding}">
+                                            Command="{Binding DataContext.OpenMediaCommand, ElementName=Root}" CommandParameter="{Binding}"
+                                            Tag="{Binding DataContext, ElementName=Root}" ContextMenu="{StaticResource SharedItemMenu}">
                                         <Grid helpers:RoundClip.Radius="6">
                                             <Border Background="#22FFFFFF" />
                                             <Image Source="{Binding Preview}" Stretch="UniformToFill" />
@@ -2298,6 +2315,8 @@
                                                     Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}">
                                                 <TextBlock Text="{Binding DurationText}" FontSize="10" Foreground="White" />
                                             </Border>
+                                            <controls:ProgressArc Width="34" Height="34" Progress="{Binding PreviewProgress}"
+                                                                  Visibility="{Binding IsPreviewLoading, Converter={StaticResource BoolToVis}}" />
                                         </Grid>
                                     </Button>
                                 </DataTemplate>
@@ -2308,7 +2327,7 @@
                                       Visibility="{Binding DataContext.SharedIsGrid, ElementName=Root, Converter={StaticResource InvBoolToVis}}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="{x:Type vm:MessageViewModel}">
-                                    <StackPanel Margin="0,0,0,6">
+                                    <StackPanel Margin="0,0,0,6" Tag="{Binding DataContext, ElementName=Root}" ContextMenu="{StaticResource SharedItemMenu}" Background="Transparent">
                                         <ContentControl Content="{Binding}" Style="{StaticResource MediaHost}" />
                                         <TextBlock Text="{Binding FullTime}" Style="{StaticResource Caption}" FontSize="10" Margin="54,0,0,0" />
                                     </StackPanel>

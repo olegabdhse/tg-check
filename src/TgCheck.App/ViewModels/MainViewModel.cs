@@ -53,8 +53,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             if (await _tg.TryRestoreSessionAsync(attempt =>
                 {
-                    if (early is not null) early.ConnectionStatus = $"Соединение… (попытка {attempt} из 4)";
-                    else CurrentPage = StatusViewModel.Busy($"Подключение к Telegram{proxyNote}… попытка {attempt} из 4");
+                    if (early is not null) early.ConnectionStatus = $"Соединение… (попытка {attempt} из 6)";
+                    else CurrentPage = StatusViewModel.Busy($"Подключение к Telegram{proxyNote}… попытка {attempt} из 6");
                 }))
             {
                 ShowProfile(early);

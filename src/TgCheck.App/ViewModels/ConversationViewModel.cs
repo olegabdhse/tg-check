@@ -492,7 +492,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
 
     private MessageViewModel Create(MessageItem m)
     {
-        var vm = new MessageViewModel(m, Peer) { IsRead = m.IsOut && m.Id <= _readOutboxMaxId };
+        var vm = new MessageViewModel(m, Peer) { IsRead = m.IsOut && m.Id <= _readOutboxMaxId, IsPinned = Pinned.Any(p => p.Id == m.Id) };
         // Превью — не здесь: лента запрашивает их для сообщений на экране (иначе подгружаемая выше история обгоняла видимое).
         if (vm.IsRich)
         {
@@ -571,6 +571,9 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     public void OnMessageEdited(MessageItem m)
     {
         if (!_byId.TryGetValue(m.Id, out var vm)) return;
+        // Прослушано (собеседником — наше, или нами на другом устройстве), пока чат был закрыт: в кэше ещё «не прослушано»,
+        // а сверка с сервером раньше этого не обновляла — точка у голосового и кружка так и висела.
+        if (!m.MediaUnread && vm.Id == m.Id && vm.IsMediaUnread) { vm.IsMediaUnread = false; vm.Item.MediaUnread = false; }
         if (vm.IsAlbum)
         {
             if (vm.Album.FirstOrDefault(a => a.Id == m.Id) is { } part) { part.Text = m.Text; }
@@ -1956,6 +1959,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         var pinned = await _tg.GetPinnedAsync(Peer);
         Pinned.Clear();
         foreach (var p in pinned.OrderByDescending(p => p.Id)) Pinned.Add(p); // от новых к старым
+        foreach (var v in _byId.Values) v.IsPinned = Pinned.Any(p => p.Id == v.Id);
         PinnedIndex = 0;
         OnPropertyChanged(nameof(HasPinned));
         OnPropertyChanged(nameof(PinnedText));
@@ -2032,6 +2036,57 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         }
         else ScrollToBottomRequested?.Invoke(false);
     }
+
+    /// <summary>
+    /// Закрепить сообщение. В личном чате — как в Telegram: галочка «Также закрепить у собеседника» (снята — закреп
+    /// только у себя); в группе и канале — для всех участников.
+    /// </summary>
+    [RelayCommand]
+    private void Pin(MessageViewModel? m)
+    {
+        if (m is null) return;
+        var check = Peer is { IsUser: true, IsSelf: false } ? new ConfirmCheck($"Также закрепить у {Peer.DisplayTitle}") : null;
+        var text = Peer.IsUser ? null : "Сообщение будет закреплено для всех участников.";
+        _owner.Confirm = new ConfirmRequest("Закрепить сообщение?", text!, "Закрепить", false, async () =>
+        {
+            await _tg.PinMessageAsync(Peer, m.Id, pin: true, forBoth: check?.IsChecked ?? true);
+            if (!Pinned.Any(p => p.Id == m.Id))
+            {
+                var at = 0;
+                while (at < Pinned.Count && Pinned[at].Id > m.Id) at++;
+                Pinned.Insert(at, m.Item);
+            }
+            m.IsPinned = true;
+            PinnedChanged();
+        })
+        { Check = check };
+    }
+
+    [RelayCommand]
+    private async Task Unpin(MessageViewModel? m)
+    {
+        if (m is null) return;
+        try
+        {
+            await _tg.PinMessageAsync(Peer, m.Id, pin: false, forBoth: true);
+            if (Pinned.FirstOrDefault(p => p.Id == m.Id) is { } item) Pinned.Remove(item);
+            m.IsPinned = false;
+            PinnedChanged();
+        }
+        catch (Exception ex) { _owner.ShowToast(TgErrors.Describe(ex), true); }
+    }
+
+    private void PinnedChanged()
+    {
+        PinnedIndex = Math.Clamp(PinnedIndex, 0, Math.Max(0, Pinned.Count - 1));
+        OnPropertyChanged(nameof(HasPinned));
+        OnPropertyChanged(nameof(PinnedText));
+        OnPropertyChanged(nameof(PinnedTitle));
+    }
+
+    /// <summary>Медиа или файл из боковой панели — показать это сообщение в ленте чата.</summary>
+    [RelayCommand]
+    private Task ShowInChat(MessageViewModel? m) => m is null ? Task.CompletedTask : JumpToMessageAsync(m.Id);
 
     [RelayCommand]
     private Task JumpToReply(MessageViewModel? m) => m?.Item.ReplyToId is { } r ? JumpToMessageAsync(r) : Task.CompletedTask;

@@ -416,6 +416,13 @@ public sealed partial class TelegramService
         catch (Exception ex) { Logging.Write("read: " + ex.Message); }
     }
 
+    /// <summary>Закрепить или открепить сообщение; forBoth = false — только у себя (личный чат, как в Telegram).</summary>
+    public async Task PinMessageAsync(PeerRef peer, int messageId, bool pin, bool forBoth)
+    {
+        EnsureNotIgnored(peer);
+        await _client.Messages_UpdatePinnedMessage(peer.Info.ToInputPeer(), messageId, silent: false, unpin: !pin, pm_oneside: pin && !forBoth);
+    }
+
     /// <summary>Отметить голосовое/кружок прослушанным (у собеседника пропадёт точка «не прослушано»).</summary>
     public async Task MarkMediaListenedAsync(PeerRef peer, int messageId)
     {
@@ -794,7 +801,7 @@ public sealed partial class TelegramService
         string? songTitle = null, string? performer = null) => new()
     {
         Id = i.Id, PeerKey = i.PeerKey, FromKey = i.FromKey, From = i.From, DateUtc = i.DateUtc, Text = i.Text,
-        IsOut = i.IsOut, EditDateUtc = i.EditDateUtc, ReplyToId = i.ReplyToId, ThreadTopId = i.ThreadTopId, TopicId = i.TopicId, ForwardedFrom = i.ForwardedFrom,
+        IsOut = i.IsOut, MediaUnread = i.MediaUnread, EditDateUtc = i.EditDateUtc, ReplyToId = i.ReplyToId, ThreadTopId = i.ThreadTopId, TopicId = i.TopicId, ForwardedFrom = i.ForwardedFrom,
         PostAuthor = i.PostAuthor, Views = i.Views, GroupedId = i.GroupedId, CustomEmoji = i.CustomEmoji, Formatting = i.Formatting, ViaBot = i.ViaBot,
         InlineButtons = i.InlineButtons, ReplyKeyboard = i.ReplyKeyboard, KeyboardPlaceholder = i.KeyboardPlaceholder, Comments = i.Comments, Reactions = i.Reactions,
         Media = kind, Photo = photo, Document = doc, MediaWidth = w, MediaHeight = h,

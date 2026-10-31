@@ -290,7 +290,10 @@ public sealed partial class MessageViewModel : ObservableObject
     [ObservableProperty] private bool _isEdited;
     [ObservableProperty] private bool _isRead;
     [ObservableProperty] private bool _isNew;
-    [ObservableProperty] private ImageSource? _preview;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsPreviewLoading))] private ImageSource? _preview;
+    // Доля скачанного превью (-1 — не качается): кружок с заполнением, пока снимок грузится.
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsPreviewLoading))] private double _previewProgress = -1;
+    public bool IsPreviewLoading => Preview is null && PreviewProgress >= 0;
 
     /// <summary>Размытая (крошечная, растянутая) копия превью — для фона карточки песни и полос слайд-шоу.</summary>
     public ImageSource? BlurredPreview => _blurredPreview ??= Images.Tiny(Preview);
@@ -328,6 +331,8 @@ public sealed partial class MessageViewModel : ObservableObject
     [ObservableProperty] private bool _isLoadingAudio;
     /// <summary>Голосовое/кружок не прослушано (у своих — собеседником): маленькая закрашенная точка у длительности.</summary>
     [ObservableProperty] private bool _isMediaUnread;
+    /// <summary>Сообщение закреплено в этом чате (в меню — «Открепить»).</summary>
+    [ObservableProperty] private bool _isPinned;
 
     public string PlayIcon => IsPlaying ? "" : "";
     public string VoiceDurationText => PositionText ?? Fmt.Duration(Item.DurationSeconds);
@@ -692,7 +697,14 @@ public sealed partial class MessageViewModel : ObservableObject
         _previewRequested = true;
         var key = $"prev_{Item.MediaId}";
         if (ImageCache.Get(key) is { } ready) { Preview = ready; return; } // уже декодировано (тот же снимок в другом месте) — сразу
-        var bytes = await media.GetMessagePreviewAsync(Item).ConfigureAwait(false);
+        // Кружок с заполнением — только если превью качается из сети (из кэша на диске оно приходит сразу, без мигания).
+        var done = false;
+        var load = media.GetMessagePreviewAsync(Item, new Progress<double>(p => { if (!done) PreviewProgress = p; }));
+        if (!load.IsCompleted)
+            _ = Task.Delay(250).ContinueWith(_ => { if (!done && PreviewProgress < 0) PreviewProgress = 0; }, TaskScheduler.Default);
+        var bytes = await load.ConfigureAwait(false);
+        done = true;
+        PreviewProgress = -1;
         Preview = ImageCache.Put(key, Images.FromBytesMax(bytes, 1280));
         // Не загрузилось (ещё нет связи, сбой сети) — пробуем ещё, иначе снимок так и оставался серым.
         if (Preview is null && ++_previewAttempts < 4)
