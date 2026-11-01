@@ -329,6 +329,7 @@ public sealed partial class TelegramService
                     Last = last is not null and not MessageEmpty && !IsHiddenMessage(last) ? MapMessage(last) : null,
                     UnreadCount = d.unread_count,
                     UnreadMentions = d.unread_mentions_count,
+                    UnreadReactions = d.unread_reactions_count,
                     ReadInboxMaxId = d.read_inbox_max_id,
                     ReadOutboxMaxId = d.read_outbox_max_id,
                     IsPinned = d.flags.HasFlag(Dialog.Flags.pinned),
@@ -621,6 +622,8 @@ public sealed partial class TelegramService
             MediaUnread = msg.flags.HasFlag(Message.Flags.media_unread),
             EditDateUtc = msg.flags.HasFlag(Message.Flags.has_edit_date) && !msg.flags.HasFlag(Message.Flags.edit_hide) ? msg.edit_date : null,
             ReplyToId = reply is > 0 ? reply : null,
+            ReplyStoryId = (msg.reply_to as MessageReplyStoryHeader)?.story_id ?? 0,
+            ReplyStoryPeerKey = msg.reply_to is MessageReplyStoryHeader { peer: { } sp } ? PeerRef.KeyOf(sp) : 0,
             ThreadTopId = msg.reply_to is MessageReplyHeader { flags: var rf } rh && rf.HasFlag(MessageReplyHeader.Flags.has_reply_to_top_id) ? rh.reply_to_top_id : null,
             TopicId = msg.reply_to is MessageReplyHeader { flags: var tf } th && tf.HasFlag(MessageReplyHeader.Flags.forum_topic)
                 ? (tf.HasFlag(MessageReplyHeader.Flags.has_reply_to_top_id) ? th.reply_to_top_id : th.reply_to_msg_id) : null,
@@ -815,7 +818,7 @@ public sealed partial class TelegramService
         string? songTitle = null, string? performer = null) => new()
     {
         Id = i.Id, PeerKey = i.PeerKey, FromKey = i.FromKey, From = i.From, DateUtc = i.DateUtc, Text = i.Text,
-        IsOut = i.IsOut, MediaUnread = i.MediaUnread, Link = i.Link, EditDateUtc = i.EditDateUtc, ReplyToId = i.ReplyToId, ThreadTopId = i.ThreadTopId, TopicId = i.TopicId, ForwardedFrom = i.ForwardedFrom,
+        IsOut = i.IsOut, MediaUnread = i.MediaUnread, Link = i.Link, EditDateUtc = i.EditDateUtc, ReplyToId = i.ReplyToId, ReplyStoryId = i.ReplyStoryId, ReplyStoryPeerKey = i.ReplyStoryPeerKey, ThreadTopId = i.ThreadTopId, TopicId = i.TopicId, ForwardedFrom = i.ForwardedFrom,
         PostAuthor = i.PostAuthor, Views = i.Views, GroupedId = i.GroupedId, CustomEmoji = i.CustomEmoji, Formatting = i.Formatting, ViaBot = i.ViaBot,
         InlineButtons = i.InlineButtons, ReplyKeyboard = i.ReplyKeyboard, KeyboardPlaceholder = i.KeyboardPlaceholder, Comments = i.Comments, Reactions = i.Reactions,
         Media = kind, Photo = photo, Document = doc, MediaWidth = w, MediaHeight = h,

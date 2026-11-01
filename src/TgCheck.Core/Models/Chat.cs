@@ -157,6 +157,9 @@ public sealed class MessageItem : MediaHolder
     /// <summary>Превью ссылки из текста (null — нет).</summary>
     public LinkPreview? Link { get; set; }
     public int? ReplyToId { get; init; }
+    /// <summary>Ответ на историю: чья история (ключ) и её номер (0 — не ответ на историю).</summary>
+    public long ReplyStoryPeerKey { get; init; }
+    public int ReplyStoryId { get; init; }
     /// <summary>Корень ветки (комментарии к посту), если сообщение — ответ внутри ветки.</summary>
     public int? ThreadTopId { get; init; }
     /// <summary>Тема форума, к которой относится сообщение (null — тема «Общее» или не форум).</summary>
@@ -235,6 +238,8 @@ public sealed class ChatSummary
     public MessageItem? Last { get; init; }
     public int UnreadCount { get; init; }
     public int UnreadMentions { get; init; }
+    /// <summary>Непросмотренные реакции на ваши сообщения (сердечко в списке и в чате).</summary>
+    public int UnreadReactions { get; init; }
     public int ReadInboxMaxId { get; init; }
     public int ReadOutboxMaxId { get; init; }
     public bool IsPinned { get; init; }

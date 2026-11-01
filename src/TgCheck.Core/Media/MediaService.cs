@@ -791,10 +791,22 @@ public sealed class MediaService
             streaming.Keep();
             return streaming.Done;
         }
-        var task = _files.GetOrAdd(doc.id, _ => Task.Run(() => AsStory(media, () => DownloadFreshAsync(media, doc, progress, priority))));
+        // Прошлая загрузка остановлена крестиком или не удалась — начинаем заново (раньше следующее нажатие получало ту же
+        // «упавшую» загрузку, и файл не качался, пока не нажмёшь ещё раз).
+        if (_files.TryGetValue(doc.id, out var old) && (old.IsFaulted || old.IsCanceled || (old.IsCompletedSuccessfully && old.Result is null)))
+            _files.TryRemove(new KeyValuePair<long, Task<string?>>(doc.id, old));
+        var task = _files.GetOrAdd(doc.id, id =>
+        {
+            var started = Task.Run(() => AsStory(media, () => DownloadFreshAsync(media, doc, progress, priority)));
+            // Не удалась или остановлена — убрать из общих, чтобы следующий запрос начал новую загрузку.
+            _ = started.ContinueWith(t =>
+            {
+                if (t.IsFaulted || t.IsCanceled || t.Result is null) _files.TryRemove(new KeyValuePair<long, Task<string?>>(doc.id, t));
+            }, TaskScheduler.Default);
+            return started;
+        });
         // Уже ждёт в фоновой очереди, а пользователь нажал — вперёд.
         if (priority && !task.IsCompleted) _promoted[doc.id] = true;
-        if (task.IsFaulted || (task.IsCompleted && task.Result is null)) _files.TryRemove(doc.id, out _);
         return task;
     }
 

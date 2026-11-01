@@ -256,7 +256,16 @@ internal sealed class StreamingDownload
         {
             try
             {
-                if (await dc.Upload_GetFile(_location, offset, limit) is not Upload_File file) throw new IOException("файл отдаётся через CDN");
+                // Кусок не пришёл за 15 с (связь замерла — бывало, что ждали по 25 с и дольше) — спрашиваем ещё раз,
+                // а не ждём бесконечно: остальные загрузки и превью не стоят за ним.
+                var request = dc.Upload_GetFile(_location, offset, limit);
+                if (await Task.WhenAny(request, Task.Delay(15_000)).ConfigureAwait(false) != request)
+                {
+                    _ = request.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+                    Logging.Write($"stream {_location.id}: кусок {first} не ответил за 15 с — повтор");
+                    throw new TimeoutException("кусок файла не ответил за 15 с");
+                }
+                if (await request is not Upload_File file) throw new IOException("файл отдаётся через CDN");
                 lock (_lock)
                 {
                     _file!.Position = offset;
@@ -277,7 +286,7 @@ internal sealed class StreamingDownload
                 // Ссылка устарела (песня из кэша истории или профиля) — свежая и повтор.
                 if (await _refresh() is { } fresh) { _location = Location(fresh); _dcId = fresh.dc_id; }
             }
-            catch (Exception ex) when (attempt < 3 && ex is not OperationCanceledException)
+            catch (Exception ex) when (attempt < 4 && ex is not OperationCanceledException)
             {
                 await Task.Delay(500 * attempt);
             }

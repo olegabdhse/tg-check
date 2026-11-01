@@ -40,7 +40,8 @@ public sealed partial class TelegramService : IAsyncDisposable
         _cache = new LocalCache(Path.Combine(env.DataDirectory, "cache", "chats"));
         Logging.Init(Path.Combine(env.DataDirectory, "logs"));
         // Свой туннель (Xray) — в фоне, чтобы не задерживать окно; подключение его дождётся.
-        _xrayStart = env.XrayLink is { } xray ? Task.Run(() => XrayTunnel.Start(xray)) : Task.FromResult<XrayTunnel?>(null);
+        // По туннелю на каждый адрес сервера (второй адрес — первым).
+        _xrayStarts = env.XrayLinks.Select(link => Task.Run(() => XrayTunnel.Start(link))).ToList();
         _client = CreateClient();
         Media = new MediaService(() => _client, Path.Combine(env.DataDirectory, "cache")) { RefreshDocument = RefreshDocumentAsync, RefreshPhoto = RefreshPhotoAsync };
     }
@@ -80,17 +81,25 @@ public sealed partial class TelegramService : IAsyncDisposable
     // Способы подключения по очереди: выбранный в программе, встроенный прокси, напрямую. РКН режет волнами — то прокси,
     // то прямое подключение; когда выбранный не проходит несколько раз подряд, пробуем следующий.
     private int _route;
-    private IReadOnlyList<string?> Routes => new[] { XrayUrl, _env.Proxy, _env.BuiltInProxyUrl, null }.Where((r, i) => i > 0 || r is not null).Distinct().ToList();
+    // Порядок: свой туннель (второй адрес, потом основной), прокси, выбранный в программе, встроенный прокси (второй адрес,
+    // потом основной), напрямую.
+    private IReadOnlyList<string?> Routes =>
+        XrayUrls.Concat(new[] { _env.UserProxy, _env.ReserveBuiltInProxyUrl, _env.BuiltInProxyUrl, _env.Proxy }.OfType<string>())
+            .Distinct().Cast<string?>().Append(null).ToList();
 
     // Свой туннель VLESS + Reality — первым (если он есть в сборке и запустился).
-    private readonly Task<XrayTunnel?> _xrayStart;
+    private readonly List<Task<XrayTunnel?>> _xrayStarts;
     private string? _clientProxy; // через что создан текущий клиент
-    private string? XrayUrl => _xrayStart.IsCompletedSuccessfully && _xrayStart.Result is { IsAlive: true } t ? t.ProxyUrl : null;
+    private IReadOnlyList<string> XrayUrls => _xrayStarts.Where(s => s.IsCompletedSuccessfully && s.Result is { IsAlive: true })
+        .Select(s => s.Result!.ProxyUrl).ToList();
+    private string? XrayUrl => XrayUrls.FirstOrDefault();
 
     // Туннель запустился уже после того, как клиент был создан (запуск — в фоне): пересоздать клиент через туннель.
     private async Task UseXrayWhenReadyAsync()
     {
-        if (await Task.WhenAny(_xrayStart, Task.Delay(8000)) != _xrayStart) return;
+        if (_xrayStarts.Count == 0) return;
+        var all = Task.WhenAll(_xrayStarts);
+        if (await Task.WhenAny(all, Task.Delay(8000)) != all) return;
         if (XrayUrl is null || _clientProxy == XrayUrl) return;
         _route = 0;
         Logging.Write("connection: через свой туннель");
@@ -99,7 +108,7 @@ public sealed partial class TelegramService : IAsyncDisposable
     private string? CurrentProxy => Routes[_route % Routes.Count];
 
     /// <summary>Как подключены сейчас: «встроенный прокси», «свой прокси», «напрямую».</summary>
-    public string RouteName => CurrentProxy is null ? "напрямую" : CurrentProxy == XrayUrl ? "свой туннель" : CurrentProxy == _env.BuiltInProxyUrl ? "встроенный прокси" : "свой прокси";
+    public string RouteName => CurrentProxy is null ? "напрямую" : XrayUrls.Contains(CurrentProxy) ? "свой туннель" : CurrentProxy == _env.BuiltInProxyUrl || CurrentProxy == _env.ReserveBuiltInProxyUrl ? "встроенный прокси" : "свой прокси";
 
     /// <summary>Подключились другим способом, чем выбран (выбранный не проходил).</summary>
     public bool OnFallbackRoute => _route % Routes.Count != 0;
@@ -754,7 +763,7 @@ public sealed partial class TelegramService : IAsyncDisposable
     {
         StopWatchdog();
         await _client.DisposeAsync();
-        if (_xrayStart.IsCompletedSuccessfully) _xrayStart.Result?.Dispose();
+        foreach (var start in _xrayStarts) if (start.IsCompletedSuccessfully) start.Result?.Dispose();
         _clientLock.Dispose();
     }
 }

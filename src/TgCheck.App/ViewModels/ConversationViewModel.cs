@@ -2139,6 +2139,40 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     [RelayCommand]
     private Task ShowInChat(MessageViewModel? m) => m is null ? Task.CompletedTask : JumpToMessageAsync(m.Id);
 
+    // ---- непросмотренные реакции: сердечко над кнопкой «вниз» (число — сколько их); нажатие — к следующему сообщению
+    // с реакцией (от старых к новым), оно отмечается просмотренным. Счётчик общий со строкой в списке чатов.
+
+    /// <summary>Строка этого чата в списке (её счётчик реакций показывает и сердечко в чате).</summary>
+    public ChatItemViewModel? ChatRow => _owner.FindChat(Peer.Key);
+    private readonly Queue<int> _reactionQueue = new();
+
+    /// <summary>Пришла новая реакция — список сообщений с реакциями запросится заново.</summary>
+    public void ResetReactionQueue() => _reactionQueue.Clear();
+
+    [RelayCommand]
+    private async Task JumpToReaction()
+    {
+        if (ChatRow is not { UnreadReactions: > 0 } row) return;
+        try
+        {
+            if (_reactionQueue.Count == 0)
+                foreach (var id in await _tg.GetUnreadReactionIdsAsync(Peer)) _reactionQueue.Enqueue(id);
+            if (_reactionQueue.Count == 0)
+            {
+                // Сервер говорит, что непросмотренных нет, — сердечко убираем.
+                row.UnreadReactions = 0;
+                await _tg.ReadAllReactionsAsync(Peer);
+                return;
+            }
+            var target = _reactionQueue.Dequeue();
+            await JumpToMessageAsync(target);
+            row.UnreadReactions = Math.Max(0, row.UnreadReactions - 1);
+            await _tg.MarkReactionSeenAsync(Peer, target);
+            if (row.UnreadReactions == 0) await _tg.ReadAllReactionsAsync(Peer);
+        }
+        catch (Exception ex) { _owner.ShowToast(TgErrors.Describe(ex), true); }
+    }
+
     [RelayCommand]
     private Task JumpToReply(MessageViewModel? m) => m?.Item.ReplyToId is { } r ? JumpToMessageAsync(r) : Task.CompletedTask;
 

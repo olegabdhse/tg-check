@@ -148,6 +148,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     private void OnReactionReceived(PeerRef chat, int msgId, PeerRef who, string emoji) => Helpers.Anim.Ui(() =>
     {
+        // Сердечко в списке и в чате: реакции копятся, пока их не просмотрят (и в чатах без звука).
+        if (Chats.FindChat(chat.Key) is { } row)
+        {
+            row.UnreadReactions++;
+            if (Chats.Conversation is { } conv && conv.Peer.Key == chat.Key) conv.ResetReactionQueue();
+        }
         if (Chats.Chats.FirstOrDefault(c => c.Key == chat.Key) is not { IsMuted: false } item) return;
         // Что за сообщение — если оно уже есть в открытом чате.
         var quote = Chats.Conversation is { } open && open.Peer.Key == chat.Key ? open.MessageText(msgId) : null;
@@ -212,6 +218,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // Ссылки Telegram (в тексте сообщений, описаниях, кнопках) — открываются внутри приложения.
         Helpers.RichText.MentionExists = name => _tg.UsernameExistsAsync(name); // @имя в сообщениях — ссылка, если такое есть
         Helpers.RichText.OpenMention = name => _ = OpenMentionAsync(name);
+        MessageViewModel.LoadReplyStory = _tg.GetStoryAsync; // ответы на истории — миниатюра истории над текстом
         Helpers.Shell.InAppLinks = url =>
         {
             if (!TelegramService.IsTelegramLink(url)) return false;

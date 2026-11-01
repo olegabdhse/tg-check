@@ -1,3 +1,4 @@
+using System.IO;
 using System.Collections.ObjectModel;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -87,6 +88,7 @@ public sealed partial class ChatItemViewModel : PeerAvatarViewModel
         moved |= IsPinned != s.IsPinned || IsArchived != s.IsArchived;
         Unread = s.UnreadCount;
         Mentions = s.UnreadMentions;
+        UnreadReactions = s.UnreadReactions;
         ReadOutboxMaxId = Math.Max(ReadOutboxMaxId, s.ReadOutboxMaxId);
         ReadInboxMaxId = Math.Max(ReadInboxMaxId, s.ReadInboxMaxId);
         IsPinned = s.IsPinned;
@@ -115,6 +117,9 @@ public sealed partial class ChatItemViewModel : PeerAvatarViewModel
     public Brush UnreadRing => HasUnread ? AvatarColors.StoryUnread : AvatarColors.StorySeen;
 
     [ObservableProperty] private int _mentions;
+    /// <summary>Непросмотренные реакции на ваши сообщения: сердечко в строке и в чате, копятся до просмотра.</summary>
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasUnreadReactions))] private int _unreadReactions;
+    public bool HasUnreadReactions => UnreadReactions > 0;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsRead))] private int _readOutboxMaxId;
     [ObservableProperty] private bool _isPinned;
     [ObservableProperty] private bool _isMuted;
@@ -544,7 +549,9 @@ public sealed partial class MessageViewModel : ObservableObject
         _autoRequested = true;
         if (await Task.Run(() => media.IsMediaFileCached(Item))) return;
         FileProgress = 0;
-        await media.GetMediaFileAsync(Item, new Progress<double>(p => { if (IsFileDownloading) FileProgress = p; }), priority: false);
+        try { await media.GetMediaFileAsync(Item, new Progress<double>(p => { if (IsFileDownloading) FileProgress = p; }), priority: false); }
+        catch (Exception ex) when (ex is OperationCanceledException or IOException or TimeoutException) { /* остановили крестиком / сбой сети */ }
+        catch (Exception ex) { Logging.Write($"auto download {Item.Id}: {ex.Message}"); }
         FileProgress = -1;
     }
 
@@ -695,9 +702,36 @@ public sealed partial class MessageViewModel : ObservableObject
         catch (Exception ex) { Logging.Write($"link preview: {ex.Message}"); }
     }
 
+    // ---- ответ на историю (как в Telegram): над текстом — «История» с миниатюрой и подписью
+    /// <summary>История по чьему ключу и номеру (задаёт приложение).</summary>
+    public static Func<long, int, Task<StoryInfo?>>? LoadReplyStory { get; set; }
+    public bool HasStoryReply => Item.ReplyStoryId > 0;
+    public string StoryReplyTitle => Item.ReplyStoryPeerKey == Chat.Key && !Chat.IsSelf ? $"История · {Chat.DisplayTitle}" : "Ваша история";
+    [ObservableProperty] private string _storyReplyText = "История";
+    [ObservableProperty] private ImageSource? _storyReplyImage;
+    private bool _storyRequested;
+
+    private async void EnsureStoryReply(MediaService media)
+    {
+        if (_storyRequested || !HasStoryReply || LoadReplyStory is not { } load) return;
+        _storyRequested = true;
+        try
+        {
+            if (await load(Item.ReplyStoryPeerKey, Item.ReplyStoryId).ConfigureAwait(false) is not { } story)
+            {
+                StoryReplyText = "История истекла или удалена";
+                return;
+            }
+            StoryReplyText = !string.IsNullOrWhiteSpace(story.Caption) ? story.Caption! : story.IsVideo ? "Видео" : "Фото";
+            StoryReplyImage = Images.FromBytes(await media.GetMessagePreviewAsync(story).ConfigureAwait(false), 120);
+        }
+        catch (Exception ex) { Logging.Write($"reply story preview: {ex.Message}"); }
+    }
+
     public async void EnsurePreview(MediaService media)
     {
         EnsureLinkImage(media);
+        EnsureStoryReply(media);
         if (_previewRequested) return;
         if (Item.Gift is { IsUnique: true } gift)
         {

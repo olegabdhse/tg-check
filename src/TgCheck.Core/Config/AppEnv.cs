@@ -36,6 +36,23 @@ public sealed class AppEnv
     /// <summary>Свой туннель VLESS + Reality (ссылка vless://…) — подключение первым (в интерфейсе не показывается).</summary>
     internal string? XrayLink { get; init; }
 
+    /// <summary>
+    /// Второй адрес того же сервера (TG_RESERVE_HOST, Reserved IP): туннель и встроенный прокси на нём пробуются первыми —
+    /// если РКН заблокировал основной адрес. Основной остаётся запасным.
+    /// </summary>
+    internal string? ReserveHost { get; init; }
+
+    /// <summary>Туннели по порядку: на втором адресе, потом на основном.</summary>
+    internal IReadOnlyList<string> XrayLinks => XrayLink is null ? [] : ReserveHost is { } h ? [WithHost(XrayLink, h), XrayLink] : [XrayLink];
+
+    /// <summary>Встроенный прокси на втором адресе (null — нет второго адреса или прокси).</summary>
+    internal string? ReserveBuiltInProxyUrl => BuiltInProxyUrl is { } b && ReserveHost is { } h
+        ? System.Text.RegularExpressions.Regex.Replace(b, "(?<=[?&]server=)[^&]*", h) : null;
+
+    // vless://id@хост:порт?… — заменить только хост.
+    private static string WithHost(string vless, string host) =>
+        new System.Text.RegularExpressions.Regex(@"(?<=@)(\[[^\]]+\]|[^:/?#@]+)").Replace(vless, host, 1);
+
     /// <summary>Подключаемся через встроенный прокси.</summary>
     public bool UsesBuiltInProxy => Proxy is not null && UserProxy is null;
 
@@ -110,6 +127,7 @@ public sealed class AppEnv
             HasBuiltInProxy = builtIn is not null,
             BuiltInProxyUrl = builtIn is not null && IsSupportedProxy(builtIn) ? builtIn : null,
             XrayLink = Get("TG_XRAY") is { } xray && xray.StartsWith("vless://", StringComparison.OrdinalIgnoreCase) ? xray : null,
+            ReserveHost = Get("TG_RESERVE_HOST") is { Length: > 0 } reserve ? reserve.Trim() : null,
             IgnoredUserIds = ParseIds(Get("TG_IGNORE_IDS")),
             UpdateRepo = Get("TG_UPDATE_REPO") ?? BuildInfo.UpdateRepo,
             ApiId = apiId,

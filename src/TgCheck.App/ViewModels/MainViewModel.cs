@@ -13,8 +13,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private object? _currentPage;
 
+    // Каждое подключение — со своим номером. Пока одно шло (обрыв, повторные попытки), а его заменили новым (выбрали прокси,
+    // нажали «повторить»), старое падало на уже закрытом клиенте и поверх нового показывало ошибку или экран входа —
+    // выглядело так, будто сессия потерялась. Теперь устаревшее подключение молча завершается.
+    private int _generation;
+
     public async Task InitializeAsync()
     {
+        var generation = ++_generation;
+        bool Stale() => generation != _generation;
         CurrentPage = StatusViewModel.Busy("Подключение к Telegram…");
 
         if (_tg is not null)
@@ -22,6 +29,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             await _tg.DisposeAsync();
             _tg = null;
         }
+        if (Stale()) return;
 
         try
         {
@@ -53,22 +61,26 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             if (await _tg.TryRestoreSessionAsync(attempt =>
                 {
+                    if (Stale()) return;
                     if (early is not null) early.ConnectionStatus = $"Соединение… (попытка {attempt} из 6)";
                     else CurrentPage = StatusViewModel.Busy($"Подключение к Telegram{proxyNote}… попытка {attempt} из 6");
                 }))
             {
+                if (Stale()) { early?.Dispose(); return; }
                 ShowProfile(early);
                 return;
             }
         }
         catch (Exception ex)
         {
+            if (Stale()) { early?.Dispose(); Logging.Write($"connection: прежнее подключение остановлено ({ex.GetType().Name})"); return; }
             early?.Dispose();
             CurrentPage = StatusViewModel.ConnectionError("Не удалось подключиться", TgErrors.Describe(ex), InitializeAsync,
                 new ProxyChoiceViewModel(_env!, ChangeProxyAsync));
             return;
         }
 
+        if (Stale()) { early?.Dispose(); return; }
         early?.Dispose();
         ShowLogin();
     }
