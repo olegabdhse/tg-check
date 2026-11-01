@@ -11,6 +11,7 @@
   <ItemGroup>
     <!-- Официальный MTProto API Telegram (api_id / api_hash с my.telegram.org) -->
     <PackageReference Include="WTelegramClient" Version="4.4.9" />
+    <PackageReference Include="ZstdSharp.Port" Version="0.8.6" />
     <!-- Голосовые сообщения: декодер Opus/Ogg и вывод звука -->
     <PackageReference Include="Concentus" Version="2.2.2" />
     <PackageReference Include="Concentus.Oggfile" Version="1.0.7" />
