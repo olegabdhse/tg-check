@@ -306,6 +306,53 @@
                             </Grid>
                         </Button>
 
+                        <!-- Песен в профиле несколько — «Все песни · N» раскрывает список -->
+                        <StackPanel Margin="0,-4,0,10" Visibility="{Binding HasManySongs, Converter={StaticResource BoolToVis}}">
+                            <Button Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left" Padding="12,5" FontSize="12.5"
+                                    Command="{Binding ToggleSongsCommand}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE8D6;" Style="{StaticResource Icon}" FontSize="12" Margin="0,0,7,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding SongsText}" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                            <ItemsControl ItemsSource="{Binding Songs}" Margin="0,8,0,0" helpers:Anim.FadeOnVisible="True"
+                                          Visibility="{Binding IsSongsOpen, Converter={StaticResource BoolToVis}}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type vm:MusicTrackViewModel}">
+                                        <Button Style="{StaticResource BareButton}" Cursor="Hand" HorizontalContentAlignment="Stretch"
+                                                Command="{Binding DataContext.PlaySongCommand, ElementName=Root}" CommandParameter="{Binding}">
+                                            <Border x:Name="Bd" CornerRadius="10" Padding="8,6" Background="Transparent">
+                                                <DockPanel>
+                                                    <Grid DockPanel.Dock="Left" Width="44" Height="44" Margin="0,0,12,0" helpers:RoundClip.Radius="8">
+                                                        <Border Background="{Binding CoverBrush}" />
+                                                        <Image Source="{Binding Cover}" Stretch="UniformToFill" />
+                                                    </Grid>
+                                                    <!-- Сердечко — только у своей музыки: нажатие убирает песню из профиля -->
+                                                    <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Padding="8" ToolTip="Убрать из профиля"
+                                                            VerticalAlignment="Center"
+                                                            Command="{Binding DataContext.UnlikeSongCommand, ElementName=Root}" CommandParameter="{Binding}"
+                                                            Visibility="{Binding DataContext.IsSelf, ElementName=Root, Converter={StaticResource BoolToVis}}">
+                                                        <Path Data="{StaticResource HeartGeometry}" Stretch="Uniform" Width="16" Height="16" Fill="#FF4D6A" />
+                                                    </Button>
+                                                    <TextBlock DockPanel.Dock="Right" Text="{Binding DurationText}" Style="{StaticResource Caption}"
+                                                               VerticalAlignment="Center" Margin="10,0,6,0" />
+                                                    <StackPanel VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13.5" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{Binding Artist}" Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                                                    </StackPanel>
+                                                </DockPanel>
+                                            </Border>
+                                        </Button>
+                                        <DataTemplate.Triggers>
+                                            <Trigger SourceName="Bd" Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface2Brush}" />
+                                            </Trigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
                         <!-- Информация -->
                         <TextBlock Text="Информация" FontSize="15" FontWeight="SemiBold" Margin="2,10,0,8" />
                         <ItemsControl ItemsSource="{Binding InfoRows}">
@@ -686,7 +733,7 @@
                             <!-- Сообщение к подарку -->
                             <Border Background="{StaticResource Surface2Brush}" CornerRadius="12" Padding="14,10" Margin="0,16,0,0"
                                     Visibility="{Binding Item.Message, Converter={StaticResource NullToVis}}">
-                                <TextBlock Text="{Binding Item.Message}" TextWrapping="Wrap" FontStyle="Italic" />
+                                <TextBlock helpers:RichText.CustomEmoji="{Binding Item.MessageEmoji}" helpers:RichText.Formatting="{Binding Item.MessageFormatting}" helpers:RichText.Text="{Binding Item.Message}" helpers:RichText.EmojiSize="18" TextWrapping="Wrap" />
                             </Border>
 
                             <!-- Таблица как в Telegram: колонка подписей по самой длинной подписи (общая для всех строк),

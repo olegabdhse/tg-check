@@ -128,14 +128,14 @@
                             <controls:MusicWaves Width="50" Height="50" CoverRatio="0.64" BassPulse="True" Cover="{Binding Cover}" CoverBrush="{Binding CoverBrush}"
                                              Level="{Binding Level}" Progress="{Binding Progress}" IsPlaying="{Binding IsPlaying}" />
                             <!-- Сердечко на краю круга (островок свёрнут); развернули — оно в панели сразу после круга -->
-                            <Button x:Name="HeartBadge" Style="{StaticResource HeartButton}" Width="22" Height="22" Tag="{Binding IsLiked}"
-                                    HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-5,-5" Click="HeartBadge_Click"
+                            <Button x:Name="HeartBadge" Style="{StaticResource HeartButton}" Width="19" Height="19" Tag="{Binding IsLiked}"
+                                    HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,1,1" Click="HeartBadge_Click"
                                     Visibility="{Binding CanLike, Converter={StaticResource BoolToVis}}" Background="#CC0B1016">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
                                         <Grid>
                                             <Ellipse Fill="#E60B1016" />
-                                            <Path Data="{StaticResource HeartGeometry}" Stretch="Uniform" Margin="5.5" StrokeThickness="1.4" StrokeLineJoin="Round">
+                                            <Path Data="{StaticResource HeartGeometry}" Stretch="Uniform" Margin="4.6" StrokeThickness="1.4" StrokeLineJoin="Round">
                                                 <Path.Style>
                                                     <Style TargetType="Path">
                                                         <Setter Property="Fill" Value="Transparent" />

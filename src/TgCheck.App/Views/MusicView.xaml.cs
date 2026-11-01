@@ -8,7 +8,20 @@ namespace TgCheck.App.Views;
 
 public partial class MusicView : UserControl
 {
-    public MusicView() => InitializeComponent();
+    public MusicView()
+    {
+        InitializeComponent();
+        // Открыли поиск или страницу чатов — полки ушли с экрана (перемешать), а у новой страницы — обложки видимых строк.
+        DataContextChanged += (_, e) =>
+        {
+            if (e.NewValue is MusicViewModel music)
+                music.PropertyChanged += (_, a) =>
+                {
+                    if (a.PropertyName is nameof(MusicViewModel.IsSearch) or nameof(MusicViewModel.IsChatsPage)) QueueCovers();
+                };
+        };
+        ChatsPageScroll.IsVisibleChanged += (_, _) => QueueCovers();
+    }
 
     /// <summary>Видно, когда полка не пуста и не идёт поиск (на время поиска — только результаты).</summary>
     public static readonly System.Windows.Data.IMultiValueConverter BothVisible = new ShelfOutsideSearch();
@@ -96,6 +109,8 @@ public partial class MusicView : UserControl
 
     private void Page_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) => QueueCovers();
 
+    private void ChatsPage_ScrollChanged(object sender, ScrollChangedEventArgs e) => QueueCovers();
+
     private void QueueCovers()
     {
         if (_coversQueued) return;
@@ -104,20 +119,44 @@ public partial class MusicView : UserControl
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
         {
             _coversQueued = false;
-            RequestVisibleCovers();
+            RequestVisibleCovers(PageScroll);
+            RequestVisibleCovers(ChatsPageScroll);
+            ReshuffleHiddenShelves();
         });
     }
 
-    private void RequestVisibleCovers()
+    // Полки «вперемешку» («Любимые», «Музыка из ваших чатов») получают новый порядок, только когда их не видно: полку
+    // видели, потом она ушла за край (прокрутили, открыли поиск или другой раздел) — перемешиваем.
+    private readonly HashSet<MusicShelf> _seenShelves = [];
+
+    private void ReshuffleHiddenShelves()
     {
-        if (!PageScroll.IsVisible) return;
+        if (DataContext is not MusicViewModel music) return;
+        var pageShown = PageScroll.IsVisible && !music.IsSearch && !music.IsChatsPage;
         var view = new Rect(0, 0, PageScroll.ActualWidth, PageScroll.ActualHeight);
+        foreach (var shelf in music.Shelves.Where(s => s.Shuffled))
+        {
+            var onScreen = false;
+            if (pageShown && ShelfList.ItemContainerGenerator.ContainerFromItem(shelf) is FrameworkElement { IsVisible: true } el)
+            {
+                try { onScreen = el.TransformToAncestor(PageScroll).TransformBounds(new Rect(0, 0, el.ActualWidth, el.ActualHeight)).IntersectsWith(view); }
+                catch (InvalidOperationException) { }
+            }
+            if (onScreen) _seenShelves.Add(shelf);
+            else if (_seenShelves.Remove(shelf)) shelf.Reshuffle();
+        }
+    }
+
+    private void RequestVisibleCovers(ScrollViewer scroll)
+    {
+        if (!scroll.IsVisible) return;
+        var view = new Rect(0, 0, scroll.ActualWidth, scroll.ActualHeight);
         var near = Rect.Inflate(view, view.Width * 0.5, view.Height);
         var later = new List<MusicTrackViewModel>();
-        foreach (var (el, vm) in Tracks(PageScroll))
+        foreach (var (el, vm) in Tracks(scroll))
         {
             Rect box;
-            try { box = el.TransformToAncestor(PageScroll).TransformBounds(new Rect(0, 0, el.ActualWidth, el.ActualHeight)); }
+            try { box = el.TransformToAncestor(scroll).TransformBounds(new Rect(0, 0, el.ActualWidth, el.ActualHeight)); }
             catch (InvalidOperationException) { continue; } // элемент уже убран из дерева
             if (box.IntersectsWith(view)) vm.RequestCover();
             else if (box.IntersectsWith(near)) later.Add(vm);

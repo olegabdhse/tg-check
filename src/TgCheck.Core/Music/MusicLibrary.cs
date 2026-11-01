@@ -165,6 +165,49 @@ public sealed class MusicLibrary
         lock (_lock) return _items.Any(e => MusicTrack.SameSong(e.Track, t));
     }
 
+    /// <summary>Та же песня из истории — именно тот файл, что уже играл (null — не слушали).</summary>
+    public MusicTrack? Played(MusicTrack t)
+    {
+        lock (_lock) return _items.FirstOrDefault(e => MusicTrack.SameSong(e.Track, t))?.Track;
+    }
+
+    // ===================================================================== Жанры исполнителей
+
+    // Жанр исполнителя по Deezer (жанр его популярного альбома) — для подбора по пропорциям жанров. Хранится в
+    // music\genres.json: исполнитель ищется в Deezer один раз. "" — жанр не нашёлся.
+    private Dictionary<string, string>? _genres;
+
+    private string GenresFile => Path.Combine(Directory, "genres.json");
+
+    /// <summary>Жанр исполнителя ("" — неизвестен).</summary>
+    public async Task<string> ArtistGenreAsync(string artist, CancellationToken ct = default)
+    {
+        var key = MusicTrack.Normalize(artist);
+        if (key.Length == 0) return "";
+        lock (_lock)
+        {
+            if (_genres is null)
+            {
+                try { _genres = File.Exists(GenresFile) ? JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(GenresFile)) : null; }
+                catch (Exception ex) { Logging.Write($"music genres: {ex.Message}"); }
+                _genres ??= [];
+            }
+            if (_genres.TryGetValue(key, out var known)) return known;
+        }
+        var genre = "";
+        if (await MusicCatalog.DeezerFindArtistAsync(artist, ct).ConfigureAwait(false) is { } found)
+            genre = await MusicCatalog.DeezerArtistGenreAsync(found.Id, ct).ConfigureAwait(false) ?? "";
+        string json;
+        lock (_lock)
+        {
+            _genres[key] = genre;
+            json = JsonSerializer.Serialize(_genres);
+        }
+        try { await File.WriteAllTextAsync(GenresFile, json, ct).ConfigureAwait(false); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { Logging.Write($"music genres save: {ex.Message}"); }
+        return genre;
+    }
+
     /// <summary>
     /// Подбор по прослушанному — только полные треки: песни похожих исполнителей (кто похож — подсказывает Deezer)
     /// и ещё от любимых исполнителей ищутся в Telegram.

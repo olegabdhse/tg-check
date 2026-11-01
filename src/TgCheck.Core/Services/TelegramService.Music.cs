@@ -83,8 +83,38 @@ public sealed partial class TelegramService
     // Инлайн-режим ботов — как «@бот песня» в поле ввода, только ничего не отправляется: запрос идёт «из Избранного»,
     // чат с ботом не создаётся и в списке чатов не появляется. Кроме известных музыкальных ботов пробуем и недавних
     // инлайн-ботов пользователя; кто не вернул ни одной песни — за этот запуск больше не спрашиваем.
+    // По качеству ответов: первые — чьи песни выше в поиске и в подборе. (@scdlbot и @soundcloud_youtube_music_bot
+    // убраны: у них нет инлайн-режима — без переписки с ботом, то есть без чата с ним, песен от них не получить.)
     private static readonly string[] KnownMusicBots =
-        ["scdlbot", "soundcloud_youtube_music_bot", "fmusbot", "vkm_bot", "Buddy_music_bot", "KDMusic_Bot", "melobot", "vkmusic_bot", "lybot", "MusicsHuntersbot"];
+        ["lybot", "KDMusic_Bot", "fmusbot", "vkm_bot", "Buddy_music_bot", "vkmusic_bot", "melobot", "MusicsHuntersbot"];
+
+    /// <summary>Место бота в порядке качества (известные — по списку, остальные — после).</summary>
+    public static int MusicBotRank(string? bot) =>
+        Array.FindIndex(KnownMusicBots, b => string.Equals(b, bot, StringComparison.OrdinalIgnoreCase)) is var i and >= 0 ? i : KnownMusicBots.Length;
+
+    /// <summary>
+    /// Поиск у всех музыкальных ботов (для поиска пользователя): запросы уходят один за другим с паузой 350 мс (разом —
+    /// Telegram отвечал FLOOD_WAIT и ответы задерживались на 5–10 с), ответы ждутся параллельно; каждый — сразу в onBot,
+    /// как пришёл, даже поздний.
+    /// </summary>
+    public async Task SearchAllBotsAsync(string query, int maxBots, Action<string, IReadOnlyList<MusicTrack>> onBot, CancellationToken ct = default)
+    {
+        var bots = (await MusicBotCandidatesAsync()).Where(b => !_musicBots.TryGetValue(b, out var works) || works)
+            .OrderBy(MusicBotRank).Take(maxBots).ToList();
+        var requests = new List<Task>();
+        foreach (var bot in bots)
+        {
+            if (ct.IsCancellationRequested) break;
+            requests.Add(Task.Run(async () =>
+            {
+                var songs = (await MusicRequestAsync(false, () => InlineMusicAsync(bot, query))).Where(MusicTrack.IsSong).ToList();
+                if (songs.Count > 0 && !ct.IsCancellationRequested) onBot(bot, songs);
+            }));
+            try { await Task.Delay(350, ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) { break; }
+        }
+        await Task.WhenAll(requests).ConfigureAwait(false);
+    }
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _musicBots = new(StringComparer.OrdinalIgnoreCase);
     private Task<IReadOnlyList<string>>? _musicBotCandidates;
 
@@ -113,7 +143,7 @@ public sealed partial class TelegramService
     /// <param name="partial">Ответ каждого бота — сразу, как пришёл (страница показывает его, не дожидаясь остальных).</param>
     /// <param name="background">Для подбора: после поиска пользователя, сначала проверенные боты.</param>
     public async Task<IReadOnlyList<MusicTrack>> SearchBotMusicAsync(string query, int maxBots = 6, Action<IReadOnlyList<MusicTrack>>? partial = null,
-        bool background = false, int maxSongs = 10, CancellationToken ct = default)
+        bool background = false, int maxSongs = 10, CancellationToken ct = default, int perBot = int.MaxValue)
     {
         // Порядок списка (новые и любимые боты — первыми); не ответившие ни разу и не музыкальные — пропускаются.
         var candidates = (await MusicBotCandidatesAsync()).Where(b => !_musicBots.TryGetValue(b, out var works) || works);
@@ -129,11 +159,14 @@ public sealed partial class TelegramService
                 if (ct.IsCancellationRequested) break;
                 _ = request.ContinueWith(t =>
                 {
-                    if (t.IsCompletedSuccessfully && !ct.IsCancellationRequested && t.Result.Count > 0) partial?.Invoke(t.Result.Take(maxSongs).ToList());
+                    if (t.IsCompletedSuccessfully && !ct.IsCancellationRequested && t.Result.Count > 0)
+                        partial?.Invoke(t.Result.Where(MusicTrack.IsSong).Take(Math.Min(perBot, maxSongs)).ToList());
                 }, TaskScheduler.Default);
                 continue;
             }
-            var fresh = (await request).Where(t => !found.Any(f => MusicTrack.SameSong(f, t))).Take(maxSongs - found.Count).ToList();
+            // От одного бота — не больше perBot: в поиске видны песни разных ботов, а не десять от первого.
+            var fresh = (await request).Where(t => MusicTrack.IsSong(t) && !found.Any(f => MusicTrack.SameSong(f, t)))
+                .Take(Math.Min(perBot, maxSongs - found.Count)).ToList();
             if (fresh.Count == 0 || ct.IsCancellationRequested) continue;
             found.AddRange(fresh);
             partial?.Invoke(fresh);

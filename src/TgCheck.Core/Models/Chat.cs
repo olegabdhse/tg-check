@@ -154,6 +154,8 @@ public sealed class MessageItem : MediaHolder
     public bool MediaUnread { get; set; }
     /// <summary>Сложное сообщение (статья, коллаж, музыка) — блоки по порядку; null — обычное.</summary>
     public IReadOnlyList<RichBlock>? Rich { get; set; }
+    /// <summary>Превью ссылки из текста (null — нет).</summary>
+    public LinkPreview? Link { get; set; }
     public int? ReplyToId { get; init; }
     /// <summary>Корень ветки (комментарии к посту), если сообщение — ответ внутри ветки.</summary>
     public int? ThreadTopId { get; init; }
@@ -276,6 +278,9 @@ public sealed class GiftCard
     public string? Title { get; init; }
     /// <summary>Сообщение от отправителя.</summary>
     public string? Message { get; init; }
+    /// <summary>Премиум-эмодзи и оформление в сообщении к подарку — как в Telegram.</summary>
+    public IReadOnlyList<CustomEmojiSpan> MessageEmoji { get; init; } = [];
+    public IReadOnlyList<TextStyleSpan> MessageFormatting { get; init; } = [];
     /// <summary>Пояснение мелким шрифтом (обмен на звёзды и т.п.).</summary>
     public string? Note { get; init; }
     public long Stars { get; init; }

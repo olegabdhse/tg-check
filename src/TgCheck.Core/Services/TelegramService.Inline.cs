@@ -20,11 +20,52 @@ public sealed partial class TelegramService
             foreach (var (id, user) in resolved.users) _users[id] = user;
             if (resolved.User is { } u && u.IsBot && u.flags.HasFlag(User.Flags.has_bot_inline_placeholder) && !IsIgnored(u.id))
                 bot = new InlineBot(PeerOf(u), u.bot_inline_placeholder ?? "");
+            else
+                Logging.Write($"inline bot @{username}: " + (resolved.User is not { } x ? "не пользователь" : !x.IsBot ? "не бот"
+                    : !x.flags.HasFlag(User.Flags.has_bot_inline_placeholder) ? "без инлайн-режима — пропускается" : "скрыт"));
         }
-        catch (RpcException) { /* нет такого имени */ }
+        catch (RpcException ex) { Logging.Write($"inline bot @{username}: {ex.Message}"); }
         _inlineBots[username] = bot;
         return bot;
     }
+
+    // ---- @упоминания в тексте: есть ли такое имя в Telegram (тогда оно — ссылка). Сначала среди известных чатов
+    // и людей (без сети); иначе один запрос на имя за запуск, по одному и с паузой (Telegram строго ограничивает
+    // поиск по имени). Упёрлись в ограничение — до конца запуска незнакомые имена остаются обычным текстом.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Task<bool>> _mentions = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim _mentionGate = new(1);
+    private volatile bool _mentionFlood;
+
+    /// <summary>Есть ли в Telegram пользователь, бот, канал или группа с таким @именем (скрытые — нет).</summary>
+    public Task<bool> UsernameExistsAsync(string username) => _mentions.GetOrAdd(username, name => Task.Run(async () =>
+    {
+        bool Known(string n) =>
+            _users.Values.Any(u => !IsIgnored(u.id) && (string.Equals(u.MainUsername, n, StringComparison.OrdinalIgnoreCase)
+                                                        || u.usernames?.Any(x => string.Equals(x.username, n, StringComparison.OrdinalIgnoreCase)) == true))
+            || _chats.Values.Any(c => c is Channel ch && (string.Equals(ch.MainUsername, n, StringComparison.OrdinalIgnoreCase)
+                                                         || ch.usernames?.Any(x => string.Equals(x.username, n, StringComparison.OrdinalIgnoreCase)) == true));
+        if (Known(name)) return true;
+        if (_mentionFlood) return false;
+        await _mentionGate.WaitAsync();
+        try
+        {
+            if (Known(name)) return true;
+            var resolved = await _client.Contacts_ResolveUsername(name);
+            foreach (var (k, v) in resolved.users) _users[k] = v;
+            foreach (var (k, v) in resolved.chats) _chats[k] = v;
+            return resolved.UserOrChat is { } info && !IsIgnored(PeerOf(info).Id);
+        }
+        catch (RpcException ex)
+        {
+            if (ex.Code == 420) _mentionFlood = true; // FLOOD_WAIT — больше не спрашиваем
+            return false;
+        }
+        catch (Exception) { _mentions.TryRemove(name, out _); return false; } // нет связи — спросим в другой раз
+        finally
+        {
+            _ = Task.Delay(400).ContinueWith(_ => _mentionGate.Release(), TaskScheduler.Default);
+        }
+    }));
 
     /// <summary>Недавние инлайн-боты (как в Telegram — по частоте использования), до limit штук.</summary>
     public async Task<IReadOnlyList<InlineBot>> GetRecentInlineBotsAsync(int limit = 5)

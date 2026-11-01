@@ -214,6 +214,10 @@
                                 <TextBlock Text="Слушать" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
+                        <Button Style="{StaticResource SecondaryButton}" Padding="12,5" FontSize="12" Margin="0,0,8,0" Content="Все"
+                                ToolTip="Открыть списком и искать только среди них"
+                                Command="{Binding DataContext.OpenChatsPageCommand, ElementName=Root}"
+                                Visibility="{Binding CanOpenPage, Converter={StaticResource BoolToVis}}" />
                         <Button Style="{StaticResource IconButton}" Content="&#xE76B;" FontSize="12" Padding="8" Tag="{Binding ElementName=ShelfScroll}"
                                 Click="ShelfLeft_Click" ToolTip="Назад" />
                         <Button Style="{StaticResource IconButton}" Content="&#xE76C;" FontSize="12" Padding="8" Tag="{Binding ElementName=ShelfScroll}"
@@ -254,6 +258,19 @@
         <!-- Результаты поиска по источнику -->
         <DataTemplate x:Key="ResultGroup" DataType="{x:Type vm:MusicShelf}">
             <StackPanel Margin="0,0,0,22">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding Optional}" Value="True" />
+                                    <Condition Binding="{Binding Items.Count}" Value="0" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
                 <DockPanel Margin="0,0,0,6">
                     <TextBlock Text="{Binding Title}" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="10,2,0,0" />
@@ -289,9 +306,9 @@
         </Grid.ColumnDefinitions>
 
         <!-- ================================================= Главная и поиск -->
-        <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True"
-                      ScrollChanged="Page_ScrollChanged" IsVisibleChanged="Page_IsVisibleChanged">
-            <StackPanel Margin="30,10,26,24">
+        <!-- Шапка (заголовок и поиск) — закреплена: при прокрутке остаётся на месте, листается только содержимое -->
+        <DockPanel>
+            <StackPanel DockPanel.Dock="Top" Margin="30,10,26,0">
                 <DockPanel>
                     <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE72C;" ToolTip="Обновить подбор"
                             Command="{Binding LoadRecommendationsCommand}" VerticalAlignment="Center" />
@@ -301,8 +318,9 @@
                     </StackPanel>
                 </DockPanel>
 
+
                 <!-- Поиск сразу везде -->
-                <Grid Margin="0,16,0,22" MaxWidth="560" HorizontalAlignment="Left" Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=StackPanel}}">
+                <Grid Margin="0,16,0,14" MaxWidth="560" HorizontalAlignment="Left" Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=StackPanel}}">
                     <TextBox x:Name="SearchInput" Style="{StaticResource SearchBox}" Padding="40,11,40,11" FontSize="14"
                              Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}" />
                     <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" FontSize="15" Foreground="{StaticResource TextSecondaryBrush}"
@@ -313,6 +331,10 @@
                     <Button Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="11" Padding="8" HorizontalAlignment="Right" Margin="0,0,6,0"
                             Command="{Binding ClearQueryCommand}" Visibility="{Binding IsSearch, Converter={StaticResource BoolToVis}}" />
                 </Grid>
+            </StackPanel>
+        <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True"
+                      ScrollChanged="Page_ScrollChanged" IsVisibleChanged="Page_IsVisibleChanged">
+            <StackPanel Margin="30,8,26,24">
 
                 <!-- «Для вас»: 4 песни по трём последним — сеткой во всю ширину, без прокрутки -->
                 <StackPanel DataContext="{Binding NextForYou}" Margin="0,0,0,28" MaxWidth="980" HorizontalAlignment="Left"
@@ -356,12 +378,64 @@
                     </Grid>
                 </StackPanel>
 
-                <ItemsControl ItemsSource="{Binding Shelves}" ItemTemplate="{StaticResource Shelf}"
+                <ItemsControl x:Name="ShelfList" ItemsSource="{Binding Shelves}" ItemTemplate="{StaticResource Shelf}"
                               Visibility="{Binding IsSearch, Converter={StaticResource InvBoolToVis}}" />
                 <ItemsControl ItemsSource="{Binding SearchShelves}" ItemTemplate="{StaticResource ResultGroup}"
                               Visibility="{Binding IsSearch, Converter={StaticResource BoolToVis}}" />
             </StackPanel>
         </ScrollViewer>
+        </DockPanel>
+
+        <!-- ================================================= Страница «Музыка из ваших чатов»: списком и поиск только по чатам -->
+        <Grid Background="{StaticResource BgBrush}" Visibility="{Binding IsChatsPage, Converter={StaticResource BoolToVis}}"
+              helpers:Anim.FadeOnVisible="True">
+            <DockPanel Margin="30,10,26,0">
+                <StackPanel DockPanel.Dock="Top">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE72B;" ToolTip="Назад (Esc)"
+                                Command="{Binding CloseChatsPageCommand}" VerticalAlignment="Center" Margin="-8,0,8,0" />
+                        <StackPanel>
+                            <TextBlock Text="{Binding ChatsPage.Title}" FontSize="26" FontWeight="Bold" />
+                            <TextBlock Text="Поиск только по песням из ваших чатов и каналов" Style="{StaticResource Caption}" Margin="0,2,0,0" />
+                        </StackPanel>
+                    </DockPanel>
+                    <Grid Margin="0,16,0,14" MaxWidth="560" HorizontalAlignment="Left" Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=StackPanel}}">
+                        <TextBox Style="{StaticResource SearchBox}" Padding="40,11,40,11" FontSize="14"
+                                 Text="{Binding ChatsQuery, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" FontSize="15" Foreground="{StaticResource TextSecondaryBrush}"
+                                   HorizontalAlignment="Left" VerticalAlignment="Center" Margin="14,0,0,0" IsHitTestVisible="False" />
+                        <TextBlock Text="Искать в чатах…" Foreground="{StaticResource TextSecondaryBrush}" FontSize="14" IsHitTestVisible="False"
+                                   VerticalAlignment="Center" Margin="42,0,0,0"
+                                   Visibility="{Binding ChatsQuery, Converter={StaticResource InvNullToVis}}" />
+                    </Grid>
+                </StackPanel>
+                <ScrollViewer x:Name="ChatsPageScroll" VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True"
+                              ScrollChanged="ChatsPage_ScrollChanged">
+                    <StackPanel DataContext="{Binding ChatsPage}" Margin="0,0,0,24">
+                        <ItemsControl ItemsSource="{Binding Source={x:Static vm:MusicShelf.RowPlaceholders}}" ItemTemplate="{StaticResource RowSkeleton}"
+                                      Style="{StaticResource Pulse}" Visibility="{Binding ShowSkeleton, Converter={StaticResource BoolToVis}}" />
+                        <ItemsControl ItemsSource="{Binding Items}" ItemTemplate="{StaticResource Row}" helpers:Anim.FadeOnVisible="True"
+                                      Visibility="{Binding ShowSkeleton, Converter={StaticResource InvBoolToVis}}" />
+                        <TextBlock Text="Ничего не нашлось" Margin="8,4,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource Caption}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding IsLoading}" Value="False" />
+                                                <Condition Binding="{Binding Items.Count}" Value="0" />
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </MultiDataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </Grid>
 
         <!-- ================================================= Справа: альбомный плеер и «Вы слушали» -->
         <Border Grid.Column="1" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0">

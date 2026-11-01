@@ -84,6 +84,22 @@ public static class MusicCatalog
     public static async Task<IReadOnlyList<MusicTrack>> DeezerArtistRadioAsync(long artistId, int limit = 25, CancellationToken ct = default) =>
         DeezerTracks(await GetJsonAsync($"{Deezer}/artist/{artistId}/radio?limit={limit}", ct));
 
+    /// <summary>Жанр исполнителя: жанр альбома его самой популярной песни (у исполнителя в Deezer своего жанра нет).</summary>
+    public static async Task<string?> DeezerArtistGenreAsync(long artistId, CancellationToken ct = default)
+    {
+        foreach (var t in Data(await GetJsonAsync($"{Deezer}/artist/{artistId}/top?limit=2", ct)))
+        {
+            if (!t.TryGetProperty("album", out var al)) continue;
+            var albumId = Num(al, "id");
+            if (albumId <= 0) continue;
+            if (await GetJsonAsync($"{Deezer}/album/{(long)albumId}", ct) is { } album
+                && Data(album.TryGetProperty("genres", out var g) ? g : null).FirstOrDefault() is { ValueKind: JsonValueKind.Object } genre
+                && Str(genre, "name") is { Length: > 0 } name)
+                return name;
+        }
+        return null;
+    }
+
     /// <summary>Похожие исполнители.</summary>
     public static async Task<IReadOnlyList<(long Id, string Name)>> DeezerRelatedAsync(long artistId, int limit = 6, CancellationToken ct = default) =>
         Data(await GetJsonAsync($"{Deezer}/artist/{artistId}/related?limit={limit}", ct))

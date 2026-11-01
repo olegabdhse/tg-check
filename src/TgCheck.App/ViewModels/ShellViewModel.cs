@@ -173,11 +173,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         if (StoryViewer is { } stories) { stories.Close(); return true; }
         if (Settings.IsClearDialogOpen) { Settings.CloseClearDialogCommand.Execute(null); return true; }
+        if (IsSettingsOpen && Settings.IsSessionsOpen) { Settings.IsSessionsOpen = false; return true; }
         if (IsSettingsOpen) { IsSettingsOpen = false; return true; }
         if (Proxy.IsOpen) { Proxy.IsOpen = false; return true; }
         if (CurrentPage is ChatsViewModel chats) return chats.HandleEscape();
         if (CurrentPage is MusicViewModel music)
         {
+            if (music.IsChatsPage) { if (music.ChatsQuery.Length > 0) music.ChatsQuery = ""; else music.IsChatsPage = false; return true; }
             if (music.IsSearch) { music.Query = ""; return true; }
             Section = Section.Chats;
             return true;
@@ -202,8 +204,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         Settings.ClearCacheAction = (progress, alsoKeep) => _tg.ClearCacheAsync(Chats.Chats.Where(c => c.IsPersonal && !c.Peer.IsSelf)
             .OrderByDescending(c => c.SortDate).Take(5).Select(c => c.Peer).ToList(), progress, alsoKeep);
         Settings.GetCleanupSticker = _tg.GetCleanupStickerAsync;
+        Settings.GetSessions = _tg.GetSessionsAsync;
+        Settings.TerminateSessionAction = _tg.TerminateSessionAsync;
+        Settings.TerminateOthersAction = _tg.TerminateOtherSessionsAsync;
         _presence ??= new OnlinePresence(_tg); // «в сети», пока окно активно и с ним работают
         // Ссылки Telegram (в тексте сообщений, описаниях, кнопках) — открываются внутри приложения.
+        Helpers.RichText.MentionExists = name => _tg.UsernameExistsAsync(name); // @имя в сообщениях — ссылка, если такое есть
+        Helpers.RichText.OpenMention = name => _ = OpenMentionAsync(name);
         Helpers.Shell.InAppLinks = url =>
         {
             if (!TelegramService.IsTelegramLink(url)) return false;
@@ -243,6 +250,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     // ===================================================================== Навигация
 
     public void OpenProfile(PeerRef peer) => OpenProfile(peer, null);
+
+    // @имя в тексте сообщения — профиль этого человека, бота, канала или группы.
+    private async Task OpenMentionAsync(string username)
+    {
+        try { OpenProfile(await _tg.ResolveAsync("@" + username)); }
+        catch (Exception ex) { ShowToast(TgErrors.Describe(ex), true); }
+    }
 
     /// <param name="seed">Уже загруженный профиль этого же человека (боковая панель) — открыть сразу с его данными.</param>
     public void OpenProfile(PeerRef peer, ProfileViewModel? seed)

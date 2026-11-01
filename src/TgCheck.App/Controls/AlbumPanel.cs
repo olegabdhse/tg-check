@@ -44,6 +44,7 @@ public sealed class AlbumPanel : Panel
     private static double AspectOf(UIElement child)
     {
         if ((child as FrameworkElement)?.DataContext is UploadPart part) return Math.Clamp(part.Aspect, 0.5, 2.2); // отправляемое — та же сетка
+        if ((child as FrameworkElement)?.DataContext is AttachmentViewModel attachment) return Math.Clamp(attachment.Aspect, 0.5, 2.2); // окно отправки
         var item = (child as FrameworkElement)?.DataContext is MessageViewModel m ? m.Item : null;
         var ar = item is { MediaWidth: > 0, MediaHeight: > 0 } ? (double)item.MediaWidth / item.MediaHeight : 1;
         return Math.Clamp(ar, 0.5, 2.2);

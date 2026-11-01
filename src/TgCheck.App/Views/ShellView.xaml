@@ -293,6 +293,45 @@
                         </Setter.Value>
                     </Setter>
                 </Style>
+                <!-- Сеанс: значок устройства, устройство и приложение, место и когда был активен; «Завершить» спрашивает в самой строке -->
+                <DataTemplate x:Key="SessionRow" DataType="{x:Type vm:SessionItemViewModel}">
+                    <Border Padding="22,9,14,9">
+                        <StackPanel>
+                            <DockPanel>
+                                <Border DockPanel.Dock="Left" Width="40" Height="40" CornerRadius="10" Background="{Binding IconBrush}" Margin="0,0,14,0" VerticalAlignment="Top">
+                                    <TextBlock Text="{Binding Icon}" Style="{StaticResource Icon}" FontSize="18" Foreground="White"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="11" Padding="8" VerticalAlignment="Top"
+                                        ToolTip="Завершить сеанс" Command="{Binding AskTerminateCommand}">
+                                    <Button.Visibility>
+                                        <MultiBinding Converter="{x:Static views:ShellView.NotCurrentNotConfirming}">
+                                            <Binding Path="Info.IsCurrent" />
+                                            <Binding Path="IsConfirming" />
+                                        </MultiBinding>
+                                    </Button.Visibility>
+                                </Button>
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding ActiveText}" Style="{StaticResource Caption}" VerticalAlignment="Top" Margin="8,2,4,0" />
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding AppText}" FontSize="12.5" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding SystemText}" Style="{StaticResource Caption}" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding PlaceText}" Style="{StaticResource Caption}" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="Вход не завершён — ждёт пароль" Foreground="{StaticResource DangerBrush}" FontSize="12" Margin="0,2,0,0"
+                                               Visibility="{Binding IsPending, Converter={StaticResource BoolToVis}}" />
+                                </StackPanel>
+                            </DockPanel>
+                            <DockPanel Margin="54,8,0,0" Visibility="{Binding IsConfirming, Converter={StaticResource BoolToVis}}">
+                                <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Command="{Binding TerminateCommand}" Margin="6,0,0,0">
+                                    <TextBlock Text="Завершить" Foreground="{StaticResource DangerBrush}" FontWeight="SemiBold" />
+                                </Button>
+                                <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="Отмена" Command="{Binding CancelTerminateCommand}" />
+                                <TextBlock Text="Завершить этот сеанс?" VerticalAlignment="Center" TextWrapping="Wrap" />
+                            </DockPanel>
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+
                 <Style x:Key="TgRow" TargetType="Button">
                     <Setter Property="Cursor" Value="Hand" />
                     <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -340,6 +379,7 @@
                 </DockPanel>
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding DataContext.VersionText, RelativeSource={RelativeSource AncestorType=UserControl}, StringFormat=TG Check {0}}"
                            Style="{StaticResource Caption}" Margin="22,10,0,14" />
+                <Grid>
                 <ScrollViewer VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True">
                 <StackPanel>
                     <!-- Профиль: аватар, имя, @ник — клик открывает свой профиль -->
@@ -403,8 +443,60 @@
                             <TextBlock Text="Очистить кэш" VerticalAlignment="Center" />
                         </DockPanel>
                     </Button>
+
+                    <Border Style="{StaticResource TgDivider}" />
+                    <TextBlock Text="Конфиденциальность" Style="{StaticResource TgSection}" />
+                    <Button Style="{StaticResource TgRow}" Tag="&#xE977;" Command="{Binding OpenSessionsCommand}">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding SessionsCountText}" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="Активные сеансы" VerticalAlignment="Center" />
+                        </DockPanel>
+                    </Button>
                 </StackPanel>
                 </ScrollViewer>
+
+                <!-- Активные сеансы: этот сеанс, другие устройства; завершить один (подтверждение в строке) или все, кроме этого -->
+                <Grid Background="{StaticResource SurfaceBrush}" Visibility="Collapsed" helpers:Anim.Mode="Fade" helpers:Anim.Show="{Binding IsSessionsOpen}">
+                    <DockPanel>
+                        <DockPanel DockPanel.Dock="Top" Margin="12,0,12,6">
+                            <Button DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE72B;" ToolTip="Назад" Command="{Binding CloseSessionsCommand}" />
+                            <TextBlock Text="Активные сеансы" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Margin="6,0,0,0" />
+                        </DockPanel>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True">
+                            <StackPanel Margin="0,0,0,16">
+                                <views:Spinner Width="24" Height="24" Margin="0,30,0,0" Visibility="{Binding IsSessionsLoading, Converter={StaticResource BoolToVis}}" />
+                                <TextBlock Text="{Binding SessionsError}" Style="{StaticResource ErrorText}" Margin="22,10,22,0" TextWrapping="Wrap"
+                                           Visibility="{Binding SessionsError, Converter={StaticResource NullToVis}}" />
+
+                                <TextBlock Text="Это устройство" Style="{StaticResource TgSection}" Visibility="{Binding CurrentSession, Converter={StaticResource NullToVis}}" />
+                                <ContentControl Content="{Binding CurrentSession}" ContentTemplate="{StaticResource SessionRow}" Focusable="False"
+                                                Visibility="{Binding CurrentSession, Converter={StaticResource NullToVis}}" />
+                                <!-- Завершить все, кроме этого — с подтверждением -->
+                                <StackPanel Visibility="{Binding HasOtherSessions, Converter={StaticResource BoolToVis}}">
+                                    <Button Style="{StaticResource TgRow}" Tag="&#xE7E8;" Command="{Binding AskTerminateOthersCommand}"
+                                            Visibility="{Binding IsConfirmingOthers, Converter={StaticResource InvBoolToVis}}">
+                                        <TextBlock Text="Завершить все другие сеансы" Foreground="{StaticResource DangerBrush}" VerticalAlignment="Center" />
+                                    </Button>
+                                    <Border Margin="22,6,16,6" Padding="12,10" CornerRadius="10" Background="#1FE5534B"
+                                            Visibility="{Binding IsConfirmingOthers, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel>
+                                            <TextBlock Text="Выйти из аккаунта на всех других устройствах?" TextWrapping="Wrap" />
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                                                <Button Style="{StaticResource GhostButton}" Content="Отмена" Command="{Binding CancelTerminateOthersCommand}" />
+                                                <Button Style="{StaticResource GhostButton}" Command="{Binding TerminateOthersCommand}" Margin="6,0,0,0">
+                                                    <TextBlock Text="Завершить" Foreground="{StaticResource DangerBrush}" FontWeight="SemiBold" />
+                                                </Button>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                    <TextBlock Text="Другие сеансы" Style="{StaticResource TgSection}" />
+                                    <ItemsControl ItemsSource="{Binding OtherSessions}" ItemTemplate="{StaticResource SessionRow}" Focusable="False" />
+                                </StackPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Grid>
+                </Grid>
             </DockPanel>
         </Border>
 

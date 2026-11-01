@@ -388,12 +388,82 @@ public sealed partial class ProfileViewModel : ObservableObject
         vm.EnsurePreview(_tg.Media);
         VoicePlayback.Attach(vm);
         Music = vm;
+        _ = LoadSongsAsync(owner);
+    }
+
+    // ---- вся музыка профиля: под карточкой «Все песни · N» раскрывает список; на своём профиле у каждой — сердечко
+    // (снять — песня уходит из профиля и из «Любимых»).
+    public ObservableCollection<MusicTrackViewModel> Songs { get; } = [];
+    [ObservableProperty] private bool _isSongsOpen;
+    public bool HasManySongs => Songs.Count > 1;
+    public string SongsText => $"{(IsSongsOpen ? "Скрыть" : "Все песни")} · {Songs.Count}";
+    private long _songsOf;
+
+    partial void OnIsSongsOpenChanged(bool value) => OnPropertyChanged(nameof(SongsText));
+
+    private async Task LoadSongsAsync(PeerRef owner)
+    {
+        if (_songsOf == owner.Id && Songs.Count > 0) return;
+        _songsOf = owner.Id;
+        try
+        {
+            var songs = await Task.Run(() => _tg.GetProfileMusicAsync(owner));
+            if (_songsOf != owner.Id) return;
+            Songs.Clear();
+            foreach (var s in songs) Songs.Add(new MusicTrackViewModel(Core.Music.MusicTrack.FromTelegram(s), Songs));
+        }
+        catch (Exception ex) { Logging.Write($"profile music: {ex.Message}"); }
+        OnPropertyChanged(nameof(HasManySongs));
+        OnPropertyChanged(nameof(SongsText));
+    }
+
+    [RelayCommand]
+    private void ToggleSongs() => IsSongsOpen = !IsSongsOpen;
+
+    /// <summary>Песня из списка — в плеере музыки, дальше по списку профиля (потом подбор).</summary>
+    [RelayCommand]
+    private Task PlaySong(MusicTrackViewModel? vm) =>
+        vm is not null && MusicViewModel.Instance is { } music ? music.PlayCommand.ExecuteAsync(vm) : Task.CompletedTask;
+
+    /// <summary>Снять сердечко (только своя музыка): песня уходит из профиля.</summary>
+    [RelayCommand]
+    private async Task UnlikeSong(MusicTrackViewModel? vm)
+    {
+        if (vm?.Track.Song is not { } song || !IsSelf || MusicNow.SetLiked is not { } setLiked) return;
+        try
+        {
+            await setLiked(song, false);
+            Songs.Remove(vm);
+            if (MusicNow.Instance.Song?.MediaId == song.MediaId) MusicNow.Instance.IsLiked = false;
+            if (Music?.Item.MediaId == song.MediaId)
+            {
+                // Это была песня на карточке — на карточку встаёт следующая.
+                if (Songs.FirstOrDefault()?.Track.Song is { } next && Profile?.Peer is { } owner)
+                {
+                    var card = new MessageViewModel(next, owner);
+                    card.EnsurePreview(_tg.Media);
+                    VoicePlayback.Attach(card);
+                    Music = card;
+                }
+                else Music = null;
+            }
+            OnPropertyChanged(nameof(HasManySongs));
+            OnPropertyChanged(nameof(SongsText));
+            _shell.ShowToast("Песня убрана из профиля", false);
+        }
+        catch (Exception ex) { _shell.ShowToast(TgErrors.Describe(ex), true); }
     }
 
     [RelayCommand]
     private async Task PlayMusic()
     {
         if (Music is not { } m) return;
+        // Есть список песен профиля — играет через него (дальше — следующие песни профиля).
+        if (Songs.FirstOrDefault(s => s.Track.Song?.MediaId == m.Item.MediaId) is { } inList && MusicViewModel.Instance is not null)
+        {
+            await PlaySong(inList);
+            return;
+        }
         try
         {
             if (MusicPlayer.Instance.Key == m.AudioKey) { MusicPlayer.Instance.Toggle(m.AudioKey, ""); return; }

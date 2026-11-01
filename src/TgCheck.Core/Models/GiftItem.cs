@@ -20,6 +20,9 @@ public sealed class GiftItem
     public long? FromId { get; init; }
     public string? FromName { get; init; }
     public string? Message { get; init; }
+    /// <summary>Премиум-эмодзи и оформление в сообщении к подарку — как в Telegram.</summary>
+    public IReadOnlyList<CustomEmojiSpan> MessageEmoji { get; init; } = [];
+    public IReadOnlyList<TextStyleSpan> MessageFormatting { get; init; } = [];
 
     /// <summary>Подарок скрыт с профиля.</summary>
     public bool IsHidden { get; init; }

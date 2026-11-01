@@ -34,6 +34,9 @@ public static class MarkdownEntities
     /// <summary>Текст без значков разметки и оформление (null — оформления нет).</summary>
     public static (string Text, MessageEntity[]? Entities) Parse(string text)
     {
+        // Поле ввода даёт переводы строк \r\n, а Telegram хранит \n: иначе свежеотправленное (блоки кода особенно)
+        // до перезахода в чат рисовалось со сдвигом оформления.
+        text = (text ?? "").Replace("\r\n", "\n");
         if (string.IsNullOrEmpty(text) || text.IndexOfAny(['`', '*', '_', '~', '|']) < 0) return (text, null);
         var sb = new StringBuilder(text.Length);
         var entities = new List<MessageEntity>();

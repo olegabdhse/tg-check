@@ -73,6 +73,7 @@ public partial class ConversationView : UserControl
             if (e.OriginalSource is FrameworkElement { DataContext: MessageViewModel m }) _vm?.MarkListened(m);
         }));
         Anim.SetShow(JumpButton, false);
+        FeedTop.SizeChanged += (_, _) => UpdateFloatingDate(); // закреплённые появились или скрылись — плашка даты под ними
         JumpButton.Visibility = Visibility.Collapsed;
     }
 
@@ -315,6 +316,66 @@ public partial class ConversationView : UserControl
         Composer.Focus();
     }
 
+    // ---- плавающая дата: разделитель дня ушёл за верх ленты — его дата стоит под панелью закреплённых (как в Telegram);
+    // следующий разделитель, подъезжая снизу, выталкивает её вверх, а когда сам дошёл до места — плашка берёт его дату.
+
+    private bool _floatingShown;
+    private string? _floatingText;
+
+    private double FeedY(int index)
+    {
+        if (Feed.ItemContainerGenerator.ContainerFromIndex(index) is not FrameworkElement el || !el.IsVisible) return double.NaN;
+        try { return el.TransformToAncestor(Scroller).Transform(new Point()).Y; }
+        catch (InvalidOperationException) { return double.NaN; }
+    }
+
+    private void UpdateFloatingDate()
+    {
+        if (_vm is null) return;
+        var items = _vm.Items;
+        var top = FeedTop.ActualHeight; // верх видимой ленты — под плеером и закреплёнными
+        var pillTop = top + 6;
+        var pillHeight = Math.Max(FloatingDate.ActualHeight, 24);
+        // Первый элемент, видимый под верхом (контейнеры по порядку — двоичный поиск).
+        int lo = 0, hi = items.Count - 1, first = -1;
+        while (lo <= hi)
+        {
+            var mid = (lo + hi) / 2;
+            var y = FeedY(mid);
+            if (double.IsNaN(y)) { first = -1; break; }
+            var el = (FrameworkElement)Feed.ItemContainerGenerator.ContainerFromIndex(mid);
+            if (y + el.ActualHeight > top) { first = mid; hi = mid - 1; }
+            else lo = mid + 1;
+        }
+        DateSeparatorViewModel? date = null;
+        var dateIndex = -1;
+        for (var i = first; i >= 0; i--)
+            if (items[i] is DateSeparatorViewModel d) { date = d; dateIndex = i; break; }
+        // Свой разделитель дня ещё виден (или его нет) — плашка не нужна.
+        var show = date is not null && FeedY(dateIndex) < pillTop - 4 && Scroller.ScrollableHeight > 1;
+        if (show)
+        {
+            if (_floatingText != date!.Text) FloatingDateText.Text = _floatingText = date.Text;
+            FloatingDate.Margin = new Thickness(0, pillTop, 0, 0);
+            // Следующий разделитель подъехал вплотную — плашка уезжает вверх перед ним.
+            var shift = 0.0;
+            for (var i = first + 1; i < items.Count && i <= first + 40; i++)
+            {
+                if (items[i] is not DateSeparatorViewModel) continue;
+                var y = FeedY(i) + 12; // у разделителя отступ сверху 12
+                if (!double.IsNaN(y) && y < pillTop + pillHeight + 4) shift = y - (pillTop + pillHeight + 4);
+                break;
+            }
+            FloatingDateShift.Y = shift;
+        }
+        if (show == _floatingShown) return;
+        _floatingShown = show;
+        FloatingDate.BeginAnimation(OpacityProperty, new DoubleAnimation(show ? 1 : 0, TimeSpan.FromMilliseconds(show ? 160 : 220))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+        });
+    }
+
     private async void Scroller_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {
         if (_vm is null) return;
@@ -339,6 +400,7 @@ public partial class ConversationView : UserControl
         if (e.VerticalChange != 0 || e.ExtentHeightChange != 0) MarkReadSoon();
         if (e.VerticalChange != 0 && _vm.HasPinned) { _pinnedTimer.Stop(); _pinnedTimer.Start(); }
         if (e.VerticalChange != 0 || e.ViewportHeightChange != 0) RequestPreviewsSoon();
+        if (e.VerticalChange != 0 || e.ExtentHeightChange != 0 || e.ViewportHeightChange != 0) UpdateFloatingDate();
 
         // Фоновая подгрузка истории заранее (за ~1500 px до верха): позицию держит якорь прокрутки — незаметно для глаза.
         if (!_loadingOlder && !_feedHidden && Scroller.VerticalOffset < 1500 && e.VerticalChange < 0 && _vm.HasMoreHistory)

@@ -28,6 +28,7 @@ public sealed partial class TelegramService
                     Caption = isOut ? "Вы отправили подарок" : hidden ? "Подарок от скрытого отправителя" : fromWho,
                     Title = g.gift?.Title,
                     Message = g.message?.text is { Length: > 0 } text ? text : null,
+                    MessageEmoji = EmojiOf(g.message), MessageFormatting = MapFormatting(g.message?.entities),
                     Note = note,
                     Stars = gift?.stars ?? 0,
                 };

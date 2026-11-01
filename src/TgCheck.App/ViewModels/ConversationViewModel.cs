@@ -21,6 +21,8 @@ public sealed partial class AttachmentViewModel(string path) : ObservableObject
     public ImageSource? Thumb { get; } = LoadThumb(path);
     public bool IsVideo => System.IO.Path.GetExtension(Path).ToLowerInvariant() is ".mp4" or ".mov" or ".webm" or ".mkv" or ".avi";
     public string Icon => IsVideo ? "\uE714" : System.IO.Path.GetExtension(Path).ToLowerInvariant() is ".mp3" or ".ogg" or ".wav" or ".m4a" or ".flac" ? "\uE8D6" : "\uE8A5";
+    /// <summary>\u0428\u0438\u0440\u0438\u043D\u0430 / \u0432\u044B\u0441\u043E\u0442\u0430 \u0441\u043D\u0438\u043C\u043A\u0430 \u2014 \u0434\u043B\u044F \u0441\u0435\u0442\u043A\u0438 \u0432 \u043E\u043A\u043D\u0435 \u043E\u0442\u043F\u0440\u0430\u0432\u043A\u0438.</summary>
+    public double Aspect => Thumb is System.Windows.Media.Imaging.BitmapSource { PixelHeight: > 0 } b ? (double)b.PixelWidth / b.PixelHeight : 1;
     [ObservableProperty] private double _progress;
 
     private static ImageSource? LoadThumb(string path)
@@ -50,7 +52,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         UpdateStatus();
         AudioPlayer.Instance.Ended += OnAudioEnded;
         Items.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ShowStartBot));
-        Attachments.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ShowMic));
+        Attachments.CollectionChanged += (_, _) => { OnPropertyChanged(nameof(ShowMic)); OnAttachmentsChanged(); };
     }
 
     /// <summary>Ветка комментариев к посту канала: чат обсуждения, отфильтрованный по исходному сообщению.</summary>
@@ -415,7 +417,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
 
     private bool _loadingNewer;
 
-    private int _quietId;
+    private bool _quiet; // сообщения встают на место заготовки отправки — без анимации «прилёта»
 
     private void AppendRange(IEnumerable<MessageItem> messages, bool animate)
     {
@@ -432,7 +434,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
                 continue;
             }
             var vm = Create(m);
-            vm.IsNew = animate && m.Id != _quietId;
+            vm.IsNew = animate && !_quiet;
             var day = m.DateUtc.ToLocalTime().Date;
             if (last is null || last.Item.DateUtc.ToLocalTime().Date != day) Items.Add(new DateSeparatorViewModel(day));
             Items.Add(vm);
@@ -745,12 +747,29 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
                 var reply = ReplyTo?.Id ?? SendTopId;
                 Draft = "";
                 ReplyTo = null;
-                var sent = await _tg.SendTextAsync(Peer, text, reply);
-                if (!_byId.ContainsKey(sent.Id))
+                // Как в Telegram: сообщение сразу в ленте с часиками, а когда сервер принял — на его месте настоящее.
+                UploadViewModel? pending = null;
+                if (!_detached && !IsForum)
                 {
-                    OnMessageReceived(sent);
-                    _owner.OnMessageReceived(sent, fromConversation: true);
+                    pending = new UploadViewModel("", "") { Caption = MarkdownEntities.Parse(text).Text, IsText = true };
+                    Items.Add(pending);
+                    ScrollToBottomRequested?.Invoke(true);
                 }
+                MessageItem sent;
+                try { sent = await _tg.SendTextAsync(Peer, text, reply); }
+                catch
+                {
+                    if (pending is not null) Items.Remove(pending);
+                    throw;
+                }
+                _quiet = true;
+                try
+                {
+                    if (pending is not null) Items.Remove(pending);
+                    if (!_byId.ContainsKey(sent.Id)) OnMessageReceived(sent);
+                }
+                finally { _quiet = false; }
+                _owner.OnMessageReceived(sent, fromConversation: true);
             }
         }
         catch (Exception ex)
@@ -1026,7 +1045,23 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         }
     }
 
-    partial void OnSendAsFilesChanged(bool value) => OnPropertyChanged(nameof(AttachmentsTitle));
+    partial void OnSendAsFilesChanged(bool value) => OnAttachmentsChanged();
+
+    // Окно отправки: снимки — сеткой (как альбом после отправки), чтобы были видны все; остальное — строками файлов.
+    public IReadOnlyList<AttachmentViewModel> MediaAttachments => SendAsFiles ? [] : Attachments.Where(a => a.Thumb is not null).ToList();
+    public IReadOnlyList<AttachmentViewModel> FileAttachments => SendAsFiles ? Attachments.ToList() : Attachments.Where(a => a.Thumb is null).ToList();
+    public bool HasMediaAttachments => MediaAttachments.Count > 0;
+    /// <summary>«Без сжатия» — только когда есть что сжимать (фото, видео); у одних файлов галочка не нужна.</summary>
+    public bool HasCompressible => Attachments.Any(a => a.IsImage || a.IsVideo);
+
+    private void OnAttachmentsChanged()
+    {
+        OnPropertyChanged(nameof(AttachmentsTitle));
+        OnPropertyChanged(nameof(MediaAttachments));
+        OnPropertyChanged(nameof(FileAttachments));
+        OnPropertyChanged(nameof(HasMediaAttachments));
+        OnPropertyChanged(nameof(HasCompressible));
+    }
 
     [RelayCommand]
     private void CancelAttachments()
@@ -1102,37 +1137,53 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         {
             Tiles = asMedia ? parts : [],
             Files = asMedia ? [] : parts,
+            Caption = caption.Length > 0 ? MarkdownEntities.Parse(caption).Text : null, // подпись видна и пока идёт отправка
         };
         var fractions = new double[files.Count];
         await RunUploadAsync(up, async () =>
         {
-            await _tg.SendFilesAsync(Peer, files.Select(f => f.Path).ToList(), caption.Length > 0 ? caption : null, reply, asFiles,
+            var sent = await _tg.SendFilesAsync(Peer, files.Select(f => f.Path).ToList(), caption.Length > 0 ? caption : null, reply, asFiles,
                 new Progress<(int Index, double Fraction)>(p =>
                 {
                     fractions[p.Index] = p.Fraction;
                     if (p.Index < parts.Count) parts[p.Index].Progress = p.Fraction;
                     up.Progress = fractions.Average();
                 }), up.Cts.Token);
-            return null; // сами сообщения приходят обновлением от сервера
+            return sent;
+        }, sent =>
+        {
+            // У отправленных фото сразу миниатюра из файла — пузырь не мигает серым, пока качается превью с сервера.
+            for (var i = 0; i < sent.Count && i < parts.Count; i++)
+                if (_byId.TryGetValue(sent[i].Id, out var vm))
+                {
+                    var target = vm.Album.FirstOrDefault(a => a.Id == sent[i].Id) ?? vm;
+                    target.Preview ??= parts[i].Preview;
+                }
         });
     }
 
     // Отправка с загрузкой: в ленте сразу появляется пузырь «Отправка… N%» с крестиком; по готовности — настоящее сообщение.
-    private async Task RunUploadAsync(UploadViewModel up, Func<Task<MessageItem?>> send)
+    private Task RunUploadAsync(UploadViewModel up, Func<Task<MessageItem?>> send) =>
+        RunUploadAsync(up, async () => await send() is { } m ? [m] : (IReadOnlyList<MessageItem>)[]);
+
+    private async Task RunUploadAsync(UploadViewModel up, Func<Task<IReadOnlyList<MessageItem>>> send, Action<IReadOnlyList<MessageItem>>? placed = null)
     {
         Items.Add(up);
         ScrollToBottomRequested?.Invoke(true);
         try
         {
             var sent = await send();
-            Items.Remove(up);
-            if (sent is not null)
+            // Настоящие сообщения встают на место заготовки в том же кадре: заготовка не исчезает до их появления,
+            // без анимации «прилёта» и без скачка ленты.
+            _quiet = true;
+            try
             {
-                _quietId = sent.Id; // встаёт на место заготовки той же формы — без анимации «прилёта», не скачет
-                OnMessageReceived(sent);
-                _quietId = 0;
-                _owner.OnMessageReceived(sent, fromConversation: true);
+                Items.Remove(up);
+                foreach (var m in sent) OnMessageReceived(m);
             }
+            finally { _quiet = false; }
+            placed?.Invoke(sent);
+            foreach (var m in sent) _owner.OnMessageReceived(m, fromConversation: true);
         }
         catch (Exception ex)
         {

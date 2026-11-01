@@ -535,7 +535,8 @@ public sealed partial class TelegramService
     /// Отправляет файлы. Фото/видео (если не asFiles) уходят альбомом до 10 штук, остальное — документами;
     /// подпись прикрепляется к первому сообщению.
     /// </summary>
-    public async Task SendFilesAsync(PeerRef peer, IReadOnlyList<string> paths, string? caption, int? replyToId,
+    /// <returns>Отправленные сообщения (лента ставит их на место заготовки сразу, не дожидаясь обновления).</returns>
+    public async Task<IReadOnlyList<MessageItem>> SendFilesAsync(PeerRef peer, IReadOnlyList<string> paths, string? caption, int? replyToId,
         bool asFiles, IProgress<(int Index, double Fraction)>? progress = null, CancellationToken ct = default)
     {
         EnsureNotIgnored(peer);
@@ -572,13 +573,15 @@ public sealed partial class TelegramService
 
         ct.ThrowIfCancellationRequested();
         var first = true;
+        var sent = new List<MessageItem>();
         foreach (var chunk in medias.Chunk(10))
         {
             var (text, entities) = first ? MarkdownEntities.Parse(caption ?? "") : ("", null);
-            if (chunk.Length == 1) await _client.SendMessageAsync(input, text, chunk[0], first ? replyToId ?? 0 : 0, entities);
-            else await _client.SendAlbumAsync(input, chunk, text, first ? replyToId ?? 0 : 0, entities);
+            if (chunk.Length == 1) sent.Add(MapMessage(await _client.SendMessageAsync(input, text, chunk[0], first ? replyToId ?? 0 : 0, entities)));
+            else sent.AddRange((await _client.SendAlbumAsync(input, chunk, text, first ? replyToId ?? 0 : 0, entities)).Select(MapMessage));
             first = false;
         }
+        return sent;
     }
 
     private static string MimeOf(string ext) => ext.ToLowerInvariant() switch

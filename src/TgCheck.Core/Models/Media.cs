@@ -182,3 +182,20 @@ public sealed class InlineResult : MediaHolder
 
 /// <summary>Ответ инлайн-бота: QueryId нужен для отправки; Gallery — показывать сеткой картинок.</summary>
 public sealed record InlineResults(long QueryId, IReadOnlyList<InlineResult> Items, string? NextOffset, bool Gallery);
+
+/// <summary>Превью ссылки под текстом сообщения (как в Telegram): сайт, заголовок, описание и картинка.</summary>
+public sealed class LinkPreview : MediaHolder
+{
+    public required string Url { get; init; }
+    public string? SiteName { get; init; }
+    public string? Title { get; init; }
+    public string? Description { get; init; }
+    /// <summary>Картинка крупно под текстом (иначе — маленькая справа).</summary>
+    public bool LargeImage { get; init; }
+    public bool HasImage => Photo is not null;
+
+    internal static LinkPreview Create(string url, string? site, string? title, string? description, TL.Photo? photo, bool large) => new()
+    {
+        Url = url, SiteName = site, Title = title, Description = description, Photo = photo, LargeImage = large,
+    };
+}

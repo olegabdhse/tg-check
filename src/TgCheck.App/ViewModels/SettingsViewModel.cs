@@ -1,3 +1,4 @@
+using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using TgCheck.App.Helpers;
@@ -105,5 +106,118 @@ public sealed partial class SettingsViewModel : ObservableObject
         catch (Exception ex) { ClearResultText = "Не удалось: " + ex.Message; }
         Stage = ClearStage.Done;
         await RefreshCacheSizeAsync();
+    }
+
+    // ---- активные сеансы (как в Telegram): этот сеанс, остальные устройства; завершить один или все, кроме этого
+
+    public Func<Task<IReadOnlyList<SessionInfo>>>? GetSessions { get; set; }
+    public Func<long, Task>? TerminateSessionAction { get; set; }
+    public Func<Task>? TerminateOthersAction { get; set; }
+
+    [ObservableProperty] private bool _isSessionsOpen;
+    [ObservableProperty] private bool _isSessionsLoading;
+    [ObservableProperty] private SessionItemViewModel? _currentSession;
+    [ObservableProperty] private bool _isConfirmingOthers;
+    [ObservableProperty] private string? _sessionsError;
+    public System.Collections.ObjectModel.ObservableCollection<SessionItemViewModel> OtherSessions { get; } = [];
+    public bool HasOtherSessions => OtherSessions.Count > 0;
+    [ObservableProperty] private string _sessionsCountText = "";
+
+    [RelayCommand]
+    private async Task OpenSessions()
+    {
+        IsSessionsOpen = true;
+        IsConfirmingOthers = false;
+        await LoadSessionsAsync();
+    }
+
+    [RelayCommand]
+    private void CloseSessions() => IsSessionsOpen = false;
+
+    private async Task LoadSessionsAsync()
+    {
+        if (GetSessions is null) return;
+        IsSessionsLoading = OtherSessions.Count == 0 && CurrentSession is null;
+        SessionsError = null;
+        try
+        {
+            var sessions = await Task.Run(GetSessions);
+            CurrentSession = sessions.FirstOrDefault(s => s.IsCurrent) is { } cur ? new SessionItemViewModel(cur, this) : null;
+            OtherSessions.Clear();
+            foreach (var s in sessions.Where(s => !s.IsCurrent)) OtherSessions.Add(new SessionItemViewModel(s, this));
+            SessionsCountText = Fmt.N(sessions.Count) + " " + Fmt.Plural(sessions.Count, "сеанс", "сеанса", "сеансов");
+        }
+        catch (Exception ex) { SessionsError = TgCheck.Core.Services.TgErrors.Describe(ex); }
+        IsSessionsLoading = false;
+        OnPropertyChanged(nameof(HasOtherSessions));
+    }
+
+    [RelayCommand]
+    private void AskTerminateOthers() => IsConfirmingOthers = true;
+
+    [RelayCommand]
+    private void CancelTerminateOthers() => IsConfirmingOthers = false;
+
+    [RelayCommand]
+    private async Task TerminateOthers()
+    {
+        if (TerminateOthersAction is null) return;
+        IsConfirmingOthers = false;
+        try
+        {
+            await TerminateOthersAction();
+            OtherSessions.Clear();
+            OnPropertyChanged(nameof(HasOtherSessions));
+        }
+        catch (Exception ex) { SessionsError = TgCheck.Core.Services.TgErrors.Describe(ex); }
+        await LoadSessionsAsync();
+    }
+
+    internal async Task TerminateAsync(SessionItemViewModel s)
+    {
+        if (TerminateSessionAction is null) return;
+        try
+        {
+            await TerminateSessionAction(s.Info.Hash);
+            OtherSessions.Remove(s);
+            OnPropertyChanged(nameof(HasOtherSessions));
+        }
+        catch (Exception ex) { SessionsError = TgCheck.Core.Services.TgErrors.Describe(ex); }
+    }
+}
+
+/// <summary>Строка сеанса: устройство, приложение, место и время; «Завершить» — с подтверждением в самой строке.</summary>
+public sealed partial class SessionItemViewModel(SessionInfo info, SettingsViewModel owner) : ObservableObject
+{
+    public SessionInfo Info { get; } = info;
+    public string Title => Info.Device.Length > 0 ? Info.Device : "Неизвестное устройство";
+    public string AppText => string.Join(" ", new[] { Info.AppName, Info.AppVersion }.Where(s => s.Length > 0))
+                             + (Info.IsOfficialApp ? "" : " · неофициальное");
+    public string PlaceText => string.Join(" · ", new[] { Info.Ip, Info.Country }.Where(s => s.Length > 0));
+    public string SystemText => string.Join(" ", new[] { Info.Platform, Info.SystemVersion }.Where(s => s.Length > 0));
+    public string ActiveText => Info.IsCurrent ? "в сети" : Fmt.ChatTime(Info.ActiveUtc);
+    /// <summary>Значок по системе: телефон, компьютер, браузер.</summary>
+    public string Icon => (Info.Platform + " " + Info.Device + " " + Info.AppName).ToLowerInvariant() switch
+    {
+        var p when p.Contains("android") || p.Contains("ios") || p.Contains("iphone") || p.Contains("ipad") => "",
+        var p when p.Contains("web") || p.Contains("chrome") || p.Contains("firefox") || p.Contains("safari") || p.Contains("edge") => "",
+        _ => "",
+    };
+    public Brush IconBrush { get; } = MessageViewModel.GradientFor(info.Device, info.AppName);
+    public bool IsPending => Info.IsPending;
+
+    [ObservableProperty] private bool _isConfirming;
+    [ObservableProperty] private bool _isBusy;
+
+    [RelayCommand] private void AskTerminate() => IsConfirming = true;
+    [RelayCommand] private void CancelTerminate() => IsConfirming = false;
+
+    [RelayCommand]
+    private async Task Terminate()
+    {
+        IsBusy = true;
+        await owner.TerminateAsync(this);
+        IsBusy = false;
+        IsConfirming = false;
     }
 }

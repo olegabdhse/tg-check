@@ -180,6 +180,8 @@ public sealed class MusicTrack
         // непонятно, что за песня: в поиске и подборе такие не показываем.
         var title = Normalize(t.Title);
         if (title.Length >= 3 && Normalize(t.Artist).Contains(title)) return false;
+        // Исполнитель — одни знаки («.», «-», «?»): непонятно, кто поёт.
+        if (t.Artist.Trim().Length > 0 && Normalize(t.Artist).Length == 0) return false;
         return Normalize(t.Title).Length > 0;
     }
 

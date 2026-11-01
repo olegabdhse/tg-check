@@ -65,6 +65,7 @@ public static partial class RichText
     {
         tb.Inlines.Clear();
         _animate = GetTrailingSpace(tb) > 0 || GetEmojiSize(tb) >= 28;
+        _mentions = GetTrailingSpace(tb) > 0; // только текст сообщений
         var text = GetText(tb) ?? "";
         var size = GetEmojiSize(tb) is > 0 and var s ? s : tb.FontSize * 1.3;
 
@@ -95,7 +96,7 @@ public static partial class RichText
         var pos = 0;
         foreach (Match m in UrlRegex().Matches(text))
         {
-            if (m.Index > pos) AddText(inlines, text[pos..m.Index], size);
+            if (m.Index > pos) AddMentioned(inlines, text[pos..m.Index], size);
             var url = m.Value.TrimEnd('.', ',', ')', '!', '?', ';', ':');
             var link = new Hyperlink(new Run(url)) { ToolTip = url };
             if (Application.Current.TryFindResource("LinkStyle") is Style style) link.Style = style;
@@ -104,7 +105,59 @@ public static partial class RichText
             inlines.Add(link);
             pos = m.Index + url.Length;
         }
+        if (pos < text.Length) AddMentioned(inlines, text[pos..], size);
+    }
+
+    // ---- @упоминания в сообщениях: имя, которое есть в Telegram, — синяя ссылка на профиль; нет такого — обычный текст.
+    // Сначала рисуется обычным текстом, проверка — в фоне (без задержки показа).
+
+    [GeneratedRegex(@"(?<![\w@./])@([A-Za-z][A-Za-z0-9_]{3,31})\b")]
+    private static partial Regex MentionRegex();
+
+    /// <summary>Есть ли такое @имя в Telegram (задаёт приложение после входа).</summary>
+    public static Func<string, Task<bool>>? MentionExists { get; set; }
+
+    /// <summary>Открыть профиль по @имени (задаёт приложение).</summary>
+    public static Action<string>? OpenMention { get; set; }
+
+    // Упоминания проверяются только в тексте сообщений (не в списке чатов и шапках — там они не ссылки).
+    private static bool _mentions;
+
+    private static readonly Brush MentionBrush = Frozen(Color.FromRgb(0x6A, 0xB3, 0xF3));
+
+    private static void AddMentioned(InlineCollection inlines, string text, double size)
+    {
+        if (!_mentions || MentionExists is not { } exists || text.IndexOf('@') < 0) { AddText(inlines, text, size); return; }
+        var pos = 0;
+        foreach (Match m in MentionRegex().Matches(text))
+        {
+            if (m.Index > pos) AddText(inlines, text[pos..m.Index], size);
+            var name = m.Groups[1].Value;
+            var span = new Span(new Run(m.Value));
+            inlines.Add(span);
+            _ = MarkMentionAsync(span, name, exists);
+            pos = m.Index + m.Length;
+        }
         if (pos < text.Length) AddText(inlines, text[pos..], size);
+    }
+
+    private static async Task MarkMentionAsync(Span span, string name, Func<string, Task<bool>> exists)
+    {
+        bool found;
+        try { found = await exists(name); }
+        catch { return; }
+        if (!found) return;
+        span.Foreground = MentionBrush;
+        span.Cursor = System.Windows.Input.Cursors.Hand;
+        span.ToolTip = "@" + name;
+        span.MouseEnter += (_, _) => span.TextDecorations = TextDecorations.Underline;
+        span.MouseLeave += (_, _) => span.TextDecorations = null;
+        // Нажатие — профиль (у выделяемого текста отпускание кнопки забирает выделение, поэтому — по нажатию).
+        span.MouseLeftButtonDown += (_, e) =>
+        {
+            if (OpenMention is { } open) open(name); else Shell.Open("https://t.me/" + name);
+            e.Handled = true;
+        };
     }
 
     private static void AddText(InlineCollection inlines, string text, double emojiSize)

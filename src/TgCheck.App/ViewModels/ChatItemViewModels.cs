@@ -668,8 +668,36 @@ public sealed partial class MessageViewModel : ObservableObject
     public string? MapUrl => Item.Latitude is { } la && Item.Longitude is { } lo
         ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"https://www.openstreetmap.org/?mlat={la}&mlon={lo}#map=16/{la}/{lo}") : null;
 
+    // ---- превью ссылки: сайт, заголовок, описание, картинка (как в Telegram)
+    public LinkPreview? Link => Item.Link;
+    public bool HasLink => Item.Link is not null && !IsAlbum;
+    public bool HasLinkTitle => !string.IsNullOrWhiteSpace(Item.Link?.Title);
+    public bool HasLinkDescription => !string.IsNullOrWhiteSpace(Item.Link?.Description);
+    public bool HasLinkSite => !string.IsNullOrWhiteSpace(Item.Link?.SiteName);
+    /// <summary>Картинка крупно под текстом превью.</summary>
+    public bool HasLargeLinkImage => Item.Link is { HasImage: true, LargeImage: true };
+    /// <summary>Картинка маленькая справа от текста превью.</summary>
+    public bool HasSmallLinkImage => Item.Link is { HasImage: true, LargeImage: false };
+    [ObservableProperty] private ImageSource? _linkImage;
+    private bool _linkRequested;
+
+    [RelayCommand]
+    private void OpenLink()
+    {
+        if (Item.Link?.Url is { Length: > 0 } url) Shell.Open(url);
+    }
+
+    private async void EnsureLinkImage(MediaService media)
+    {
+        if (_linkRequested || Item.Link is not { HasImage: true } link) return;
+        _linkRequested = true;
+        try { LinkImage = Images.FromBytesMax(await media.GetMessagePreviewAsync(link).ConfigureAwait(false), 800); }
+        catch (Exception ex) { Logging.Write($"link preview: {ex.Message}"); }
+    }
+
     public async void EnsurePreview(MediaService media)
     {
+        EnsureLinkImage(media);
         if (_previewRequested) return;
         if (Item.Gift is { IsUnique: true } gift)
         {
@@ -705,7 +733,7 @@ public sealed partial class MessageViewModel : ObservableObject
         var bytes = await load.ConfigureAwait(false);
         done = true;
         PreviewProgress = -1;
-        Preview = ImageCache.Put(key, Images.FromBytesMax(bytes, 1280));
+        Preview = ImageCache.Put(key, Images.FromBytesMax(bytes, 1280)) ?? Preview; // не загрузилось — остаётся то, что было (своё отправленное — миниатюра файла)
         // Не загрузилось (ещё нет связи, сбой сети) — пробуем ещё, иначе снимок так и оставался серым.
         if (Preview is null && ++_previewAttempts < 4)
         {
@@ -816,7 +844,13 @@ public sealed partial class UploadViewModel(string title, string icon, ImageSour
     public IReadOnlyList<UploadPart> Files { get; init; } = [];
     public bool IsFiles => Files.Count > 0;
     /// <summary>Старый вид (одна строка «Отправка… N%») — для остального.</summary>
-    public bool IsPlain => !IsVoice && !IsMedia && !IsFiles;
+    public bool IsPlain => !IsVoice && !IsMedia && !IsFiles && !IsText;
+
+    /// <summary>Подпись к вложениям (или сам текст сообщения) — видна, пока сообщение отправляется.</summary>
+    public string? Caption { get; init; }
+    public bool HasCaption => !string.IsNullOrEmpty(Caption);
+    /// <summary>Просто текст: пузырь с текстом и часиками, пока сервер не принял сообщение.</summary>
+    public bool IsText { get; init; }
 
     // ---- голосовое: пузырь той же формы, что после отправки (волна и длительность)
     public string? VoiceDuration { get; init; }

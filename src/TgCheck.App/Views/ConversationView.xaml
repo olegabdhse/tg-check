@@ -639,7 +639,7 @@
                         <TextBlock Text="{Binding Gift.Caption}" FontSize="13" Foreground="#C9D4DF" TextAlignment="Center" TextWrapping="Wrap" Margin="0,10,0,0" />
                         <TextBlock Text="{Binding Gift.Title}" FontSize="16" FontWeight="SemiBold" Foreground="White" TextAlignment="Center" TextWrapping="Wrap"
                                    Margin="0,4,0,0" Visibility="{Binding Gift.Title, Converter={StaticResource NullToVis}}" />
-                        <TextBlock helpers:RichText.Text="{Binding Gift.Message}" helpers:RichText.EmojiSize="18" FontSize="14" Foreground="White"
+                        <TextBlock helpers:RichText.CustomEmoji="{Binding Gift.MessageEmoji}" helpers:RichText.Formatting="{Binding Gift.MessageFormatting}" helpers:RichText.Text="{Binding Gift.Message}" helpers:RichText.EmojiSize="18" FontSize="14" Foreground="White"
                                    TextAlignment="Center" TextWrapping="Wrap" Margin="0,8,0,0"
                                    Visibility="{Binding Gift.Message, Converter={StaticResource NullToVis}}" />
                         <TextBlock Text="{Binding Gift.Note}" FontSize="12" Foreground="#AAC0D4" TextAlignment="Center" TextWrapping="Wrap" Margin="0,8,0,0"
@@ -852,7 +852,8 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <controls:SelectableTextBlock x:Name="Body" Grid.ColumnSpan="2" helpers:RichText.CustomEmoji="{Binding Item.CustomEmoji}" helpers:RichText.Formatting="{Binding Formatting}"
+                                <StackPanel Grid.ColumnSpan="2">
+                                <controls:SelectableTextBlock x:Name="Body" helpers:RichText.CustomEmoji="{Binding Item.CustomEmoji}" helpers:RichText.Formatting="{Binding Formatting}"
                                            helpers:RichText.Text="{Binding Text}" helpers:RichText.EmojiSize="{Binding TextEmojiSize}"
                                            helpers:RichText.TrailingSpace="{Binding ActualWidth, ElementName=Meta}"
                                            TextWrapping="Wrap" FontSize="14" LineHeight="21" HorizontalAlignment="Left"
@@ -860,7 +861,7 @@
                                            Visibility="{Binding ShowPlainText, Converter={StaticResource BoolToVis}}" />
                                 <!-- Текст с блоками кода: куски по порядку, блоки — во всю ширину пузыря; время — под последним -->
                                 <!-- Создаётся только у сообщений с кодом (свёрнутый элемент шаблон не строит) -->
-                                <ContentControl Grid.ColumnSpan="2" Content="{Binding}" Focusable="False" ButtonBase.Click="CopyCode_Click">
+                                <ContentControl Content="{Binding}" Focusable="False" ButtonBase.Click="CopyCode_Click">
                                     <ContentControl.Style>
                                         <Style TargetType="ContentControl">
                                             <Setter Property="Visibility" Value="Collapsed" />
@@ -908,6 +909,41 @@
                                         </Style>
                                     </ContentControl.Style>
                                 </ContentControl>
+                                <!-- Превью ссылки (как в Telegram): полоска слева, сайт, заголовок, описание; картинка — крупно снизу или маленькая справа -->
+                                <Button Style="{StaticResource BareButton}" Margin="0,6,0,19" MinWidth="240" MaxWidth="{Binding TextMaxWidth}" HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Stretch" Cursor="Hand" ToolTip="{Binding Link.Url}" Command="{Binding OpenLinkCommand}"
+                                        Visibility="{Binding HasLink, Converter={StaticResource BoolToVis}}">
+                                    <Border CornerRadius="6" Background="#1F6AB3F3" Padding="10,7,10,9" ClipToBounds="True">
+                                        <Grid>
+                                            <Border Width="3" HorizontalAlignment="Left" Margin="-10,-7,0,-9" Background="#6AB3F3" />
+                                            <StackPanel>
+                                                <DockPanel>
+                                                    <Grid DockPanel.Dock="Right" Width="54" Height="54" Margin="10,2,0,0" VerticalAlignment="Top" helpers:RoundClip.Radius="6"
+                                                          Visibility="{Binding HasSmallLinkImage, Converter={StaticResource BoolToVis}}">
+                                                        <Border Background="#22FFFFFF" />
+                                                        <Image Source="{Binding LinkImage}" Stretch="UniformToFill" />
+                                                    </Grid>
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding Link.SiteName}" Foreground="#6AB3F3" FontWeight="SemiBold" FontSize="13"
+                                                                   TextTrimming="CharacterEllipsis" Visibility="{Binding HasLinkSite, Converter={StaticResource BoolToVis}}" />
+                                                        <TextBlock Text="{Binding Link.Title}" Foreground="#F5F7FA" FontWeight="SemiBold" FontSize="13.5" TextWrapping="Wrap"
+                                                                   MaxHeight="40" TextTrimming="CharacterEllipsis" Margin="0,1,0,0"
+                                                                   Visibility="{Binding HasLinkTitle, Converter={StaticResource BoolToVis}}" />
+                                                        <TextBlock Text="{Binding Link.Description}" Foreground="#D9E2EA" FontSize="13" LineHeight="18" TextWrapping="Wrap"
+                                                                   MaxHeight="72" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"
+                                                                   Visibility="{Binding HasLinkDescription, Converter={StaticResource BoolToVis}}" />
+                                                    </StackPanel>
+                                                </DockPanel>
+                                                <Grid Margin="0,8,0,0" MaxHeight="260" helpers:RoundClip.Radius="6"
+                                                      Visibility="{Binding HasLargeLinkImage, Converter={StaticResource BoolToVis}}">
+                                                    <Border Background="#22FFFFFF" MinHeight="120" />
+                                                    <Image Source="{Binding LinkImage}" Stretch="UniformToFill" MaxHeight="260" />
+                                                </Grid>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </Button>
+                                </StackPanel>
                                 <Border x:Name="Meta" Grid.ColumnSpan="2" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,2,0,-1" CornerRadius="8" Padding="8,0,0,0">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="&#xE7B3;" Style="{StaticResource Icon}" FontSize="11" Foreground="{StaticResource MetaBrush}" Margin="0,0,3,0"
@@ -1224,6 +1260,10 @@
                         <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="240" VerticalAlignment="Center" />
                     </DockPanel>
 
+                    <!-- Подпись к вложениям / текст сообщения — видны, пока идёт отправка -->
+                    <TextBlock Text="{Binding Caption}" TextWrapping="Wrap" MaxWidth="480" Margin="2,2,2,0" LineHeight="20"
+                               Visibility="{Binding HasCaption, Converter={StaticResource BoolToVis}}" />
+
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,2,0,-1">
                         <TextBlock Text="{Binding TimeText}" FontSize="11" Foreground="{StaticResource MetaBrush}" />
                         <TextBlock Text="&#xE823;" Style="{StaticResource Icon}" FontSize="10" Foreground="{StaticResource MetaBrush}" Margin="5,0,0,0"
@@ -1365,6 +1405,15 @@
                 <!-- Подгрузка истории — поверх ленты: индикатор не сдвигает сообщения (раньше лента дёргалась на его высоту) -->
                 <views:Spinner Width="22" Height="22" Margin="0,10,0,0" HorizontalAlignment="Center" VerticalAlignment="Top" IsHitTestVisible="False"
                                Visibility="{Binding IsLoadingOlder, Converter={StaticResource BoolToVis}}" />
+
+                <!-- Дата, когда её разделитель ушёл за верх: стоит под закреплёнными, а следующий разделитель плавно её выталкивает -->
+                <Border x:Name="FloatingDate" HorizontalAlignment="Center" VerticalAlignment="Top" Padding="12,4" CornerRadius="12"
+                        Background="#99182533" IsHitTestVisible="False" Opacity="0">
+                    <Border.RenderTransform>
+                        <TranslateTransform x:Name="FloatingDateShift" />
+                    </Border.RenderTransform>
+                    <TextBlock x:Name="FloatingDateText" FontSize="12" FontWeight="SemiBold" Foreground="#C9D4DF" />
+                </Border>
 
                 <!-- Верх ленты: панель плеера (голосовые, аудио, кружки) и закреплённые -->
                 <StackPanel x:Name="FeedTop" VerticalAlignment="Top">
@@ -2132,7 +2181,7 @@
             <!-- ================================================= Отправка вложений (как в Telegram Desktop) -->
             <Grid Grid.RowSpan="3" Visibility="Collapsed" helpers:Anim.Mode="Fade" helpers:Anim.Show="{Binding HasAttachments}">
                 <Border Background="{StaticResource OverlayBrush}" />
-                <Border Width="440" MaxHeight="640" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="16" Padding="16,14"
+                <Border MaxWidth="460" Margin="12" MaxHeight="640" HorizontalAlignment="Stretch" VerticalAlignment="Center" CornerRadius="16" Padding="16,14"
                         Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
                     <DockPanel>
                         <TextBlock DockPanel.Dock="Top" Text="{Binding AttachmentsTitle}" FontSize="17" FontWeight="SemiBold" Margin="2,0,0,12" />
@@ -2152,44 +2201,64 @@
                         <TextBox x:Name="CaptionBox" DockPanel.Dock="Bottom" Style="{StaticResource InputBox}" FontSize="14" Padding="12,10" Tag="Подпись"
                                  Text="{Binding Draft, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="False" TextWrapping="Wrap" MaxHeight="110"
                                  PreviewKeyDown="Caption_PreviewKeyDown" Margin="0,10,0,0" />
-                        <CheckBox DockPanel.Dock="Bottom" Content="Отправить как файлы (без сжатия)" IsChecked="{Binding SendAsFiles}" Margin="2,10,0,0"
-                                  Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" />
-                        <!-- Превью -->
+                        <!-- «Без сжатия» — только если есть фото или видео (у одних файлов галочка ни к чему) -->
+                        <CheckBox DockPanel.Dock="Bottom" Style="{StaticResource AppCheck}" Content="Отправить как файлы (без сжатия)"
+                                  IsChecked="{Binding SendAsFiles}" Margin="2,10,0,0" FontSize="13"
+                                  Visibility="{Binding HasCompressible, Converter={StaticResource BoolToVis}}" />
+                        <!-- Превью: снимки — сеткой, как альбом после отправки (видны все), файлы — строками -->
                         <ScrollViewer VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True">
-                            <ItemsControl ItemsSource="{Binding Attachments}" Focusable="False">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate DataType="{x:Type vm:AttachmentViewModel}">
-                                        <Grid Margin="0,0,0,8">
-                                            <!-- Фото — крупно, файл — строкой -->
-                                            <Border CornerRadius="10" MaxHeight="300" HorizontalAlignment="Center" helpers:RoundClip.Radius="10"
-                                                    Visibility="{Binding Thumb, Converter={StaticResource NullToVis}}">
-                                                <Image Source="{Binding Thumb}" Stretch="Uniform" MaxHeight="300" />
-                                            </Border>
-                                            <DockPanel Visibility="{Binding Thumb, Converter={StaticResource InvNullToVis}}">
-                                                <Border DockPanel.Dock="Left" Width="46" Height="46" CornerRadius="23" Background="{StaticResource AccentBrush}" Margin="0,0,12,0">
-                                                    <TextBlock Text="{Binding Icon}" Style="{StaticResource Icon}" FontSize="18" Foreground="White"
-                                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <StackPanel>
+                                <ItemsControl ItemsSource="{Binding MediaAttachments}" Focusable="False" Margin="0,0,0,8"
+                                              Visibility="{Binding HasMediaAttachments, Converter={StaticResource BoolToVis}}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <controls:AlbumPanel Spacing="4" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:AttachmentViewModel}">
+                                            <Grid helpers:RoundClip.Radius="8">
+                                                <Border Background="#22FFFFFF" />
+                                                <Image Source="{Binding Thumb}" Stretch="UniformToFill" />
+                                                <Border Width="34" Height="34" CornerRadius="17" Background="#88000000"
+                                                        Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}">
+                                                    <TextBlock Text="&#xE768;" Style="{StaticResource Icon}" FontSize="13" Foreground="White" HorizontalAlignment="Center" />
                                                 </Border>
-                                                <StackPanel VerticalAlignment="Center" Margin="0,0,30,0">
+                                                <Button Style="{StaticResource RoundButton}" Background="#CC000000" Width="24" Height="24"
+                                                        HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0" ToolTip="Убрать"
+                                                        Command="{Binding DataContext.RemoveAttachmentCommand, ElementName=Root}" CommandParameter="{Binding}">
+                                                    <TextBlock Text="&#xE711;" Style="{StaticResource Icon}" FontSize="9" Foreground="White" />
+                                                </Button>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <ItemsControl ItemsSource="{Binding FileAttachments}" Focusable="False">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:AttachmentViewModel}">
+                                            <DockPanel Margin="0,0,0,8">
+                                                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="10" Padding="8"
+                                                        VerticalAlignment="Center" ToolTip="Убрать"
+                                                        Command="{Binding DataContext.RemoveAttachmentCommand, ElementName=Root}" CommandParameter="{Binding}" />
+                                                <Grid DockPanel.Dock="Left" Width="46" Height="46" Margin="0,0,12,0">
+                                                    <Border CornerRadius="23" Background="{StaticResource AccentBrush}">
+                                                        <TextBlock Text="{Binding Icon}" Style="{StaticResource Icon}" FontSize="18" Foreground="White"
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                    </Border>
+                                                    <!-- Снимок, отправляемый файлом, — его миниатюра вместо значка -->
+                                                    <Grid helpers:RoundClip.Radius="8" Visibility="{Binding Thumb, Converter={StaticResource NullToVis}}">
+                                                        <Image Source="{Binding Thumb}" Stretch="UniformToFill" />
+                                                    </Grid>
+                                                </Grid>
+                                                <StackPanel VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                                     <TextBlock Text="{Binding SizeText}" Style="{StaticResource Caption}" />
                                                 </StackPanel>
                                             </DockPanel>
-                                            <Border Height="3" VerticalAlignment="Bottom" HorizontalAlignment="Stretch" Background="{StaticResource AccentBrush}"
-                                                    RenderTransformOrigin="0,0.5">
-                                                <Border.RenderTransform>
-                                                    <ScaleTransform ScaleX="{Binding Progress}" />
-                                                </Border.RenderTransform>
-                                            </Border>
-                                            <Button Style="{StaticResource RoundButton}" Background="#CC000000" Width="24" Height="24"
-                                                    HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0" ToolTip="Убрать"
-                                                    Command="{Binding DataContext.RemoveAttachmentCommand, ElementName=Root}" CommandParameter="{Binding}">
-                                                <TextBlock Text="&#xE711;" Style="{StaticResource Icon}" FontSize="9" Foreground="White" />
-                                            </Button>
-                                        </Grid>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
                         </ScrollViewer>
                     </DockPanel>
                 </Border>

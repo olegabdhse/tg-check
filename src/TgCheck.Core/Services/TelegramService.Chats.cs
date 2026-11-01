@@ -645,6 +645,10 @@ public sealed partial class TelegramService
 
 
 
+    // Премиум-эмодзи текста с оформлением (сообщение к подарку и т.п.).
+    private static IReadOnlyList<CustomEmojiSpan> EmojiOf(TextWithEntities? t) =>
+        t?.entities?.OfType<MessageEntityCustomEmoji>().Select(e => new CustomEmojiSpan(e.offset, e.length, e.document_id)).ToList() ?? [];
+
     private static IReadOnlyList<TextStyleSpan> MapFormatting(MessageEntity[]? entities)
     {
         if (entities is not { Length: > 0 }) return [];
@@ -718,8 +722,18 @@ public sealed partial class TelegramService
                     CustomEmoji = geoItem.CustomEmoji, Formatting = geoItem.Formatting, ViaBot = geoItem.ViaBot, InlineButtons = geoItem.InlineButtons, Comments = geoItem.Comments, Reactions = geoItem.Reactions, Media = MediaKind.Location, MediaTitle = geoItem.MediaTitle,
                     Latitude = point.lat, Longitude = point.lon, GeoAccessHash = point.access_hash, VenueAddress = venue?.address,
                 };
-            case MessageMediaWebPage:
-                return Clone(item, MediaKind.WebPage);
+            case MessageMediaWebPage web:
+                var page = Clone(item, MediaKind.WebPage);
+                if (web.webpage is WebPage w && !string.IsNullOrEmpty(w.url)
+                    && (w.title is not null || w.description is not null || w.site_name is not null || w.photo is Photo))
+                {
+                    // Крупная картинка — как решил отправитель или сайт (фото, видео, большие обложки); иначе маленькая справа.
+                    var large = !web.flags.HasFlag(MessageMediaWebPage.Flags.force_small_media)
+                                && (web.flags.HasFlag(MessageMediaWebPage.Flags.force_large_media) || w.flags.HasFlag(WebPage.Flags.has_large_media)
+                                    || w.type is "photo" or "video" || string.IsNullOrEmpty(w.description));
+                    page.Link = LinkPreview.Create(w.url, w.site_name, w.title, w.description, w.photo as Photo, large);
+                }
+                return page;
             case MessageMediaDice dice:
                 return Clone(item, MediaKind.Other, title: $"{dice.emoticon} выпало {dice.value}");
             case MessageMediaStory:
@@ -801,7 +815,7 @@ public sealed partial class TelegramService
         string? songTitle = null, string? performer = null) => new()
     {
         Id = i.Id, PeerKey = i.PeerKey, FromKey = i.FromKey, From = i.From, DateUtc = i.DateUtc, Text = i.Text,
-        IsOut = i.IsOut, MediaUnread = i.MediaUnread, EditDateUtc = i.EditDateUtc, ReplyToId = i.ReplyToId, ThreadTopId = i.ThreadTopId, TopicId = i.TopicId, ForwardedFrom = i.ForwardedFrom,
+        IsOut = i.IsOut, MediaUnread = i.MediaUnread, Link = i.Link, EditDateUtc = i.EditDateUtc, ReplyToId = i.ReplyToId, ThreadTopId = i.ThreadTopId, TopicId = i.TopicId, ForwardedFrom = i.ForwardedFrom,
         PostAuthor = i.PostAuthor, Views = i.Views, GroupedId = i.GroupedId, CustomEmoji = i.CustomEmoji, Formatting = i.Formatting, ViaBot = i.ViaBot,
         InlineButtons = i.InlineButtons, ReplyKeyboard = i.ReplyKeyboard, KeyboardPlaceholder = i.KeyboardPlaceholder, Comments = i.Comments, Reactions = i.Reactions,
         Media = kind, Photo = photo, Document = doc, MediaWidth = w, MediaHeight = h,

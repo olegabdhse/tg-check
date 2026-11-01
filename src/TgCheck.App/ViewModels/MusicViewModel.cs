@@ -101,12 +101,27 @@ public sealed partial class MusicShelf(string title, string? subtitle = null) : 
     public static int[] GridPlaceholders { get; } = [0, 1, 2, 3];
     /// <summary>Сколько треков показывать (остальное не добавляется).</summary>
     public int Max { get; init; } = int.MaxValue;
+    /// <summary>Показывается вперемешку; новый порядок — только когда полки не видно (Reshuffle зовёт страница).</summary>
+    public bool Shuffled { get; init; }
+    /// <summary>Полку можно открыть страницей («Все»).</summary>
+    public bool CanOpenPage { get; init; }
+    /// <summary>В результатах поиска: пустая группа не показывается (без «Ничего не нашлось»).</summary>
+    public bool Optional { get; init; }
 
     public void Fill(IEnumerable<MusicTrack> tracks)
     {
         Items.Clear();
-        Append(tracks);
+        Append(Shuffled ? tracks.OrderBy(_ => Random.Shared.Next()) : tracks);
         Done();
+    }
+
+    /// <summary>Перемешать заново (полку сейчас не видно — перестановку никто не заметит).</summary>
+    public void Reshuffle()
+    {
+        if (!Shuffled || Items.Count < 2) return;
+        var order = Items.OrderBy(_ => Random.Shared.Next()).ToList();
+        for (var i = 0; i < order.Count; i++)
+            if (Items.IndexOf(order[i]) is var from && from != i) Items.Move(from, i);
     }
 
     /// <summary>Начать заново: пусто, грузится.</summary>
@@ -131,6 +146,26 @@ public sealed partial class MusicShelf(string title, string? subtitle = null) : 
         OnPropertyChanged(nameof(ShowSkeleton));
     }
 
+    /// <summary>
+    /// Привести полку к списку: уже показанные песни остаются (с обложками) и только переставляются, новые встают на свои
+    /// места, лишние убираются.
+    /// </summary>
+    public void Sync(IReadOnlyList<MusicTrack> tracks)
+    {
+        for (var i = 0; i < tracks.Count; i++)
+        {
+            var existing = -1;
+            for (var j = i; j < Items.Count; j++)
+                if (Items[j].Track.Key == tracks[i].Key) { existing = j; break; }
+            if (existing == i) continue;
+            if (existing > i) Items.Move(existing, i);
+            else Items.Insert(i, new MusicTrackViewModel(tracks[i], Items) { AutoCover = false });
+        }
+        while (Items.Count > tracks.Count) Items.RemoveAt(Items.Count - 1);
+        OnPropertyChanged(nameof(IsVisible));
+        OnPropertyChanged(nameof(ShowSkeleton));
+    }
+
     public void Done()
     {
         IsLoading = false;
@@ -144,7 +179,7 @@ public sealed partial class MusicShelf(string title, string? subtitle = null) : 
     /// </summary>
     public async Task ReplaceGraduallyAsync(IEnumerable<MusicTrack> tracks)
     {
-        var target = MusicTrack.Distinct(tracks).Take(Max).ToList();
+        var target = MusicTrack.Distinct(Shuffled ? tracks.OrderBy(_ => Random.Shared.Next()) : tracks).Take(Max).ToList();
         for (var i = 0; i < target.Count; i++)
         {
             var t = target[i];
@@ -198,17 +233,17 @@ public sealed partial class MusicViewModel : ObservableObject
 
     public MusicShelf ForYou { get; } = new("Похожие исполнители", "Полные песни из Telegram");
     public MusicShelf MoreFromArtists { get; } = new("Ещё от ваших исполнителей", "Полные песни из Telegram") { Max = 6 };
-    public MusicShelf InChats { get; } = new("Музыка из ваших чатов", "Полные песни из чатов и каналов Telegram");
+    public MusicShelf InChats { get; } = new("Музыка из ваших чатов", "Полные песни из чатов и каналов Telegram") { Shuffled = true, CanOpenPage = true };
 
     /// <summary>«Любимые» — музыка своего профиля Telegram (сердечко в плеере добавляет туда).</summary>
-    public MusicShelf Favorites { get; } = new("Любимые", "Музыка вашего профиля — сердечко в плеере добавляет сюда");
+    public MusicShelf Favorites { get; } = new("Любимые", "Музыка вашего профиля — сердечко в плеере добавляет сюда") { Shuffled = true };
 
     public IReadOnlyList<MusicShelf> Shelves => [Favorites, MoreFromArtists, InChats]; // «Для вас» не показываем — его песни играют в подборе после очереди
 
-    /// <summary>«Для вас»: 4 песни сеткой по трём последним прослушанным — перестраивается после каждой песни.</summary>
-    public MusicShelf NextForYou { get; } = new("Для вас", "По трём последним песням — больше всего по самой последней");
+    /// <summary>«Для вас»: 4 песни сеткой по семи последним прослушанным — перестраивается после каждой песни.</summary>
+    public MusicShelf NextForYou { get; } = new("Для вас", "По последним песням");
 
-    private IEnumerable<MusicShelf> AllShelves => [NextForYou, .. Shelves, FoundTelegram, FoundBots];
+    private IEnumerable<MusicShelf> AllShelves => [NextForYou, .. Shelves, .. SearchShelves, ChatsPage];
 
     private CancellationTokenSource? _nextCts;
     private string? _nextSeeds;
@@ -218,17 +253,22 @@ public sealed partial class MusicViewModel : ObservableObject
 
     private void RequestNext(bool soon = false) => _nextTask = BuildNextAsync(soon);
 
+    // Жанр песен «Для вас» и доля каждого жанра в семи последних — следующей чаще играет песня того жанра, который слушали больше.
+    private readonly Dictionary<string, string> _genreOf = [];
+    private Dictionary<string, double> _genreShare = [];
+
     /// <summary>
-    /// «Для вас». Для каждой из трёх последних песен — «радио» её исполнителя в Deezer (треки в похожем
-    /// звучании и настроении); по самой последней — две песни, по двум предыдущим — по одной. Исполнители, которых только
-    /// что слушали, и уже прослушанное не берутся. У каждой находится полная версия — в чатах или у музыкальных ботов.
+    /// «Для вас». Семь последних песен делятся по жанрам (жанр исполнителя — из Deezer), и 4 места делятся между жанрами
+    /// в той же пропорции: 5 из 7 — рэп, 2 из 7 — рок → 3 рэп и 1 рок. Песни жанра — из «радио» его исполнителей в Deezer
+    /// (похожее звучание и настроение), без исполнителей, которых только что слушали. У каждой находится полная версия —
+    /// в чатах или у музыкальных ботов; песня, которую уже слушали, берётся именно та, что играла.
     /// Если полка уже на экране, она не очищается: через 10 секунд (вдруг песню сразу переключат) плитки заменяются
     /// по одной, по мере нахождения — сначала уже прослушанные, играющая сейчас не трогается.
     /// </summary>
     /// <param name="soon">Без паузы в 10 с (раздел только что открыли, а полка с прошлого раза устарела).</param>
     private async Task BuildNextAsync(bool soon = false)
     {
-        var recent = _library.History.Take(3).Select(e => e.Track).ToList();
+        var recent = _library.History.Take(7).Select(e => e.Track).ToList();
         var seeds = string.Join("|", recent.Select(t => t.Key));
         if (seeds == _nextSeeds) return;
         _nextSeeds = seeds;
@@ -244,37 +284,75 @@ public sealed partial class MusicViewModel : ObservableObject
             if (replace && !soon) await Task.Delay(10_000, ct);
             await WhenIdleAsync();
             var recentArtists = recent.Select(t => MusicTrack.Normalize(MusicTrack.MainArtist(t))).Where(a => a.Length > 0).ToHashSet();
-            var radios = await Task.WhenAll(recent.Select(t => Task.Run(async () =>
+            // Жанр каждой из семи песен; неизвестный жанр — сам исполнитель (его «радио» — то же звучание).
+            var genres = await Task.WhenAll(recent.Select(t => Task.Run(async () =>
             {
-                var name = MusicTrack.MainArtist(t);
-                if (name.Length == 0 || await MusicCatalog.DeezerFindArtistAsync(name, ct) is not { } artist) return new List<MusicTrack>();
-                var rnd = new Random();
-                return (await MusicCatalog.DeezerArtistRadioAsync(artist.Id, 25, ct))
-                    .Where(c => !recentArtists.Contains(MusicTrack.Normalize(MusicTrack.MainArtist(c))))
-                    .OrderBy(_ => rnd.Next()).ToList();
+                var artist = MusicTrack.MainArtist(t);
+                var g = await _library.ArtistGenreAsync(artist, ct);
+                return g.Length > 0 ? g : "artist:" + MusicTrack.Normalize(artist);
             }, ct)));
-            // По очереди: две по последней, по одной по предыдущим, и так по кругу — пока не наберётся 4.
-            var order = new List<MusicTrack>();
-            int[] weights = [2, 1, 1];
-            for (var round = 0; round < 8; round++)
-                for (var s = 0; s < radios.Length; s++)
-                    for (var k = 0; k < weights[s]; k++)
-                        if (round * weights[s] + k < radios[s].Count) order.Add(radios[s][round * weights[s] + k]);
-            var found = new List<MusicTrack>();
-            var tried = 0;
-            foreach (var candidate in MusicTrack.Distinct(order))
+            var groups = recent.Select((t, i) => (Track: t, Genre: genres[i])).GroupBy(x => x.Genre)
+                .Select(g => (Genre: g.Key, Artists: g.Select(x => MusicTrack.MainArtist(x.Track)).Where(a => a.Length > 0)
+                                                       .DistinctBy(MusicTrack.Normalize).Take(3).ToList(),
+                              Share: (double)g.Count() / recent.Count))
+                .OrderByDescending(g => g.Share).ToList();
+            _genreShare = groups.ToDictionary(g => g.Genre, g => g.Share);
+            var slots = Apportion(groups.Select(g => g.Share).ToList(), 4);
+            Logging.Write("music next: " + string.Join(", ", groups.Select((g, i) => $"{g.Genre} {g.Share:P0} → {slots[i]}")));
+            // Кандидаты жанра — «радио» его исполнителей вперемешку (сначала самого свежего).
+            var pools = await Task.WhenAll(groups.Select((g, i) => slots[i] == 0 ? Task.FromResult(new List<MusicTrack>()) : Task.Run(async () =>
             {
-                if (ct.IsCancellationRequested || found.Count >= 4 || ++tried > 14) break;
-                if (_library.WasPlayed(candidate) || found.Any(f => MusicTrack.SameSong(f, candidate))) continue;
-                if (!replace && NextForYou.Items.Any(x => MusicTrack.SameSong(x.Track, candidate))) continue;
-                await WhenIdleAsync();
-                if (await FullSongAsync(candidate) is not { } full || ct.IsCancellationRequested) continue;
-                // Обложка — из Deezer (крупная и чёткая), если у найденной своей нет.
-                full.CoverUrl ??= candidate.CoverUrl;
-                full.CoverBigUrl ??= candidate.CoverBigUrl;
-                found.Add(full);
-                if (replace) await ReplaceNextSlotAsync(full, ct);
-                else NextForYou.Append([full]);
+                var pool = new List<MusicTrack>();
+                foreach (var name in g.Artists.Take(2))
+                {
+                    if (await MusicCatalog.DeezerFindArtistAsync(name, ct) is not { } artist) continue;
+                    pool.AddRange((await MusicCatalog.DeezerArtistRadioAsync(artist.Id, 25, ct))
+                        .Where(c => !recentArtists.Contains(MusicTrack.Normalize(MusicTrack.MainArtist(c))))
+                        .OrderBy(_ => Random.Shared.Next()));
+                }
+                return MusicTrack.Distinct(pool);
+            }, ct)));
+            // По очереди между жанрами (больший — первым), пока у каждого не наберётся его доля мест.
+            var found = new List<MusicTrack>();
+            var taken = new int[groups.Count];
+            var next = new int[groups.Count];
+            var tries = new int[groups.Count];
+            for (var progress = true; progress && found.Count < 4 && !ct.IsCancellationRequested;)
+            {
+                progress = false;
+                for (var s = 0; s < groups.Count && found.Count < 4; s++)
+                {
+                    if (taken[s] >= slots[s] || next[s] >= pools[s].Count || tries[s] >= 3 + slots[s] * 3) continue;
+                    progress = true;
+                    var candidate = pools[s][next[s]++];
+                    if (found.Any(f => MusicTrack.SameSong(f, candidate))) continue;
+                    if (!replace && NextForYou.Items.Any(x => MusicTrack.SameSong(x.Track, candidate))) continue;
+                    if (_played.Any(p => MusicTrack.SameSong(p, candidate))) continue; // уже звучала в этот запуск
+                    tries[s]++;
+                    MusicTrack? full;
+                    if (_library.Played(candidate) is { } before) full = before; // уже слушали — та же самая, что играла
+                    else
+                    {
+                        await WhenIdleAsync();
+                        full = await FullSongAsync(candidate);
+                        if (full is not null)
+                        {
+                            // Обложка — из Deezer (крупная и чёткая), если у найденной своей нет.
+                            full.CoverUrl ??= candidate.CoverUrl;
+                            full.CoverBigUrl ??= candidate.CoverBigUrl;
+                        }
+                    }
+                    if (full is null || ct.IsCancellationRequested) continue;
+                    taken[s]++;
+                    found.Add(full);
+                    _genreOf[full.Key] = groups[s].Genre;
+                    if (replace) await ReplaceNextSlotAsync(full, ct);
+                    else NextForYou.Append([full]);
+                }
+                // Жанр не набрал своих мест (не нашлось полных версий) — свободные места отдаются остальным по очереди.
+                if (!progress && found.Count < 4)
+                    for (var s = 0; s < groups.Count; s++)
+                        if (next[s] < pools[s].Count && tries[s] < 12) { slots[s] = 4; progress = true; }
             }
         }
         catch (OperationCanceledException) { return; }
@@ -283,6 +361,16 @@ public sealed partial class MusicViewModel : ObservableObject
         NextForYou.Done();
         _library.SaveShelf("next", seeds, NextForYou.Items.Select(v => v.Track));
         PrefetchNext(); // новые плитки — заранее подготовить
+    }
+
+    // Мест — по долям (метод наибольших остатков): [5/7, 2/7] на 4 места → [3, 1]; сумма всегда ровно total.
+    private static int[] Apportion(IReadOnlyList<double> shares, int total)
+    {
+        var exact = shares.Select(s => s * total).ToArray();
+        var seats = exact.Select(e => (int)Math.Floor(e)).ToArray();
+        foreach (var i in Enumerable.Range(0, shares.Count).OrderByDescending(i => exact[i] - seats[i]).Take(total - seats.Sum()))
+            seats[i]++;
+        return seats;
     }
 
     // Заменить одну плитку «Для вас»: сначала уже прослушанную, потом по порядку слева; играющую сейчас
@@ -300,7 +388,7 @@ public sealed partial class MusicViewModel : ObservableObject
         if (items.Count < 4) { items.Add(vm); return; }
         var free = Enumerable.Range(0, items.Count).Where(i => !items[i].IsCurrent && !_nextFresh.Contains(items[i])).ToList();
         if (free.Count == 0) return;
-        var slot = free.FirstOrDefault(i => _library.WasPlayed(items[i].Track), free[0]);
+        var slot = free.FirstOrDefault(i => _played.Any(p => MusicTrack.SameSong(p, items[i].Track)), free[0]);
         items[slot] = vm;
     }
 
@@ -355,7 +443,7 @@ public sealed partial class MusicViewModel : ObservableObject
     {
         if (_library.LoadShelf("next") is { Tracks.Count: > 0 } next)
         {
-            NextForYou.Fill(next.Tracks.Where(t => !_library.WasPlayed(t)));
+            NextForYou.Fill(next.Tracks);
             _nextSeeds = next.Signature; // с тех пор ничего не слушали — полка та же
         }
         if (_library.LoadShelf("artists") is { Tracks.Count: > 0 } artists)
@@ -466,46 +554,98 @@ public sealed partial class MusicViewModel : ObservableObject
     [ObservableProperty] private bool _isSearchLoading;
     public bool IsSearch => Query.Trim().Length > 0;
 
-    public MusicShelf FoundTelegram { get; } = new("В Telegram", "Полные песни из ваших чатов и каналов");
-    public MusicShelf FoundBots { get; } = new("Музыкальные боты", "Полные песни через ботов Telegram") { Max = 10 };
+    public MusicShelf FoundHistory { get; } = new("Вы слушали", "Те самые песни, что уже играли") { Optional = true, Max = 6 };
+    public MusicShelf FoundBots { get; } = new("Музыкальные боты", "Полные песни через ботов Telegram — до пяти от каждого") { Max = 40 };
+    public MusicShelf FoundTelegram { get; } = new("В Telegram", "Полные песни из ваших чатов и каналов") { Max = 20 };
 
-    public IReadOnlyList<MusicShelf> SearchShelves => [FoundTelegram, FoundBots];
+    public IReadOnlyList<MusicShelf> SearchShelves => [FoundHistory, FoundBots, FoundTelegram];
 
     private CancellationTokenSource? _searchCts;
 
     partial void OnQueryChanged(string value) => _ = SearchAsync(value.Trim());
 
-    // Поиск — когда перестали печатать (0,7 с) и не меньше двух букв. Запросы по очереди: сначала чаты, потом боты
-    // по одному; в каждой группе не больше 10 вариантов. Новый текст отменяет всё, что ещё не отправлено по старому.
+    // Подходит ли песня к запросу: все слова запроса есть в исполнителе или названии (регистр и знаки не важны).
+    private static bool Matches(MusicTrack t, string q)
+    {
+        var text = (t.Artist + " " + t.Title).ToLowerInvariant().Replace('ё', 'е');
+        return System.Text.RegularExpressions.Regex.Matches(q.ToLowerInvariant().Replace('ё', 'е'), @"[\p{L}\p{N}]+")
+            .All(w => text.Contains(w.Value, StringComparison.Ordinal));
+    }
+
+    // Поиск — когда перестали печатать (0,7 с) и не меньше двух букв. Сверху — что уже слушали (сразу, без сети), потом
+    // боты по одному (до трёх песен от каждого), потом чаты и каналы. Новый текст отменяет всё, что ещё не отправлено по старому.
     private async Task SearchAsync(string q)
     {
         _searchCts?.Cancel();
         if (q.Length < 2) { IsSearchLoading = false; return; }
         var cts = _searchCts = new CancellationTokenSource();
         var ct = cts.Token;
-        try { await Task.Delay(700, ct); }
+        try { await Task.Delay(900, ct); } // допечатали — тогда ищем: каждый лишний запрос к ботам приближает FLOOD_WAIT
         catch (TaskCanceledException) { return; }
         IsSearchLoading = true;
-        FoundTelegram.Begin();
+        FoundHistory.Fill(_library.History.Select(e => e.Track).Where(t => Matches(t, q)));
         FoundBots.Begin();
-        bool InChatsAlready(MusicTrack t) => FoundTelegram.Items.Any(y => MusicTrack.SameSong(t, y.Track));
-        IReadOnlyList<MessageItem> chats;
-        try { chats = await Task.Run(() => _tg.SearchMusicAsync(q, 20)); }
-        catch (Exception ex) { Logging.Write($"music search tg: {ex.Message}"); chats = []; }
-        if (ct.IsCancellationRequested) return;
-        FoundTelegram.Fill(MusicTrack.Distinct(chats.Select(MusicTrack.FromTelegram).Where(MusicTrack.IsSong)).Take(10));
+        FoundTelegram.Begin();
+        bool Shown(MusicTrack t) => FoundHistory.Items.Concat(FoundBots.Items).Any(y => MusicTrack.SameSong(t, y.Track));
+        // Все боты — разом; песни идут вперемешку по кругу: по одной от каждого бота (лучшие боты — первыми), и так до пяти
+        // от каждого. Повтор той же песни у другого бота не занимает место — берётся следующая его песня.
+        var answers = new Dictionary<string, IReadOnlyList<MusicTrack>>(StringComparer.OrdinalIgnoreCase);
         try
         {
-            await Task.Run(() => _tg.SearchBotMusicAsync(q, maxBots: 4, maxSongs: 10, ct: ct, partial: songs => Anim.Ui(() =>
+            await Task.Run(() => _tg.SearchAllBotsAsync(q, maxBots: 12, ct: ct, onBot: (bot, songs) => Anim.Ui(() =>
             {
-                if (!ct.IsCancellationRequested) FoundBots.Append(songs.Where(MusicTrack.IsSong), InChatsAlready);
+                if (ct.IsCancellationRequested) return;
+                answers[bot] = songs;
+                FoundBots.Sync(Interleave(answers, perBot: 5, max: FoundBots.Max));
             })));
         }
         catch (Exception ex) { Logging.Write($"music search bots: {ex.Message}"); }
         if (ct.IsCancellationRequested) return;
         FoundBots.Done();
+        IReadOnlyList<MessageItem> chats;
+        try { chats = await Task.Run(() => _tg.SearchMusicAsync(q, 40)); }
+        catch (Exception ex) { Logging.Write($"music search tg: {ex.Message}"); chats = []; }
+        if (ct.IsCancellationRequested) return;
+        FoundTelegram.Fill(MusicTrack.Distinct(chats.Select(MusicTrack.FromTelegram).Where(t => MusicTrack.IsSong(t) && !Shown(t))).Take(20).OrderBy(t => HasOwnCover(t) ? 0 : 1)); // с обложкой — выше
         IsSearchLoading = false;
     }
+
+    // Песни ботов по кругу: по одной от каждого (в порядке качества бота). Внутри одного бота повторы отсеивает сам
+    // поиск у бота; между ботами убирается только точная копия — то же название, тот же исполнитель и та же длительность
+    // («Тону — ELVORAZ» и «Тону — ELVORAZ, Vann Adam» остаются обе). Из «Вы слушали» — так же.
+    private List<MusicTrack> Interleave(Dictionary<string, IReadOnlyList<MusicTrack>> answers, int perBot, int max)
+    {
+        var bots = answers.Keys.OrderBy(TelegramService.MusicBotRank).ToList();
+        var next = bots.ToDictionary(b => b, _ => 0, StringComparer.OrdinalIgnoreCase);
+        var taken = bots.ToDictionary(b => b, _ => 0, StringComparer.OrdinalIgnoreCase);
+        var result = new List<MusicTrack>();
+        static bool Exact(MusicTrack a, MusicTrack b) =>
+            a.Key == b.Key || (MusicTrack.Normalize(a.Title) == MusicTrack.Normalize(b.Title)
+                               && MusicTrack.Normalize(a.Artist) == MusicTrack.Normalize(b.Artist)
+                               && Math.Abs(a.Duration - b.Duration) <= 1);
+        bool Dup(MusicTrack t) => result.Any(r => Exact(r, t)) || FoundHistory.Items.Any(h => Exact(h.Track, t));
+        for (var progress = true; progress && result.Count < max;)
+        {
+            progress = false;
+            foreach (var bot in bots)
+            {
+                if (taken[bot] >= perBot || result.Count >= max) continue;
+                var songs = answers[bot];
+                while (next[bot] < songs.Count && Dup(songs[next[bot]])) next[bot]++;
+                if (next[bot] >= songs.Count) continue;
+                result.Add(songs[next[bot]++]);
+                taken[bot]++;
+                progress = true;
+            }
+        }
+        return CoversFirst(result);
+    }
+
+    // Своя обложка: ссылка на картинку (боты с файлами по ссылке) или миниатюра в самом файле Telegram.
+    private static bool HasOwnCover(MusicTrack t) => t.CoverUrl is not null || t.Song?.HasThumbnail == true;
+
+    // Песни с обложкой — выше, без неё — ниже; внутри каждой части порядок (чередование ботов) не меняется.
+    private static List<MusicTrack> CoversFirst(List<MusicTrack> tracks) => [.. tracks.OrderBy(t => HasOwnCover(t) ? 0 : 1)];
 
     // Остановить поиск, что ещё идёт (найденное остаётся на экране).
     private void StopSearch()
@@ -515,6 +655,57 @@ public sealed partial class MusicViewModel : ObservableObject
         FoundTelegram.Done();
         FoundBots.Done();
         IsSearchLoading = false;
+    }
+
+    // ===================================================================== Страница «Музыка из ваших чатов»
+
+    [ObservableProperty] private bool _isChatsPage;
+    [ObservableProperty] private string _chatsQuery = "";
+    /// <summary>Все песни из чатов и каналов (или найденные среди них).</summary>
+    public MusicShelf ChatsPage { get; } = new("Музыка из ваших чатов", "Полные песни из чатов и каналов Telegram");
+    private CancellationTokenSource? _chatsCts;
+
+    [RelayCommand]
+    private void OpenChatsPage()
+    {
+        IsChatsPage = true;
+        if (ChatsQuery.Length > 0) ChatsQuery = ""; // поиск начнётся сам
+        else _ = LoadChatsPageAsync("");
+    }
+
+    [RelayCommand]
+    private void CloseChatsPage()
+    {
+        IsChatsPage = false;
+        _chatsCts?.Cancel();
+    }
+
+    partial void OnChatsQueryChanged(string value) => _ = LoadChatsPageAsync(value.Trim());
+
+    // Только чаты и каналы (без ботов): пусто — последние песни, иначе — поиск среди них.
+    private async Task LoadChatsPageAsync(string q)
+    {
+        _chatsCts?.Cancel();
+        var cts = _chatsCts = new CancellationTokenSource();
+        var ct = cts.Token;
+        if (q.Length > 0)
+        {
+            try { await Task.Delay(600, ct); }
+            catch (TaskCanceledException) { return; }
+        }
+        ChatsPage.Begin();
+        IReadOnlyList<MessageItem> found;
+        try { found = await Task.Run(() => _tg.SearchMusicAsync(q, 100)); }
+        catch (Exception ex) { Logging.Write($"music chats page: {ex.Message}"); found = []; }
+        if (ct.IsCancellationRequested) return;
+        ChatsPage.Fill(MusicTrack.Distinct(found.Select(MusicTrack.FromTelegram).Where(MusicTrack.IsSong)));
+        SetCurrentMarks();
+    }
+
+    private void SetCurrentMarks()
+    {
+        if (_current is null) return;
+        foreach (var v in AllVisible()) v.IsCurrent = v.Track.Key == _current.Track.Key;
     }
 
     [RelayCommand]
@@ -668,6 +859,8 @@ public sealed partial class MusicViewModel : ObservableObject
         var list = vm.List?.ToList() ?? [vm];
         // Полка успела обновиться (подбор пересобран), а трек нажат в очереди — играем дальше по очереди.
         if (!list.Contains(vm)) list = _queue.Contains(vm) ? _queue : [vm];
+        else if (ReferenceEquals(vm.List, MoreFromArtists.Items))
+            list = [vm, .. list.Where(v => v != vm).OrderBy(_ => Random.Shared.Next()).Take(1)]; // выбранная и ещё одна, дальше — подбор
         _queue = list;
         _index = Math.Max(0, list.IndexOf(vm));
         QueueTitle = AllShelves.FirstOrDefault(s => ReferenceEquals(s.Items, vm.List))?.Title
@@ -725,7 +918,7 @@ public sealed partial class MusicViewModel : ObservableObject
     /// <summary>Вся полка по порядку.</summary>
     [RelayCommand]
     private Task PlayShelf(MusicShelf? shelf) =>
-        shelf is { Items.Count: > 0 } ? Play(shelf.Items[0]) : Task.CompletedTask;
+        shelf is { Items.Count: > 0 } ? Play(shelf.Shuffled ? shelf.Items[Random.Shared.Next(shelf.Items.Count)] : shelf.Items[0]) : Task.CompletedTask;
 
     [RelayCommand]
     private Task Next() => NextAsync(auto: false);
@@ -771,7 +964,7 @@ public sealed partial class MusicViewModel : ObservableObject
         if (_recs is null) _ = LoadRecommendationsAsync();
         await Task.CompletedTask;
         // Похожее и ещё от любимых исполнителей — вперемешку; подбора нет (истории ещё нет) — музыка из чатов.
-        var mix = NextForYou.Items.Select(v => v.Track).ToList(); // сначала «Для вас»
+        var mix = WeightedByGenre(NextForYou.Items.Select(v => v.Track)); // сначала «Для вас»
         for (var i = 0; i < Math.Max(r.MoreFromArtists.Count, r.Similar.Count); i++)
         {
             if (i < r.Similar.Count) mix.Add(r.Similar[i]);
@@ -779,8 +972,29 @@ public sealed partial class MusicViewModel : ObservableObject
         }
         if (mix.Count == 0) mix.AddRange(InChats.Items.Select(v => v.Track));
         var list = new List<MusicTrackViewModel>();
-        foreach (var t in mix.Where(t => !_failed.Contains(t.Key) && !_played.Any(p => MusicTrack.SameSong(p, t)) && !_library.WasPlayed(t)).Take(40)) list.Add(new MusicTrackViewModel(t, list));
+        // Уже слушали раньше — можно, но именно тот файл, что играл; в этот запуск уже звучавшее — нет.
+        foreach (var t in mix.Select(t => _library.Played(t) ?? t)
+                     .Where(t => !_failed.Contains(t.Key) && !_played.Any(p => MusicTrack.SameSong(p, t))).Take(40))
+            if (!list.Any(v => MusicTrack.SameSong(v.Track, t))) list.Add(new MusicTrackViewModel(t, list));
         return list;
+    }
+
+    // Порядок «Для вас» для очереди: следующей с большей вероятностью встаёт песня того жанра, которого среди семи последних
+    // больше (5 из 7 — рэп → рэп следующим с шансом 5/7 от остального).
+    private List<MusicTrack> WeightedByGenre(IEnumerable<MusicTrack> tracks)
+    {
+        var pool = tracks.ToList();
+        var order = new List<MusicTrack>();
+        while (pool.Count > 0)
+        {
+            var weights = pool.Select(t => _genreOf.TryGetValue(t.Key, out var g) && _genreShare.TryGetValue(g, out var s) ? s : 1.0 / 7).ToList();
+            var pick = Random.Shared.NextDouble() * weights.Sum();
+            var i = 0;
+            while (i < pool.Count - 1 && (pick -= weights[i]) > 0) i++;
+            order.Add(pool[i]);
+            pool.RemoveAt(i);
+        }
+        return order;
     }
 
     // Пока трек запускается, фоновое (обложки из Telegram, поиск для подбора) ждёт — вся скорость соединения ему.
