@@ -411,10 +411,11 @@ public sealed partial class TelegramService
         else await _client.Messages_DeleteMessages(ids, revoke: forEveryone);
     }
 
-    public async Task MarkReadAsync(PeerRef peer, int maxId)
+    /// <returns>false — сервер отметку не получил (нет связи): её нужно отправить ещё раз.</returns>
+    public async Task<bool> MarkReadAsync(PeerRef peer, int maxId)
     {
-        try { await _client.ReadHistory(peer.Info.ToInputPeer(), maxId); }
-        catch (Exception ex) { Logging.Write("read: " + ex.Message); }
+        try { await _client.ReadHistory(peer.Info.ToInputPeer(), maxId); return true; }
+        catch (Exception ex) { Logging.Write("read: " + ex.Message); return false; }
     }
 
     /// <summary>Закрепить или открепить сообщение; forBoth = false — только у себя (личный чат, как в Telegram).</summary>

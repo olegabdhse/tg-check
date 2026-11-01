@@ -3,8 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:helpers="clr-namespace:TgCheck.App.Helpers"
         Title="Что нового" Width="520" Height="620" ResizeMode="NoResize" ShowInTaskbar="False"
-        WindowStartupLocation="CenterOwner" Background="{StaticResource SurfaceBrush}"
-        FontFamily="{StaticResource UiFont}" Foreground="{StaticResource TextBrush}" UseLayoutRounding="True"
+        WindowStartupLocation="CenterOwner" Background="{DynamicResource SurfaceBrush}"
+        FontFamily="{StaticResource UiFont}" Foreground="{DynamicResource TextBrush}" UseLayoutRounding="True"
         TextOptions.TextFormattingMode="Display">
     <!-- «Что нового»: описание релиза с GitHub; текст листается, кнопка обновления всегда внизу -->
     <Grid>
@@ -14,9 +14,9 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Border Padding="24,20,24,14" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+        <Border Padding="24,20,24,14" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
             <DockPanel>
-                <Border DockPanel.Dock="Left" Width="44" Height="44" CornerRadius="22" Background="{StaticResource AccentBrush}" Margin="0,0,14,0">
+                <Border DockPanel.Dock="Left" Width="44" Height="44" CornerRadius="22" Background="{DynamicResource AccentBrush}" Margin="0,0,14,0">
                     <TextBlock Text="&#xE896;" Style="{StaticResource Icon}" FontSize="20" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
                 <StackPanel VerticalAlignment="Center">
@@ -30,7 +30,7 @@
             <StackPanel x:Name="Notes" />
         </ScrollViewer>
 
-        <Border Grid.Row="2" Padding="24,14,24,20" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+        <Border Grid.Row="2" Padding="24,14,24,20" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0">
             <DockPanel>
                 <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="Позже" Padding="18,10" Click="Later_Click" Margin="0,0,10,0" />
                 <Button Style="{StaticResource PrimaryButton}" Content="Начать обновление" Padding="18,10" FontSize="14" Click="Start_Click" IsDefault="True" />

@@ -14,11 +14,11 @@
         <Button DockPanel.Dock="Left" Style="{StaticResource HeartButton}" Tag="{Binding IsLiked}" Command="{Binding ToggleLikeCommand}"
                 VerticalAlignment="Center" Margin="-4,0,4,0" Visibility="{Binding CanLike, Converter={StaticResource BoolToVis}}" />
         <Button x:Name="CloseButton" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="12" Padding="8" VerticalAlignment="Center"
-                Click="Close_Click" ToolTip="Закрыть" />
+                Click="Close_Click" />
         <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE893;" FontSize="13" Padding="7" VerticalAlignment="Center"
-                Command="{Binding SeekEndCommand}" ToolTip="В конец" />
+                Command="{Binding SeekEndCommand}" />
         <Button DockPanel.Dock="Right" Style="{StaticResource RoundButton}" Width="38" Height="38" Margin="4,0,2,0" VerticalAlignment="Center"
-                Command="{Binding ToggleCommand}" ToolTip="Играть / пауза">
+                Command="{Binding ToggleCommand}">
             <Grid>
             <!-- Догружается — вместо значка аккуратная загрузка (а не вид «остановлено») -->
             <Path Width="18" Height="18" Stretch="None" Stroke="White" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
@@ -52,16 +52,16 @@
             </Grid>
         </Button>
         <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE892;" FontSize="13" Padding="7" VerticalAlignment="Center"
-                Command="{Binding SeekStartCommand}" ToolTip="В начало" />
+                Command="{Binding SeekStartCommand}" />
         <!-- Повтор: подсвечен, когда включён -->
         <Button DockPanel.Dock="Right" Content="&#xE8EE;" FontSize="15" Padding="8" VerticalAlignment="Center"
                 Command="{Binding ToggleLoopCommand}" ToolTip="Повторять">
             <Button.Style>
                 <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
-                    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding Loop}" Value="True">
-                            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
                         </DataTrigger>
                     </Style.Triggers>
                 </Style>
@@ -69,18 +69,18 @@
         </Button>
         <StackPanel VerticalAlignment="Center" Margin="0,0,6,0">
             <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis" />
-            <TextBlock Text="{Binding Subtitle}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+            <TextBlock Text="{Binding Subtitle}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
             <!-- Перемотка: клик или перетаскивание по полоске -->
             <Grid x:Name="Seek" Height="14" Margin="0,4,0,0" Background="Transparent" Cursor="Hand"
                   MouseLeftButtonDown="Seek_Down" MouseMove="Seek_Move" MouseLeftButtonUp="Seek_Up">
-                <Border Height="3" CornerRadius="1.5" Background="#33FFFFFF" VerticalAlignment="Center" />
-                <Border Height="3" CornerRadius="1.5" Background="{StaticResource AccentBrush}" VerticalAlignment="Center" RenderTransformOrigin="0,0.5">
+                <Border Height="3" CornerRadius="1.5" Background="{DynamicResource Tint2Brush}" VerticalAlignment="Center" />
+                <Border Height="3" CornerRadius="1.5" Background="{DynamicResource AccentBrush}" VerticalAlignment="Center" RenderTransformOrigin="0,0.5">
                     <Border.RenderTransform>
                         <ScaleTransform ScaleX="{Binding Progress}" />
                     </Border.RenderTransform>
                 </Border>
             </Grid>
-            <TextBlock x:Name="TimeLine" Text="{Binding TimeText}" FontSize="11" Foreground="{StaticResource MetaBrush}" />
+            <TextBlock x:Name="TimeLine" Text="{Binding TimeText}" FontSize="11" Foreground="{DynamicResource MetaBrush}" />
         </StackPanel>
     </DockPanel>
 </UserControl>

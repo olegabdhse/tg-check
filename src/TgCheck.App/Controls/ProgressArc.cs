@@ -35,10 +35,16 @@ public sealed class ProgressArc : FrameworkElement
     public ProgressArc()
     {
         IsHitTestVisible = false;
-        Loaded += (_, _) => _spin.BeginAnimation(RotateTransform.AngleProperty,
-            new DoubleAnimation(0, 360, TimeSpan.FromSeconds(2)) { RepeatBehavior = RepeatBehavior.Forever });
+        // Крутится только пока виден: такой кружок есть у каждого фото, видео и голосового в ленте, почти всегда скрытый —
+        // сотни вечных анимаций держали отрисовку занятой (до целого ядра процессора).
+        IsVisibleChanged += (_, _) => UpdateSpin();
+        Loaded += (_, _) => UpdateSpin();
         Unloaded += (_, _) => _spin.BeginAnimation(RotateTransform.AngleProperty, null);
     }
+
+    private void UpdateSpin() => _spin.BeginAnimation(RotateTransform.AngleProperty, IsVisible && IsLoaded
+        ? new DoubleAnimation(0, 360, TimeSpan.FromSeconds(2)) { RepeatBehavior = RepeatBehavior.Forever }
+        : null);
 
     private void AnimateTo(double value) =>
         BeginAnimation(ShownProperty, new DoubleAnimation(Math.Clamp(value, 0, 1), TimeSpan.FromMilliseconds(250)) { EasingFunction = new QuadraticEase() },

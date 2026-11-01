@@ -25,7 +25,7 @@
                     Command="{Binding DataContext.OpenGiftCommand, ElementName=Root}" CommandParameter="{Binding}">
                 <StackPanel>
                     <Grid Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}}" Margin="8,8,8,0">
-                        <Border CornerRadius="12" Background="{StaticResource Surface2Brush}" />
+                        <Border CornerRadius="12" Background="{DynamicResource Surface2Brush}" />
                         <Border CornerRadius="12" Background="{Binding Backdrop}"
                                 Visibility="{Binding Backdrop, Converter={StaticResource NullToVis}}" />
                         <Border CornerRadius="12">
@@ -42,7 +42,7 @@
                             <TextBlock Text="{Binding Badge}" FontSize="11" FontWeight="SemiBold" Foreground="White" />
                         </Border>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="7">
-                            <Border Style="{StaticResource Pill}" Margin="4,0,0,0" ToolTip="Закреплён в профиле"
+                            <Border Style="{StaticResource Pill}" Margin="4,0,0,0"
                                     Visibility="{Binding Item.IsPinned, Converter={StaticResource BoolToVis}}">
                                 <TextBlock Text="&#xE718;" Style="{StaticResource Icon}" FontSize="11" Foreground="White" />
                             </Border>
@@ -64,8 +64,7 @@
                         </CheckBox>
 
                         <!-- Мини-аватар отправителя -->
-                        <controls:AvatarView Width="30" Height="30" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="7"
-                                             ToolTip="{Binding FromText}" Source="{Binding SenderAvatar}" Ring="#E6FFFFFF"
+                        <controls:AvatarView Width="30" Height="30" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="7" Source="{Binding SenderAvatar}" Ring="#E6FFFFFF"
                                              Visibility="{Binding SenderAvatar, Converter={StaticResource NullToVis}}" />
                     </Grid>
 
@@ -83,7 +82,7 @@
 
         <!-- Плитка статистики -->
         <Style x:Key="StatTile" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource Surface2Brush}" />
+            <Setter Property="Background" Value="{DynamicResource Surface2Brush}" />
             <Setter Property="CornerRadius" Value="15" />
             <Setter Property="Padding" Value="12,6" />
             <Setter Property="Margin" Value="4,0,4,6" />
@@ -99,12 +98,12 @@
         <!-- ================================================= Верхняя панель -->
         <DockPanel Margin="22,8,18,0">
             <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
-                <Button Style="{StaticResource IconButton}" Content="&#xE72B;" ToolTip="Назад" Command="{Binding GoBackCommand}" Margin="-8,0,6,0"
+                <Button Style="{StaticResource IconButton}" Content="&#xE72B;" Command="{Binding GoBackCommand}" Margin="-8,0,6,0"
                         Visibility="{Binding IsOther, Converter={StaticResource BoolToVis}}" />
                 <TextBlock Text="{Binding PageTitle}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Style="{StaticResource IconButton}" Content="&#xE72C;" ToolTip="Обновить" Command="{Binding RefreshCommand}" />
+                <Button Style="{StaticResource IconButton}" Content="&#xE72C;" Command="{Binding RefreshCommand}" />
             </StackPanel>
         </DockPanel>
 
@@ -120,10 +119,10 @@
             <Border Style="{StaticResource Panel}" Padding="0">
                 <DockPanel>
                 <!-- Низ панели: выход (свой профиль) или «Написать» (чужой) -->
-                <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="14,10">
+                <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="14,10">
                     <Grid>
                         <Button Style="{StaticResource GhostButton}" Command="{Binding LogoutCommand}" HorizontalAlignment="Stretch"
-                                Foreground="{StaticResource DangerBrush}" Padding="12,10"
+                                Foreground="{DynamicResource DangerBrush}" Padding="12,10"
                                 Visibility="{Binding IsSelf, Converter={StaticResource BoolToVis}}">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="&#xF3B1;" Style="{StaticResource Icon}" FontSize="14" Margin="0,0,10,0" />
@@ -143,7 +142,7 @@
                     <StackPanel>
                         <!-- Аватар: клик — просмотр всех фото профиля -->
                         <Button Command="{Binding OpenAvatarCommand}" HorizontalAlignment="Center" Cursor="Hand"
-                                FocusVisualStyle="{x:Null}" ToolTip="Открыть фото профиля">
+                                FocusVisualStyle="{x:Null}">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
                                     <Grid Width="132" Height="132" Background="Transparent">
@@ -191,7 +190,7 @@
 
                         <!-- Рейтинг: сразу под аватаркой (на месте «пустого» имени) -->
                         <Border HorizontalAlignment="Center" Margin="0,12,0,0" Padding="4,4,14,4" CornerRadius="16"
-                                Background="{StaticResource Surface2Brush}" ToolTip="Рейтинг звёзд: текущие / до следующего уровня"
+                                Background="{DynamicResource Surface2Brush}" ToolTip="Рейтинг звёзд: текущие / до следующего уровня"
                                 Visibility="{Binding HasRating, Converter={StaticResource BoolToVis}}">
                             <StackPanel Orientation="Horizontal">
                                 <Grid Width="24" Height="24">
@@ -202,8 +201,8 @@
                                 <StackPanel VerticalAlignment="Center" Margin="9,0,0,0">
                                     <TextBlock Text="{Binding RatingProgressText}" FontSize="12" FontWeight="SemiBold" />
                                     <Grid Height="3" Width="86" Margin="0,3,0,0" HorizontalAlignment="Left">
-                                        <Border CornerRadius="1.5" Background="{StaticResource Surface3Brush}" />
-                                        <Border CornerRadius="1.5" Background="{StaticResource GoldBrush}" HorizontalAlignment="Left"
+                                        <Border CornerRadius="1.5" Background="{DynamicResource Surface3Brush}" />
+                                        <Border CornerRadius="1.5" Background="{DynamicResource GoldBrush}" HorizontalAlignment="Left"
                                                 Width="{Binding RatingProgress, Converter={x:Static views:ProfileView.Scale}, ConverterParameter=86}" />
                                     </Grid>
                                 </StackPanel>
@@ -220,16 +219,15 @@
                                                   CustomEmojiId="{Binding Profile.Peer.EmojiStatusId, TargetNullValue=0, FallbackValue=0}"
                                                   Visibility="{Binding Profile.Peer.EmojiStatusId, Converter={StaticResource NullToVis}, FallbackValue=Collapsed}" />
                             <Path Data="{StaticResource StarGeometry}" Width="18" Height="18" Stretch="Uniform" Margin="8,2,0,0"
-                                  Fill="{StaticResource GoldGradientBrush}" ToolTip="Telegram Premium" VerticalAlignment="Center"
+                                  Fill="{StaticResource GoldGradientBrush}" VerticalAlignment="Center"
                                   Visibility="{Binding ShowPremiumStar, Converter={StaticResource BoolToVis}}" />
-                            <Border Background="{StaticResource AccentBrush}" Width="18" Height="18" CornerRadius="9" Margin="6,2,0,0"
-                                    ToolTip="Верифицирован" VerticalAlignment="Center"
+                            <Border Background="{DynamicResource AccentBrush}" Width="18" Height="18" CornerRadius="9" Margin="6,2,0,0" VerticalAlignment="Center"
                                     Visibility="{Binding Profile.IsVerified, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}">
                                 <TextBlock Text="&#xE73E;" Style="{StaticResource Icon}" FontSize="10" Foreground="White"
                                            HorizontalAlignment="Center" />
                             </Border>
                         </StackPanel>
-                        <TextBlock Text="{Binding UsernameText}" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center"
+                        <TextBlock Text="{Binding UsernameText}" Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center"
                                    FontSize="15" Margin="0,8,0,0" Visibility="{Binding UsernameText, Converter={StaticResource NullToVis}}" />
                         <TextBlock Text="{Binding KindText}" Style="{StaticResource Caption}" HorizontalAlignment="Center" Margin="0,3,0,0"
                                    Visibility="{Binding KindText, Converter={StaticResource NullToVis}}" />
@@ -328,7 +326,7 @@
                                                         <Image Source="{Binding Cover}" Stretch="UniformToFill" />
                                                     </Grid>
                                                     <!-- Сердечко — только у своей музыки: нажатие убирает песню из профиля -->
-                                                    <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Padding="8" ToolTip="Убрать из профиля"
+                                                    <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Padding="8"
                                                             VerticalAlignment="Center"
                                                             Command="{Binding DataContext.UnlikeSongCommand, ElementName=Root}" CommandParameter="{Binding}"
                                                             Visibility="{Binding DataContext.IsSelf, ElementName=Root, Converter={StaticResource BoolToVis}}">
@@ -345,7 +343,7 @@
                                         </Button>
                                         <DataTemplate.Triggers>
                                             <Trigger SourceName="Bd" Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface2Brush}" />
+                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Surface2Brush}" />
                                             </Trigger>
                                         </DataTemplate.Triggers>
                                     </DataTemplate>
@@ -358,8 +356,7 @@
                         <ItemsControl ItemsSource="{Binding InfoRows}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="{x:Type vm:InfoRow}">
-                                    <Border x:Name="Row" CornerRadius="10" Padding="10,9" Background="Transparent" Cursor="Hand"
-                                            ToolTip="Нажмите, чтобы скопировать">
+                                    <Border x:Name="Row" CornerRadius="10" Padding="10,9" Background="Transparent" Cursor="Hand">
                                         <Border.InputBindings>
                                             <MouseBinding MouseAction="LeftClick"
                                                           Command="{Binding DataContext.CopyRowCommand, ElementName=Root}"
@@ -367,10 +364,10 @@
                                         </Border.InputBindings>
                                         <DockPanel>
                                             <TextBlock DockPanel.Dock="Left" Text="{Binding Icon}" Style="{StaticResource Icon}"
-                                                       Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Top"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Top"
                                                        Margin="0,3,14,0" />
                                             <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Padding="6"
-                                                    FontSize="14" Content="{Binding RevealIcon}" ToolTip="Показать / скрыть"
+                                                    FontSize="14" Content="{Binding RevealIcon}"
                                                     Command="{Binding ToggleRevealCommand}"
                                                     Visibility="{Binding IsSecret, Converter={StaticResource BoolToVis}}" />
                                             <StackPanel>
@@ -381,7 +378,7 @@
                                     </Border>
                                     <DataTemplate.Triggers>
                                         <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="Row" Property="Background" Value="{StaticResource Surface2Brush}" />
+                                            <Setter TargetName="Row" Property="Background" Value="{DynamicResource Surface2Brush}" />
                                         </Trigger>
                                     </DataTemplate.Triggers>
                                 </DataTemplate>
@@ -423,9 +420,9 @@
                                         <Button.Template>
                                             <ControlTemplate TargetType="Button">
                                                 <Grid helpers:RoundClip.Radius="10">
-                                                    <Border Background="{StaticResource Surface2Brush}" />
+                                                    <Border Background="{DynamicResource Surface2Brush}" />
                                                     <Image Source="{Binding Preview}" Stretch="UniformToFill" />
-                                                    <Border x:Name="Hover" Background="#22FFFFFF" Visibility="Collapsed" />
+                                                    <Border x:Name="Hover" Background="{DynamicResource TintBrush}" Visibility="Collapsed" />
                                                     <!-- Затемнение снизу — дата читается на любой картинке -->
                                                     <Border VerticalAlignment="Bottom" Height="40">
                                                         <Border.Background>
@@ -470,7 +467,7 @@
                             <ItemsControl ItemsSource="{Binding Profile.BotCommands}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border Background="{StaticResource Surface2Brush}" CornerRadius="10" Padding="12,8" Margin="0,0,0,6">
+                                        <Border Background="{DynamicResource Surface2Brush}" CornerRadius="10" Padding="12,8" Margin="0,0,0,6">
                                             <TextBlock Text="{Binding}" TextWrapping="Wrap" />
                                         </Border>
                                     </DataTemplate>
@@ -519,7 +516,7 @@
                     <DockPanel Margin="0,0,14,14">
                         <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
                             <TextBlock Text="Подарки" Style="{StaticResource H2}" />
-                            <TextBlock Text="{Binding CountAll}" Style="{StaticResource H2}" Foreground="{StaticResource TextSecondaryBrush}"
+                            <TextBlock Text="{Binding CountAll}" Style="{StaticResource H2}" Foreground="{DynamicResource TextSecondaryBrush}"
                                        Margin="10,0,0,0" />
                         </StackPanel>
                         <Button DockPanel.Dock="Right" Margin="10,0,0,0" Command="{Binding ToggleSelectionModeCommand}"
@@ -529,9 +526,9 @@
                                     <Setter Property="Padding" Value="14,8" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding SelectionMode}" Value="True">
-                                            <Setter Property="Background" Value="{StaticResource Surface2Brush}" />
-                                            <Setter Property="Tag" Value="{StaticResource Surface3Brush}" />
-                                            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                                            <Setter Property="Background" Value="{DynamicResource Surface2Brush}" />
+                                            <Setter Property="Tag" Value="{DynamicResource Surface3Brush}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -583,7 +580,7 @@
                             <TextBlock><Run Text="Скрытые" /> <Run Text="{Binding CountHidden, Mode=OneWay}" /></TextBlock>
                         </RadioButton>
 
-                        <Border Width="1" Height="20" Background="{StaticResource BorderBrush}" Margin="4,0,12,0" />
+                        <Border Width="1" Height="20" Background="{DynamicResource BorderBrush}" Margin="4,0,12,0" />
 
                         <RadioButton Style="{StaticResource ChipRadio}" GroupName="sort" Content="Новые"
                                      IsChecked="{Binding Sort, Converter={StaticResource EnumToBool}, ConverterParameter=Newest}" />
@@ -598,7 +595,7 @@
                     <Border Grid.Row="2" Margin="0,0,14,14" CornerRadius="14" Padding="16,12">
                         <Border.Style>
                             <Style TargetType="Border">
-                                <Setter Property="Background" Value="{StaticResource Surface2Brush}" />
+                                <Setter Property="Background" Value="{DynamicResource Surface2Brush}" />
                                 <Setter Property="Visibility" Value="Collapsed" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding SelectionMode}" Value="True">
@@ -645,7 +642,7 @@
 
                     <StackPanel Grid.Row="3" HorizontalAlignment="Center" VerticalAlignment="Center"
                                 Visibility="{Binding IsGiftsEmpty, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="&#xE7C3;" Style="{StaticResource Icon}" FontSize="38" Foreground="{StaticResource Surface3Brush}"
+                        <TextBlock Text="&#xE7C3;" Style="{StaticResource Icon}" FontSize="38" Foreground="{DynamicResource Surface3Brush}"
                                    HorizontalAlignment="Center" />
                         <TextBlock Text="Здесь пока пусто" Style="{StaticResource Muted}" Margin="0,12,0,0" HorizontalAlignment="Center" />
                     </StackPanel>
@@ -654,7 +651,7 @@
         </Grid>
 
         <!-- ================================================= Загрузка профиля / ошибка -->
-        <Grid Grid.RowSpan="2" Background="{StaticResource BgBrush}"
+        <Grid Grid.RowSpan="2" Background="{DynamicResource BgBrush}"
               Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}">
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                 <views:Spinner />
@@ -662,7 +659,7 @@
             </StackPanel>
         </Grid>
 
-        <Grid Grid.RowSpan="2" Background="{StaticResource BgBrush}"
+        <Grid Grid.RowSpan="2" Background="{DynamicResource BgBrush}"
               Visibility="{Binding LoadError, Converter={StaticResource NullToVis}}">
             <Border Style="{StaticResource Panel}" Width="480" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="30">
                 <StackPanel>
@@ -678,7 +675,7 @@
 
         <!-- ================================================= Детали подарка -->
         <Grid Grid.RowSpan="2" Visibility="Collapsed" helpers:Anim.Mode="Scale" helpers:Anim.Show="{Binding SelectedGift, Converter={x:Static views:ChatsView.NotNull}}">
-            <Border Background="{StaticResource OverlayBrush}">
+            <Border Background="{DynamicResource OverlayBrush}">
                 <Border.InputBindings>
                     <MouseBinding MouseAction="LeftClick" Command="{Binding CloseGiftCommand}" />
                 </Border.InputBindings>
@@ -693,7 +690,7 @@
                     <ScrollViewer VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True">
                         <StackPanel Margin="26,26,26,22">
                             <Grid Width="220" Height="220" HorizontalAlignment="Center">
-                                <Border CornerRadius="22" Background="{StaticResource Surface2Brush}" />
+                                <Border CornerRadius="22" Background="{DynamicResource Surface2Brush}" />
                                 <Border CornerRadius="22" Background="{Binding Backdrop}"
                                         Visibility="{Binding Backdrop, Converter={StaticResource NullToVis}}" />
                                 <Border CornerRadius="22">
@@ -710,16 +707,16 @@
 
                             <!-- Отправитель -->
                             <Border HorizontalAlignment="Center" Margin="0,12,0,0" Padding="4,4,14,4" CornerRadius="16"
-                                    Background="{StaticResource Surface2Brush}" Cursor="Hand" ToolTip="Открыть профиль отправителя">
+                                    Background="{DynamicResource Surface2Brush}" Cursor="Hand">
                                 <Border.InputBindings>
                                     <MouseBinding MouseAction="LeftClick" Command="{Binding DataContext.OpenSenderCommand, ElementName=Root}"
                                                   CommandParameter="{Binding}" />
                                 </Border.InputBindings>
                                 <StackPanel Orientation="Horizontal">
                                     <Grid Width="24" Height="24">
-                                        <Ellipse Fill="{StaticResource Surface3Brush}" />
+                                        <Ellipse Fill="{DynamicResource Surface3Brush}" />
                                         <TextBlock Text="&#xE77B;" Style="{StaticResource Icon}" FontSize="12" HorizontalAlignment="Center"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                                         <Ellipse Visibility="{Binding SenderAvatar, Converter={StaticResource NullToVis}}">
                                             <Ellipse.Fill>
                                                 <ImageBrush ImageSource="{Binding SenderAvatar}" Stretch="UniformToFill" />
@@ -731,24 +728,24 @@
                             </Border>
 
                             <!-- Сообщение к подарку -->
-                            <Border Background="{StaticResource Surface2Brush}" CornerRadius="12" Padding="14,10" Margin="0,16,0,0"
+                            <Border Background="{DynamicResource Surface2Brush}" CornerRadius="12" Padding="14,10" Margin="0,16,0,0"
                                     Visibility="{Binding Item.Message, Converter={StaticResource NullToVis}}">
                                 <TextBlock helpers:RichText.CustomEmoji="{Binding Item.MessageEmoji}" helpers:RichText.Formatting="{Binding Item.MessageFormatting}" helpers:RichText.Text="{Binding Item.Message}" helpers:RichText.EmojiSize="18" TextWrapping="Wrap" />
                             </Border>
 
                             <!-- Таблица как в Telegram: колонка подписей по самой длинной подписи (общая для всех строк),
                                  подписи на чуть выделенном фоне, между колонками и строками — тонкие линии -->
-                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Margin="0,16,0,0" helpers:RoundClip.Radius="12">
+                            <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="12" Margin="0,16,0,0" helpers:RoundClip.Radius="12">
                                 <ItemsControl ItemsSource="{Binding Details}" Grid.IsSharedSizeScope="True" Margin="0,0,0,-1" Focusable="False">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate DataType="{x:Type vm:DetailRow}">
-                                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+                                            <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="Auto" SharedSizeGroup="GiftLabel" />
                                                         <ColumnDefinition Width="*" />
                                                     </Grid.ColumnDefinitions>
-                                                    <Border Background="#0DFFFFFF" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0" Padding="14,9">
+                                                    <Border Background="{DynamicResource Hover2Brush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0" Padding="14,9">
                                                         <TextBlock Text="{Binding Label}" Style="{StaticResource Caption}" FontSize="13" MaxWidth="190" TextWrapping="Wrap" />
                                                     </Border>
                                                     <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" FontSize="13" Margin="12,9,12,9" VerticalAlignment="Center" />
@@ -779,14 +776,14 @@
                         </StackPanel>
                     </ScrollViewer>
                     <Button Style="{StaticResource IconButton}" Content="&#xE711;" HorizontalAlignment="Right" VerticalAlignment="Top"
-                            Margin="10" ToolTip="Закрыть" Command="{Binding DataContext.CloseGiftCommand, ElementName=Root}" />
+                            Margin="10" Command="{Binding DataContext.CloseGiftCommand, ElementName=Root}" />
                 </Grid>
             </Border>
         </Grid>
 
         <!-- ================================================= Подтверждение -->
         <Grid Grid.RowSpan="2" Visibility="Collapsed" helpers:Anim.Mode="Scale" helpers:Anim.Show="{Binding Confirm, Converter={x:Static views:ChatsView.NotNull}}">
-            <Border Background="{StaticResource OverlayBrush}">
+            <Border Background="{DynamicResource OverlayBrush}">
                 <Border.InputBindings>
                     <MouseBinding MouseAction="LeftClick" Command="{Binding CancelConfirmCommand}" />
                 </Border.InputBindings>
@@ -808,7 +805,7 @@
                                 <Style TargetType="Button" BasedOn="{StaticResource GoldButton}">
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding Confirm.IsDanger}" Value="True">
-                                            <Setter Property="Background" Value="{StaticResource DangerBrush}" />
+                                            <Setter Property="Background" Value="{DynamicResource DangerBrush}" />
                                             <Setter Property="Tag" Value="#F06A62" />
                                             <Setter Property="Foreground" Value="White" />
                                         </DataTrigger>
@@ -865,17 +862,17 @@
             </Grid>
 
             <Button Style="{StaticResource IconButton}" Content="&#xE76B;" FontSize="22" Padding="14" Margin="20,0,0,0"
-                    HorizontalAlignment="Left" VerticalAlignment="Center" Foreground="White" ToolTip="Предыдущее (←)"
+                    HorizontalAlignment="Left" VerticalAlignment="Center" Foreground="White"
                     Command="{Binding PrevPhotoCommand}" Visibility="{Binding ViewerHasMany, Converter={StaticResource BoolToVis}}" />
             <Button Style="{StaticResource IconButton}" Content="&#xE76C;" FontSize="22" Padding="14" Margin="0,0,20,0"
-                    HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="White" ToolTip="Следующее (→)"
+                    HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="White"
                     Command="{Binding NextPhotoCommand}" Visibility="{Binding ViewerHasMany, Converter={StaticResource BoolToVis}}" />
             <Button Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="18" Margin="0,16,20,0" Foreground="White"
-                    HorizontalAlignment="Right" VerticalAlignment="Top" ToolTip="Закрыть (Esc)" Command="{Binding CloseAvatarCommand}" />
+                    HorizontalAlignment="Right" VerticalAlignment="Top" Command="{Binding CloseAvatarCommand}" />
         </Grid>
 
         <!-- ================================================= Уведомление -->
-        <Border Grid.RowSpan="2" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,28"
+        <Border Grid.RowSpan="2" Panel.ZIndex="30" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24"
                 CornerRadius="12" Padding="18,12" MaxWidth="640"
                 Visibility="{Binding Toast, Converter={StaticResource NullToVis}}">
             <Border.Style>

@@ -1106,7 +1106,7 @@ public sealed partial class MusicViewModel : ObservableObject
     private async Task WatchStartAsync(MusicTrackViewModel vm)
     {
         var key = vm.Track.Key;
-        for (var i = 0; i < 30; i++)
+        for (var i = 0; i < 50; i++) // 25 с: связь с файловым сервером иногда замирает на десятки секунд
         {
             await Task.Delay(500);
             if (MusicPlayer.Instance.Key != key || _current != vm) return; // переключили или остановили
@@ -1120,7 +1120,7 @@ public sealed partial class MusicViewModel : ObservableObject
             }
             if (!MusicPlayer.Instance.IsPlaying && !MusicPlayer.Instance.IsBuffering) return; // поставили на паузу
         }
-        Logging.Write($"music: {key} не зазвучала за 15 с — следующая");
+        Logging.Write($"music: {key} не зазвучала за 25 с — следующая");
         _toast("Песня не загрузилась — включаю следующую", true);
         MusicPlayer.Instance.Stop();
         DropFailed(vm);

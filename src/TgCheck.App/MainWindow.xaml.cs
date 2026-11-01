@@ -51,10 +51,14 @@ public partial class MainWindow : Window
         };
     }
 
+    // Заголовок окна рисует Windows — ему тема сообщается отдельно.
+    private void ApplyThemeToWindow() => WindowEffects.ApplyDarkTitleBar(this, AppTheme.WindowBackground, AppTheme.IsLight);
+
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        WindowEffects.ApplyDarkTitleBar(this, (Color)FindResource("BgColor"));
+        ApplyThemeToWindow();
+        AppTheme.Changed += ApplyThemeToWindow;
         WindowEffects.ApplyExeIcon(this);
         HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(WndProc);
     }
@@ -99,7 +103,7 @@ public partial class MainWindow : Window
         if (ShellView.Current?.RouteTyping(e.Text) == true) e.Handled = true;
     }
 
-    private void ExitApp()
+    internal void ExitApp()
     {
         _exiting = true;
         Close();

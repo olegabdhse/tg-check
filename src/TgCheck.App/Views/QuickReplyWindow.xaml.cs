@@ -32,7 +32,7 @@ public partial class QuickReplyWindow : Window
         DataContext = conv;
         InitializeComponent();
         Recent.ItemsSource = _recent;
-        SourceInitialized += (_, _) => Helpers.WindowEffects.ApplyRoundedCorners(this, Color.FromRgb(0x2A, 0x38, 0x46));
+        SourceInitialized += (_, _) => Helpers.WindowEffects.ApplyRoundedCorners(this, Helpers.AppTheme.WindowBorder);
         conv.Items.CollectionChanged += OnItemsChanged;
         Closed += (_, _) => conv.Items.CollectionChanged -= OnItemsChanged;
         Loaded += (_, _) =>

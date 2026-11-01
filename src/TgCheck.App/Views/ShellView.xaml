@@ -16,7 +16,7 @@
 
         <!-- Кнопка боковой панели -->
         <Style x:Key="RailButton" TargetType="RadioButton">
-            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Margin" Value="0,0,0,6" />
@@ -26,17 +26,17 @@
                         <Grid Width="60" Height="56" Background="Transparent">
                             <Border x:Name="Bd" CornerRadius="12" Margin="6,2" Background="Transparent" />
                             <Border x:Name="Bar" Width="3" CornerRadius="2" HorizontalAlignment="Left" Margin="0,12"
-                                    Background="{StaticResource AccentBrush}" Visibility="Collapsed" />
+                                    Background="{DynamicResource AccentBrush}" Visibility="Collapsed" />
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface2Brush}" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Surface2Brush}" />
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface2Brush}" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Surface2Brush}" />
                                 <Setter TargetName="Bar" Property="Visibility" Value="Visible" />
-                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -52,10 +52,10 @@
         </Grid.ColumnDefinitions>
 
         <!-- ================================================= Боковая панель -->
-        <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
+        <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
             <DockPanel Margin="0,14,0,12">
                 <Grid DockPanel.Dock="Top" Width="38" Height="38" Margin="0,0,0,18">
-                    <Ellipse Fill="{StaticResource AccentBrush}" Visibility="{Binding MyProfile.Logo, Converter={StaticResource InvNullToVis}}" />
+                    <Ellipse Fill="{DynamicResource AccentBrush}" Visibility="{Binding MyProfile.Logo, Converter={StaticResource InvNullToVis}}" />
                     <Path Data="{StaticResource PlaneGeometry}" Fill="White" Stretch="Uniform" Margin="9,10,10,9"
                           Visibility="{Binding MyProfile.Logo, Converter={StaticResource InvNullToVis}}" />
                     <Image Source="{Binding MyProfile.Logo}" RenderOptions.BitmapScalingMode="HighQuality"
@@ -64,15 +64,14 @@
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding VersionText}" Style="{StaticResource Caption}" FontSize="10"
                            HorizontalAlignment="Center" />
                 <Button DockPanel.Dock="Bottom" Style="{StaticResource IconButton}" Content="&#xE713;" FontSize="19" Padding="10"
-                        HorizontalAlignment="Center" Margin="0,0,0,8" ToolTip="Настройки" Command="{Binding ToggleSettingsCommand}" />
+                        HorizontalAlignment="Center" Margin="0,0,0,8" Command="{Binding ToggleSettingsCommand}" />
                 <!-- Соединение: щит с галочкой — через прокси, полоски сигнала — напрямую; клик — свой прокси -->
-                <Button DockPanel.Dock="Bottom" Style="{StaticResource IconButton}" Padding="10" HorizontalAlignment="Center" Margin="0,0,0,2"
-                        ToolTip="{Binding Proxy.Tip}" Command="{Binding Proxy.ToggleCommand}">
+                <Button DockPanel.Dock="Bottom" Style="{StaticResource IconButton}" Padding="10" HorizontalAlignment="Center" Margin="0,0,0,2" ToolTip="{Binding Proxy.Tip}" Command="{Binding Proxy.ToggleCommand}">
                     <Grid Width="20" Height="20">
                         <Grid Visibility="{Binding Proxy.UsesProxy, Converter={StaticResource BoolToVis}}">
                             <Path Data="M10,1.6 L16.8,4.3 V9.4 C16.8,13.6 14,16.9 10,18.4 C6,16.9 3.2,13.6 3.2,9.4 V4.3 Z"
-                                  Stroke="{StaticResource AccentBrush}" StrokeThickness="1.6" StrokeLineJoin="Round" />
-                            <Path Data="M6.7,10 L9,12.3 L13.4,7.7" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.7"
+                                  Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.6" StrokeLineJoin="Round" />
+                            <Path Data="M6.7,10 L9,12.3 L13.4,7.7" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.7"
                                   StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
                         </Grid>
                         <Canvas Visibility="{Binding Proxy.UsesProxy, Converter={StaticResource InvBoolToVis}}">
@@ -88,21 +87,21 @@
                     </Grid>
                 </Button>
                 <StackPanel>
-                    <RadioButton Style="{StaticResource RailButton}" GroupName="rail" ToolTip="Чаты"
+                    <RadioButton Style="{StaticResource RailButton}" GroupName="rail"
                                  IsChecked="{Binding Section, Converter={StaticResource EnumToBool}, ConverterParameter=Chats}">
                         <Grid>
                             <StackPanel>
                                 <TextBlock Text="&#xE8BD;" Style="{StaticResource Icon}" FontSize="20" HorizontalAlignment="Center" />
                                 <TextBlock Text="Чаты" FontSize="10" HorizontalAlignment="Center" Margin="0,3,0,0" />
                             </StackPanel>
-                            <Border Background="{StaticResource AccentBrush}" CornerRadius="8" MinWidth="16" Height="16" Padding="4,0"
+                            <Border Background="{DynamicResource AccentBrush}" CornerRadius="8" MinWidth="16" Height="16" Padding="4,0"
                                     HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-6,-12,0"
                                     Visibility="{Binding ChatsUnread, Converter={StaticResource NullToVis}}">
                                 <controls:BadgeText Text="{Binding ChatsUnread}" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
                         </Grid>
                     </RadioButton>
-                    <RadioButton Style="{StaticResource RailButton}" GroupName="rail" ToolTip="Мой профиль"
+                    <RadioButton Style="{StaticResource RailButton}" GroupName="rail"
                                  IsChecked="{Binding Section, Converter={StaticResource EnumToBool}, ConverterParameter=Profile}">
                         <StackPanel>
                             <controls:AvatarView Width="30" Height="30" HorizontalAlignment="Center" Source="{Binding MyProfile.Avatar}"
@@ -111,7 +110,7 @@
                             <TextBlock Text="Профиль" FontSize="10" HorizontalAlignment="Center" Margin="0,3,0,0" />
                         </StackPanel>
                     </RadioButton>
-                    <RadioButton Style="{StaticResource RailButton}" GroupName="rail" ToolTip="Музыка"
+                    <RadioButton Style="{StaticResource RailButton}" GroupName="rail"
                                  IsChecked="{Binding Section, Converter={StaticResource EnumToBool}, ConverterParameter=Music}">
                         <StackPanel>
                             <TextBlock Text="&#xEC4F;" Style="{StaticResource Icon}" FontSize="20" HorizontalAlignment="Center" />
@@ -133,18 +132,18 @@
             <Border Height="12" />
 
             <!-- Баннер обновления -->
-            <Border Grid.Row="1" Margin="18,10,18,0" CornerRadius="12" Padding="14,9" Background="#1F3A52"
+            <Border Grid.Row="1" Margin="18,10,18,0" CornerRadius="12" Padding="14,9" Background="{DynamicResource BannerBrush}"
                     helpers:Anim.FadeOnVisible="True"
                     Visibility="{Binding UpdateText, Converter={StaticResource NullToVis}}">
                 <DockPanel>
                     <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" Padding="6" FontSize="11"
-                            Command="{Binding DismissUpdateCommand}" ToolTip="Позже" Margin="6,0,0,0"
+                            Command="{Binding DismissUpdateCommand}" Margin="6,0,0,0"
                             Visibility="{Binding IsUpdating, Converter={StaticResource InvBoolToVis}}" />
                     <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Padding="14,6" Content="Обновить"
                             Command="{Binding InstallUpdateCommand}"
                             Visibility="{Binding IsUpdating, Converter={StaticResource InvBoolToVis}}" />
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="&#xE896;" Style="{StaticResource Icon}" Foreground="{StaticResource AccentBrush}" Margin="0,0,10,0" />
+                        <TextBlock Text="&#xE896;" Style="{StaticResource Icon}" Foreground="{DynamicResource AccentBrush}" Margin="0,0,10,0" />
                         <TextBlock Text="{Binding UpdateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
                     </StackPanel>
                 </DockPanel>
@@ -161,13 +160,13 @@
         <!-- ================================================= Завершить сеанс (один или все, кроме этого) — окно как у очистки кэша -->
         <Grid Grid.ColumnSpan="2" Panel.ZIndex="20" Visibility="Collapsed" helpers:Anim.Mode="Scale" helpers:Anim.Show="{Binding IsSessionConfirmOpen}"
               DataContext="{Binding Settings}">
-            <Border Background="{StaticResource OverlayBrush}">
+            <Border Background="{DynamicResource OverlayBrush}">
                 <Border.InputBindings>
                     <MouseBinding MouseAction="LeftClick" Command="{Binding CancelSessionConfirmCommand}" />
                 </Border.InputBindings>
             </Border>
             <Border Width="360" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="18" Padding="26,24,26,22"
-                    Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                    Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
                 <Border.Effect>
                     <DropShadowEffect BlurRadius="40" ShadowDepth="0" Opacity="0.5" />
                 </Border.Effect>
@@ -195,19 +194,19 @@
         <!-- ================================================= Очистка кэша: вопрос → утка с веником и полоска → итог -->
         <Grid Grid.ColumnSpan="2" Panel.ZIndex="20" Visibility="Collapsed" helpers:Anim.Mode="Scale" helpers:Anim.Show="{Binding IsClearDialogOpen}"
               DataContext="{Binding Settings}">
-            <Border Background="{StaticResource OverlayBrush}">
+            <Border Background="{DynamicResource OverlayBrush}">
                 <Border.InputBindings>
                     <MouseBinding MouseAction="LeftClick" Command="{Binding CloseClearDialogCommand}" />
                 </Border.InputBindings>
             </Border>
             <Border Width="360" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="18" Padding="26,22,26,22"
-                    Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                    Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
                 <Border.Effect>
                     <DropShadowEffect BlurRadius="40" ShadowDepth="0" Opacity="0.5" />
                 </Border.Effect>
                 <StackPanel>
                     <Grid Width="130" Height="130" HorizontalAlignment="Center">
-                        <TextBlock Text="&#xE74D;" Style="{StaticResource Icon}" FontSize="56" Foreground="{StaticResource AccentBrush}"
+                        <TextBlock Text="&#xE74D;" Style="{StaticResource Icon}" FontSize="56" Foreground="{DynamicResource AccentBrush}"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"
                                    Visibility="{Binding CleanupSticker, Converter={StaticResource InvNullToVis}}" />
                         <controls:StickerView Media="{Binding CleanupSticker}" Animate="True"
@@ -223,8 +222,8 @@
 
                     <!-- Полоска прогресса -->
                     <Grid Height="6" Margin="0,18,0,0" Visibility="{Binding IsConfirmStage, Converter={StaticResource InvBoolToVis}}">
-                        <Border CornerRadius="3" Background="{StaticResource Surface2Brush}" />
-                        <Border CornerRadius="3" Background="{StaticResource AccentBrush}" HorizontalAlignment="Left" RenderTransformOrigin="0,0.5"
+                        <Border CornerRadius="3" Background="{DynamicResource Surface2Brush}" />
+                        <Border CornerRadius="3" Background="{DynamicResource AccentBrush}" HorizontalAlignment="Left" RenderTransformOrigin="0,0.5"
                                 Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Grid}}">
                             <Border.RenderTransform>
                                 <ScaleTransform ScaleX="{Binding ClearProgress}" />
@@ -245,16 +244,16 @@
 
         <!-- ================================================= Прокси -->
         <Grid Grid.ColumnSpan="2" Visibility="Collapsed" helpers:Anim.Mode="Fade" helpers:Anim.Show="{Binding IsOpen}" DataContext="{Binding Proxy}">
-            <Border Background="{StaticResource OverlayBrush}">
+            <Border Background="{DynamicResource OverlayBrush}">
                 <Border.InputBindings>
                     <MouseBinding MouseAction="LeftClick" Command="{Binding ToggleCommand}" />
                 </Border.InputBindings>
             </Border>
             <Border Width="420" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="16" Padding="20,14,20,18"
-                    Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                    Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
                 <StackPanel>
                     <DockPanel Margin="0,0,0,8">
-                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" ToolTip="Закрыть (Esc)"
+                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;"
                                 Command="{Binding ToggleCommand}" />
                         <TextBlock Text="Прокси" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
                     </DockPanel>
@@ -265,10 +264,14 @@
 
         <!-- ================================================= Настройки: тёмная панель выезжает слева, контент сдвигается,
              список чатов сжимается до аватарок; клик вне панели — закрыть -->
+        <!-- Панель настроек выезжает из-под полосы разделов: всё, что левее колонки, обрезается -->
+        <Grid Grid.Column="1" ClipToBounds="True">
         <Border x:Name="SettingsShade" Grid.Column="1" Background="#33000000" Visibility="Collapsed" Margin="340,0,0,0"
                 MouseLeftButtonDown="SettingsShade_MouseDown" />
+        <Border x:Name="SettingsBackdrop" Width="340" HorizontalAlignment="Left" Margin="-1,0,0,0" Visibility="Collapsed" Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0" />
         <Border x:Name="SettingsPanel" Grid.Column="1" Width="340" HorizontalAlignment="Left" Visibility="Collapsed"
-                Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0" Margin="-1,0,0,0"
+                Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0" Margin="-1,0,0,0"
                 DataContext="{Binding Settings}">
             <Border.RenderTransform>
                 <TranslateTransform x:Name="SettingsShift" X="-340" />
@@ -278,7 +281,7 @@
                 <Style x:Key="TgSwitch" TargetType="CheckBox">
                     <Setter Property="Cursor" Value="Hand" />
                     <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-                    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
                     <Setter Property="FontSize" Value="14" />
                     <Setter Property="Template">
                         <Setter.Value>
@@ -286,9 +289,9 @@
                                 <Border x:Name="Row" Background="Transparent" Padding="22,10,20,10">
                                     <DockPanel>
                                         <TextBlock DockPanel.Dock="Left" Text="{TemplateBinding Tag}" Style="{StaticResource Icon}" FontSize="19"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" Width="22" Margin="0,0,18,0" VerticalAlignment="Center" />
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" Width="22" Margin="0,0,18,0" VerticalAlignment="Center" />
                                         <Grid DockPanel.Dock="Right" Width="34" Height="18" VerticalAlignment="Center" Margin="12,0,0,0">
-                                            <Border x:Name="Track" CornerRadius="9" Background="{StaticResource Surface3Brush}" />
+                                            <Border x:Name="Track" CornerRadius="9" Background="{DynamicResource Surface3Brush}" />
                                             <Ellipse Width="12" Height="12" Fill="White" HorizontalAlignment="Left" Margin="3,0">
                                                 <Ellipse.RenderTransform>
                                                     <TranslateTransform x:Name="KnobShift" />
@@ -300,10 +303,10 @@
                                 </Border>
                                 <ControlTemplate.Triggers>
                                     <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="Row" Property="Background" Value="#0DFFFFFF" />
+                                        <Setter TargetName="Row" Property="Background" Value="{DynamicResource Hover2Brush}" />
                                     </Trigger>
                                     <Trigger Property="IsChecked" Value="True">
-                                        <Setter TargetName="Track" Property="Background" Value="{StaticResource AccentBrush}" />
+                                        <Setter TargetName="Track" Property="Background" Value="{DynamicResource AccentBrush}" />
                                         <Trigger.EnterActions>
                                             <BeginStoryboard>
                                                 <Storyboard>
@@ -336,8 +339,7 @@
                                     <TextBlock Text="{Binding Icon}" Style="{StaticResource Icon}" FontSize="18" Foreground="White"
                                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
-                                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="11" Padding="8" VerticalAlignment="Top"
-                                        ToolTip="Завершить сеанс" Command="{Binding AskTerminateCommand}"
+                                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="11" Padding="8" VerticalAlignment="Top" Command="{Binding AskTerminateCommand}"
                                         Visibility="{Binding Info.IsCurrent, Converter={StaticResource InvBoolToVis}}" />
                                 <TextBlock DockPanel.Dock="Right" Text="{Binding ActiveText}" Style="{StaticResource Caption}" VerticalAlignment="Top" Margin="8,2,4,0" />
                                 <StackPanel>
@@ -345,7 +347,7 @@
                                     <TextBlock Text="{Binding AppText}" FontSize="12.5" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
                                     <TextBlock Text="{Binding SystemText}" Style="{StaticResource Caption}" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" />
                                     <TextBlock Text="{Binding PlaceText}" Style="{StaticResource Caption}" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="Вход не завершён — ждёт пароль" Foreground="{StaticResource DangerBrush}" FontSize="12" Margin="0,2,0,0"
+                                    <TextBlock Text="Вход не завершён — ждёт пароль" Foreground="{DynamicResource DangerBrush}" FontSize="12" Margin="0,2,0,0"
                                                Visibility="{Binding IsPending, Converter={StaticResource BoolToVis}}" />
                                 </StackPanel>
                             </DockPanel>
@@ -356,7 +358,7 @@
                 <Style x:Key="TgRow" TargetType="Button">
                     <Setter Property="Cursor" Value="Hand" />
                     <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-                    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
                     <Setter Property="FontSize" Value="14" />
                     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                     <Setter Property="Template">
@@ -365,13 +367,13 @@
                                 <Border x:Name="Row" Background="Transparent" Padding="22,12,20,12">
                                     <DockPanel>
                                         <TextBlock DockPanel.Dock="Left" Text="{TemplateBinding Tag}" Style="{StaticResource Icon}" FontSize="19"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" Width="22" Margin="0,0,18,0" VerticalAlignment="Center" />
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" Width="22" Margin="0,0,18,0" VerticalAlignment="Center" />
                                         <ContentPresenter VerticalAlignment="Center" />
                                     </DockPanel>
                                 </Border>
                                 <ControlTemplate.Triggers>
                                     <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="Row" Property="Background" Value="#0DFFFFFF" />
+                                        <Setter TargetName="Row" Property="Background" Value="{DynamicResource Hover2Brush}" />
                                     </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
@@ -379,7 +381,7 @@
                     </Setter>
                 </Style>
                 <Style x:Key="TgSection" TargetType="TextBlock">
-                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
                     <Setter Property="FontWeight" Value="SemiBold" />
                     <Setter Property="FontSize" Value="14" />
                     <Setter Property="Margin" Value="22,14,0,4" />
@@ -387,14 +389,14 @@
                 <!-- Разделитель разделов — тонкая светлая линия -->
                 <Style x:Key="TgDivider" TargetType="Border">
                     <Setter Property="Height" Value="1" />
-                    <Setter Property="Background" Value="#24FFFFFF" />
+                    <Setter Property="Background" Value="{DynamicResource PillBrush}" />
                     <Setter Property="Margin" Value="22,8,0,0" />
                 </Style>
             </Border.Resources>
             <DockPanel>
                 <!-- Шапка: заголовок и закрыть -->
                 <DockPanel DockPanel.Dock="Top" Margin="22,14,12,4">
-                    <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" ToolTip="Закрыть (Esc)"
+                    <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;"
                             Command="{Binding DataContext.ToggleSettingsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
                     <TextBlock Text="Настройки" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" />
                 </DockPanel>
@@ -404,7 +406,7 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True">
                 <StackPanel>
                     <!-- Профиль: аватар, имя, @ник — клик открывает свой профиль -->
-                    <Button Cursor="Hand" FocusVisualStyle="{x:Null}" Foreground="{StaticResource TextBrush}"
+                    <Button Cursor="Hand" FocusVisualStyle="{x:Null}" Foreground="{DynamicResource TextBrush}"
                             Command="{Binding DataContext.OpenMyProfileFromSettingsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
@@ -413,7 +415,7 @@
                                 </Border>
                                 <ControlTemplate.Triggers>
                                     <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="Row" Property="Background" Value="#0DFFFFFF" />
+                                        <Setter TargetName="Row" Property="Background" Value="{DynamicResource Hover2Brush}" />
                                     </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
@@ -422,7 +424,7 @@
                             <controls:AvatarView DockPanel.Dock="Left" Width="64" Height="64" Source="{Binding Avatar}" Fill="{Binding AvatarBrush}" Initials="{Binding Initials}" />
                             <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
                                 <TextBlock helpers:RichText.Text="{Binding NameText}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{Binding UsernameText}" Foreground="{StaticResource AccentBrush}" FontSize="13" Margin="0,3,0,0" />
+                                <TextBlock Text="{Binding UsernameText}" Foreground="{DynamicResource AccentBrush}" FontSize="13" Margin="0,3,0,0" />
                                 <TextBlock Text="{Binding StatusText}" Style="{StaticResource Caption}" Margin="0,2,0,0" />
                             </StackPanel>
                         </DockPanel>
@@ -447,6 +449,37 @@
 
                     <Border Style="{StaticResource TgDivider}" />
                     <TextBlock Text="Интерфейс" Style="{StaticResource TgSection}" />
+                    <!-- Тема: карточки с образцом; выбор перезапускает программу (вход сохраняется) -->
+                    <ItemsControl ItemsSource="{Binding Themes}" Margin="18,2,16,2" Focusable="False">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Columns="3" Rows="1" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:ThemeOption}">
+                                <Button Style="{StaticResource BareButton}" Margin="4,0" Cursor="Hand"
+                                        Command="{Binding DataContext.SetThemeCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}">
+                                    <StackPanel>
+                                        <Border x:Name="Card" Height="58" CornerRadius="10" Background="{Binding Surface}" BorderThickness="2" BorderBrush="{DynamicResource BorderBrush}" ClipToBounds="True">
+                                            <Grid Margin="7">
+                                                <Border Width="34" Height="11" CornerRadius="5" Background="{Binding Bubble}" HorizontalAlignment="Right" VerticalAlignment="Top" />
+                                                <Border Width="26" Height="11" CornerRadius="5" Background="{Binding Accent}" HorizontalAlignment="Left" VerticalAlignment="Bottom" />
+                                            </Grid>
+                                        </Border>
+                                        <TextBlock x:Name="Label" Text="{Binding Name}" FontSize="12" HorizontalAlignment="Center" Margin="0,5,0,4" />
+                                    </StackPanel>
+                                </Button>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                        <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                        <Setter TargetName="Label" Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                        <Setter TargetName="Label" Property="FontWeight" Value="SemiBold" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                     <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE8B9;" IsChecked="{Binding ShowStories}" Content="Истории над списком чатов" />
                     <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE737;" IsChecked="{Binding ShowIsland}">
                         <StackPanel>
@@ -454,13 +487,13 @@
                             <TextBlock Text="Последние чаты сверху экрана" Style="{StaticResource Caption}" Margin="0,2,0,0" />
                         </StackPanel>
                     </CheckBox>
-                    <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE8D6;" IsChecked="{Binding ShowIslandMusic}" Content="Плеер музыки в островке" />
+                    <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE8D6;" IsChecked="{Binding ShowIslandMusic}" IsEnabled="{Binding ShowIsland}" Content="Плеер музыки в островке" />
 
                     <Border Style="{StaticResource TgDivider}" />
                     <TextBlock Text="Данные и память" Style="{StaticResource TgSection}" />
                     <Button Style="{StaticResource TgRow}" Tag="&#xE74D;" Command="{Binding AskClearCacheCommand}">
                         <DockPanel>
-                            <TextBlock DockPanel.Dock="Right" Text="{Binding CacheSizeText}" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding CacheSizeText}" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
                             <TextBlock Text="Очистить кэш" VerticalAlignment="Center" />
                         </DockPanel>
                     </Button>
@@ -469,7 +502,7 @@
                     <TextBlock Text="Конфиденциальность" Style="{StaticResource TgSection}" />
                     <Button Style="{StaticResource TgRow}" Tag="&#xE977;" Command="{Binding OpenSessionsCommand}">
                         <DockPanel>
-                            <TextBlock DockPanel.Dock="Right" Text="{Binding SessionsCountText}" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding SessionsCountText}" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
                             <TextBlock Text="Активные сеансы" VerticalAlignment="Center" />
                         </DockPanel>
                     </Button>
@@ -477,10 +510,10 @@
                 </ScrollViewer>
 
                 <!-- Активные сеансы: этот сеанс, другие устройства; завершить один (подтверждение в строке) или все, кроме этого -->
-                <Grid Background="{StaticResource SurfaceBrush}" Visibility="Collapsed" helpers:Anim.Mode="Fade" helpers:Anim.Show="{Binding IsSessionsOpen}">
+                <Grid Background="{DynamicResource SurfaceBrush}" Visibility="Collapsed" helpers:Anim.Mode="Fade" helpers:Anim.Show="{Binding IsSessionsOpen}">
                     <DockPanel>
                         <DockPanel DockPanel.Dock="Top" Margin="12,0,12,6">
-                            <Button DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE72B;" ToolTip="Назад" Command="{Binding CloseSessionsCommand}" />
+                            <Button DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE72B;" Command="{Binding CloseSessionsCommand}" />
                             <TextBlock Text="Активные сеансы" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Margin="6,0,0,0" />
                         </DockPanel>
                         <ScrollViewer VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True">
@@ -495,7 +528,7 @@
                                 <!-- Завершить все, кроме этого — с подтверждением -->
                                 <StackPanel Visibility="{Binding HasOtherSessions, Converter={StaticResource BoolToVis}}">
                                     <Button Style="{StaticResource TgRow}" Tag="&#xE7E8;" Command="{Binding AskTerminateOthersCommand}">
-                                        <TextBlock Text="Завершить все другие сеансы" Foreground="{StaticResource DangerBrush}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Завершить все другие сеансы" Foreground="{DynamicResource DangerBrush}" VerticalAlignment="Center" />
                                     </Button>
                                     <TextBlock Text="Другие сеансы" Style="{StaticResource TgSection}" />
                                     <ItemsControl ItemsSource="{Binding OtherSessions}" ItemTemplate="{StaticResource SessionRow}" Focusable="False" />
@@ -507,6 +540,8 @@
                 </Grid>
             </DockPanel>
         </Border>
+
+        </Grid>
 
         <!-- ================================================= Истории -->
         <Grid Grid.ColumnSpan="2" Visibility="Collapsed" helpers:Anim.Mode="Scale" helpers:Anim.Show="{Binding IsStoriesOpen}">
@@ -580,7 +615,7 @@
                         <!-- Автор -->
                         <DockPanel VerticalAlignment="Top" Margin="14,24,10,0">
                             <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" Foreground="White"
-                                    Command="{Binding CloseCommand}" ToolTip="Закрыть (Esc)" />
+                                    Command="{Binding CloseCommand}" />
                             <Button Command="{Binding OpenProfileCommand}" HorizontalAlignment="Left" Cursor="Hand" Foreground="White" FocusVisualStyle="{x:Null}">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
@@ -604,7 +639,7 @@
                         <!-- Низ истории: ответ и лайк (чужая) или просмотры (своя) — как в Telegram -->
                         <DockPanel VerticalAlignment="Bottom" Margin="12,0,12,14">
                             <Button DockPanel.Dock="Right" Width="44" Height="44" Margin="8,0,0,0" Cursor="Hand" FocusVisualStyle="{x:Null}"
-                                    Command="{Binding ToggleLikeCommand}" ToolTip="Нравится"
+                                    Command="{Binding ToggleLikeCommand}"
                                     Visibility="{Binding CanLike, Converter={StaticResource BoolToVis}}">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
@@ -651,7 +686,7 @@
                                     Visibility="{Binding CanReply, Converter={StaticResource BoolToVis}}">
                                 <DockPanel>
                                     <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE724;" Foreground="White" Padding="8"
-                                            Command="{Binding SendReplyCommand}" ToolTip="Отправить" />
+                                            Command="{Binding SendReplyCommand}" />
                                     <Grid>
                                         <TextBlock Text="Ответить…" Foreground="#AAFFFFFF" VerticalAlignment="Center" Margin="12,0" IsHitTestVisible="False"
                                                    Visibility="{Binding ReplyText, Converter={StaticResource InvNullToVis}}" />
@@ -676,7 +711,7 @@
                                     <ItemsControl ItemsSource="{Binding Viewers}" Focusable="False">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate DataType="{x:Type vm:StoryViewerViewModel}">
-                                                <DockPanel Margin="16,6" Background="Transparent" Cursor="Hand" ToolTip="Открыть профиль">
+                                                <DockPanel Margin="16,6" Background="Transparent" Cursor="Hand">
                                                     <DockPanel.InputBindings>
                                                         <MouseBinding MouseAction="LeftClick" Command="{Binding DataContext.OpenViewerCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                                       CommandParameter="{Binding}" />
@@ -703,7 +738,7 @@
         </Grid>
 
         <!-- Уведомление -->
-        <Border Grid.ColumnSpan="2" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,28"
+        <Border Grid.ColumnSpan="2" Panel.ZIndex="30" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24"
                 CornerRadius="12" Padding="18,12" MaxWidth="640" helpers:Anim.FadeOnVisible="True"
                 Visibility="{Binding Toast, Converter={StaticResource NullToVis}}">
             <Border.Style>

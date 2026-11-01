@@ -116,6 +116,7 @@ public sealed class MusicPlayer
             _player.Stopped += OnVlcState;
             _player.LengthChanged += (_, e) => _lengthMs = e.Length;
             _media = source is not null ? new Media(vlc, new StreamMediaInput(source)) : new Media(vlc, path!, path!.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? FromType.FromLocation : FromType.FromPath);
+            _media.AddOption(":no-video"); // только звук: вшитую в песню обложку VLC иначе показывал в своём окне (Direct3D11 output)
             if (source is null && path!.StartsWith("http", StringComparison.OrdinalIgnoreCase)) _media.AddOption(":network-caching=500"); // по сети — начинать играть быстрее
             _source = source;
             _ended = false;

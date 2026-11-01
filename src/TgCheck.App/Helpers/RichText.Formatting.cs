@@ -11,8 +11,6 @@ namespace TgCheck.App.Helpers;
 public static partial class RichText
 {
     private static readonly FontFamily CodeFont = new("Cascadia Mono, Consolas, Courier New");
-    private static readonly Brush CodeBrush = Frozen(Color.FromRgb(0x8F, 0xD3, 0xFF));
-    private static readonly Brush QuoteBrush = Frozen(Color.FromRgb(0xCF, 0xE3, 0xF5));
     private static readonly Brush SpoilerBrush = Frozen(Color.FromArgb(0x66, 0x9A, 0xA8, 0xB6));
 
     private static Brush Frozen(Color c)
@@ -37,7 +35,7 @@ public static partial class RichText
         {
             if (emoji.FirstOrDefault(e => e.Offset == pos) is { } em)
             {
-                var sticker = new TgCheck.App.Controls.StickerView { Once = true, Animate = _animate, CustomEmojiId = em.DocumentId, Width = size, Height = size, ToolTip = text.Substring(em.Offset, em.Length) };
+                var sticker = new TgCheck.App.Controls.StickerView { Once = true, Animate = _animate, CustomEmojiId = em.DocumentId, Width = size, Height = size };
                 tb.Inlines.Add(new InlineUIContainer(sticker) { BaselineAlignment = BaselineAlignment.Center });
                 pos = em.Offset + em.Length;
                 continue;
@@ -75,11 +73,11 @@ public static partial class RichText
                 case TextStyleKind.Strike: decorations.Add(TextDecorations.Strikethrough); break;
                 case TextStyleKind.Code:
                     span.FontFamily = CodeFont;
-                    span.Foreground = CodeBrush;
+                    span.SetResourceReference(TextElement.ForegroundProperty, "CodeInlineBrush");
                     break;
                 case TextStyleKind.Quote:
                     span.FontStyle = FontStyles.Italic;
-                    span.Foreground = QuoteBrush;
+                    span.SetResourceReference(TextElement.ForegroundProperty, "QuoteTextBrush");
                     break;
             }
         }
@@ -96,7 +94,6 @@ public static partial class RichText
             span.Background = SpoilerBrush;
             span.Foreground = Brushes.Transparent;
             span.Cursor = System.Windows.Input.Cursors.Hand;
-            span.ToolTip = "Скрытый текст — нажмите, чтобы показать";
             span.MouseLeftButtonDown += (_, e) =>
             {
                 if (!hidden) return;
@@ -104,7 +101,6 @@ public static partial class RichText
                 span.Background = null;
                 if (original is null) span.ClearValue(TextElement.ForegroundProperty); else span.Foreground = original;
                 span.Cursor = null;
-                span.ToolTip = null;
                 e.Handled = true;
             };
         }

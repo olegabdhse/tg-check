@@ -28,7 +28,8 @@ public partial class MiniChatWindow : Window
         InitializeComponent();
         SourceInitialized += (_, _) =>
         {
-            Helpers.WindowEffects.ApplyRoundedCorners(this, Color.FromRgb(0x2A, 0x38, 0x46));
+            Helpers.WindowEffects.ApplyRoundedCorners(this, Helpers.AppTheme.WindowBorder);
+            Helpers.AppTheme.Changed += () => Helpers.WindowEffects.ApplyRoundedCorners(this, Helpers.AppTheme.WindowBorder);
             System.Windows.Interop.HwndSource.FromHwnd(new System.Windows.Interop.WindowInteropHelper(this).Handle)?.AddHook(WndProc);
         };
         StateChanged += (_, _) => OnStateChanged();

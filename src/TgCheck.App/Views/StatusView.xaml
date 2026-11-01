@@ -7,12 +7,12 @@
         <StackPanel>
             <views:Spinner HorizontalAlignment="Center" Margin="0,0,0,18"
                            Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
-            <TextBlock Text="&#xE783;" Style="{StaticResource Icon}" FontSize="40" Foreground="{StaticResource DangerBrush}"
+            <TextBlock Text="&#xE783;" Style="{StaticResource Icon}" FontSize="40" Foreground="{DynamicResource DangerBrush}"
                        HorizontalAlignment="Center" Margin="0,0,0,14"
                        Visibility="{Binding IsBusy, Converter={StaticResource InvBoolToVis}}" />
             <TextBlock Text="{Binding Title}" Style="{StaticResource H2}" HorizontalAlignment="Center" TextAlignment="Center" />
             <TextBox Text="{Binding Message, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" Background="Transparent"
-                     Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" FontSize="13" Margin="0,14,0,0"
+                     Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" FontSize="13" Margin="0,14,0,0"
                      Visibility="{Binding Message, Converter={StaticResource NullToVis}}" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,22,0,0"
                         Visibility="{Binding CanRetry, Converter={StaticResource BoolToVis}}">
@@ -23,7 +23,7 @@
             </StackPanel>
 
             <!-- Обрыв соединения: другой прокси (MTProxy / SOCKS5) или без него -->
-            <Border Margin="0,24,0,0" Padding="16" CornerRadius="10" Background="{StaticResource Surface2Brush}"
+            <Border Margin="0,24,0,0" Padding="16" CornerRadius="10" Background="{DynamicResource Surface2Brush}"
                     Visibility="{Binding Proxy, Converter={StaticResource NullToVis}}">
                 <StackPanel>
                     <TextBlock Text="Прокси" FontWeight="SemiBold" Margin="0,0,0,4" />

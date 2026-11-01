@@ -241,7 +241,10 @@ public sealed class MusicLibrary
         foreach (var name in artists)
             tasks.Add(Task.Run(async () =>
             {
-                var own = SongsOf(name, 6);
+                // Сначала песни самого исполнителя — они сразу на полке (раньше ждали поиска всех похожих, это больше минуты).
+                var ownSongs = await SongsOf(name, 6);
+                partial?.Invoke(false, ownSongs.Where(t => !WasPlayed(t)).ToList());
+                lock (more) more.AddRange(ownSongs);
                 if (await MusicCatalog.DeezerFindArtistAsync(name, ct) is { } artist)
                 {
                     var related = await MusicCatalog.DeezerRelatedAsync(artist.Id, 3, ct);
@@ -253,9 +256,6 @@ public sealed class MusicLibrary
                     }));
                     lock (similar) similar.AddRange(found.SelectMany(t => t));
                 }
-                var ownSongs = await own;
-                partial?.Invoke(false, ownSongs.Where(t => !WasPlayed(t)).ToList());
-                lock (more) more.AddRange(ownSongs);
             }, ct));
         try { await Task.WhenAll(tasks).ConfigureAwait(false); }
         catch (Exception ex) when (ex is not OperationCanceledException) { Logging.Write($"music recs: {ex.Message}"); }

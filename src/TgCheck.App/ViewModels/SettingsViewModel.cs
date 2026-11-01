@@ -39,6 +39,23 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
     partial void OnNotifyArchivedChanged(bool value) => UiSettings.NotifyArchived = value;
 
+    // ---- темы: выбор применяется сразу, без перезапуска и анимаций
+
+    public IReadOnlyList<ThemeOption> Themes { get; } =
+    [
+        new(ThemeKind.Default, "Стандартная", "#17212B", "#2B5278", "#2AABEE"),
+        new(ThemeKind.Dark, "Тёмная", "#0B1016", "#16324F", "#4A9EFF"),
+        new(ThemeKind.Light, "Светлая", "#E6EAEF", "#C3DEF4", "#2277BD"),
+    ];
+
+    [RelayCommand]
+    private void SetTheme(ThemeOption? option)
+    {
+        if (option is null) return;
+        AppTheme.SwitchTo(option.Kind);
+        foreach (var theme in Themes) theme.RefreshCurrent();
+    }
+
     // ---- кэш: окно «Очистить кэш?» → утка с веником и полоска прогресса → «Готово»
 
     /// <summary>Размер кэша, очистка (с прогрессом и тем, что ещё не удалять) и стикер-утка — задаёт оболочка.</summary>
@@ -204,6 +221,19 @@ public sealed partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(HasOtherSessions));
         await LoadSessionsAsync();
     }
+}
+
+/// <summary>Карточка темы в настройках: мини-образец (фон, сообщение, акцент) и название.</summary>
+public sealed class ThemeOption(ThemeKind kind, string name, string surface, string bubble, string accent) : ObservableObject
+{
+    public void RefreshCurrent() => OnPropertyChanged(nameof(IsCurrent));
+
+    public ThemeKind Kind { get; } = kind;
+    public string Name { get; } = name;
+    public Brush Surface { get; } = (Brush)new BrushConverter().ConvertFromString(surface)!;
+    public Brush Bubble { get; } = (Brush)new BrushConverter().ConvertFromString(bubble)!;
+    public Brush Accent { get; } = (Brush)new BrushConverter().ConvertFromString(accent)!;
+    public bool IsCurrent => AppTheme.Current == kind;
 }
 
 /// <summary>Строка сеанса: устройство, приложение, место и время; крестик — окно «Завершить сеанс?».</summary>

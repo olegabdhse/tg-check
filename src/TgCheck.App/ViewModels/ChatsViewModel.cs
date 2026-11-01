@@ -553,7 +553,12 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
             {
                 var moved = existing.Update(d);
                 existing.RefreshPeer(d.Peer, _tg.Media); // новое имя, фото, статус — сразу, а не после перезапуска
-                if (_conversations.TryGetValue(d.Peer.Key, out var openConv)) openConv.RefreshPeer(d.Peer, _tg.Media);
+                if (_conversations.TryGetValue(d.Peer.Key, out var openConv))
+                {
+                    openConv.RefreshPeer(d.Peer, _tg.Media);
+                    // Сервер считает непрочитанными сообщения чата, который открыт и виден, — отметка не дошла: ещё раз.
+                    if (existing.Unread > 0 && Shell.IsOnScreen(d.Peer.Key) && !openConv.IsThread) openConv.MarkReadAgain();
+                }
                 if (_forumUnread.TryGetValue(d.Peer.Key, out var forumUnread)) existing.Unread = forumUnread;
                 moved |= existing.IsPinned && existing.Order != order; // порядок закреплённых
                 existing.Order = order++;

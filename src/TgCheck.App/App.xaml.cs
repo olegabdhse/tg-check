@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Threading;
+using TgCheck.App.Helpers;
 using TgCheck.App.ViewModels;
 using TgCheck.Core.Services;
 
@@ -39,6 +40,10 @@ public partial class App : Application
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         DispatcherUnhandledException += OnUnhandled;
 
+        // Системные всплывающие подсказки выключены во всей программе.
+        System.Windows.Controls.ToolTipService.IsEnabledProperty.OverrideMetadata(typeof(FrameworkElement), new FrameworkPropertyMetadata(false));
+        System.Windows.Controls.ToolTipService.IsEnabledProperty.OverrideMetadata(typeof(FrameworkContentElement), new FrameworkPropertyMetadata(false));
+        AppTheme.Apply(Enum.TryParse<ThemeKind>(UiSettings.Theme, out var theme) ? theme : ThemeKind.Default); // до первого окна
         _main = new MainViewModel();
         var window = new MainWindow { DataContext = _main };
         MainWindow = window;

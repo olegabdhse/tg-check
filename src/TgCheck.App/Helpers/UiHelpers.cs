@@ -244,11 +244,11 @@ public static class WindowEffects
         window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, () => ApplyExeIcon(window));
 
     /// <summary>Тёмный заголовок окна Windows 10/11 в цвет фона приложения.</summary>
-    public static void ApplyDarkTitleBar(Window window, Color caption)
+    public static void ApplyDarkTitleBar(Window window, Color caption, bool light = false)
     {
         var hwnd = new WindowInteropHelper(window).Handle;
         if (hwnd == IntPtr.Zero) return;
-        var on = 1;
+        var on = light ? 0 : 1;
         if (DwmSetWindowAttribute(hwnd, 20, ref on, sizeof(int)) != 0)
             DwmSetWindowAttribute(hwnd, 19, ref on, sizeof(int)); // старые сборки Windows 10
         var colorRef = caption.R | caption.G << 8 | caption.B << 16;
@@ -267,7 +267,7 @@ public static class WindowEffects
         DwmSetWindowAttribute(hwnd, 33, ref round, sizeof(int)); // DWMWA_WINDOW_CORNER_PREFERENCE
         var colorRef = border.R | border.G << 8 | border.B << 16;
         DwmSetWindowAttribute(hwnd, 34, ref colorRef, sizeof(int)); // DWMWA_BORDER_COLOR
-        var on = 1;
+        var on = AppTheme.IsLight ? 0 : 1;
         DwmSetWindowAttribute(hwnd, 20, ref on, sizeof(int)); // тёмная тема рамки
     }
 }

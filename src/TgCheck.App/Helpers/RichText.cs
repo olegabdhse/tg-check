@@ -81,7 +81,7 @@ public static partial class RichText
             {
                 if (span.Offset < cursor) continue;
                 if (span.Offset > cursor) AddLinked(tb.Inlines, text[cursor..span.Offset], size);
-                var sticker = new TgCheck.App.Controls.StickerView { Once = true, Animate = _animate, CustomEmojiId = span.DocumentId, Width = size, Height = size, ToolTip = text.Substring(span.Offset, span.Length) };
+                var sticker = new TgCheck.App.Controls.StickerView { Once = true, Animate = _animate, CustomEmojiId = span.DocumentId, Width = size, Height = size };
                 tb.Inlines.Add(new InlineUIContainer(sticker) { BaselineAlignment = BaselineAlignment.Center });
                 cursor = span.Offset + span.Length;
             }
@@ -98,7 +98,7 @@ public static partial class RichText
         {
             if (m.Index > pos) AddMentioned(inlines, text[pos..m.Index], size);
             var url = m.Value.TrimEnd('.', ',', ')', '!', '?', ';', ':');
-            var link = new Hyperlink(new Run(url)) { ToolTip = url };
+            var link = new Hyperlink(new Run(url));
             if (Application.Current.TryFindResource("LinkStyle") is Style style) link.Style = style;
             var target = url.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? url : "https://" + url;
             link.Click += (_, _) => Shell.Open(target);
@@ -123,7 +123,6 @@ public static partial class RichText
     // Упоминания проверяются только в тексте сообщений (не в списке чатов и шапках — там они не ссылки).
     private static bool _mentions;
 
-    private static readonly Brush MentionBrush = Frozen(Color.FromRgb(0x6A, 0xB3, 0xF3));
 
     private static void AddMentioned(InlineCollection inlines, string text, double size)
     {
@@ -147,9 +146,8 @@ public static partial class RichText
         try { found = await exists(name); }
         catch { return; }
         if (!found) return;
-        span.Foreground = MentionBrush;
+        span.SetResourceReference(TextElement.ForegroundProperty, "LinkBrush");
         span.Cursor = System.Windows.Input.Cursors.Hand;
-        span.ToolTip = "@" + name;
         span.MouseEnter += (_, _) => span.TextDecorations = TextDecorations.Underline;
         span.MouseLeave += (_, _) => span.TextDecorations = null;
         // Нажатие — профиль (у выделяемого текста отпускание кнопки забирает выделение, поэтому — по нажатию).
@@ -168,8 +166,8 @@ public static partial class RichText
             {
                 // Эмодзи Telegram при появлении проигрывает анимацию один раз (как в Telegram), до этого — общая статичная картинка.
                 Image image = _animate && EmojiImages.Sticker(part) is { } sticker
-                    ? new TgCheck.App.Controls.StickerView { Source = img, Once = true, Width = emojiSize, Height = emojiSize, ToolTip = part, Media = sticker }
-                    : new Image { Source = img, Width = emojiSize, Height = emojiSize, ToolTip = part };
+                    ? new TgCheck.App.Controls.StickerView { Source = img, Once = true, Width = emojiSize, Height = emojiSize, Media = sticker }
+                    : new Image { Source = img, Width = emojiSize, Height = emojiSize };
                 RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
                 inlines.Add(new InlineUIContainer(image) { BaselineAlignment = BaselineAlignment.Center });
             }

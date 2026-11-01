@@ -20,7 +20,7 @@
             <Setter Property="Height" Value="18" />
             <Setter Property="Padding" Value="5,0" />
             <Setter Property="CornerRadius" Value="9" />
-            <Setter Property="Background" Value="#33FFFFFF" />
+            <Setter Property="Background" Value="{DynamicResource Tint2Brush}" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="TextElement.FontSize" Value="11" />
             <Setter Property="TextElement.FontWeight" Value="Bold" />
@@ -34,7 +34,7 @@
         </DataTemplate>
 
         <Style x:Key="ChatListItem" TargetType="ListBoxItem">
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -46,10 +46,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface2Brush}" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Surface2Brush}" />
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#2B5278" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectedRowBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -81,17 +81,31 @@
                     <TextBox x:Name="SearchBox" Style="{StaticResource SearchBox}" GotKeyboardFocus="SearchBox_GotFocus" LostKeyboardFocus="SearchBox_LostFocus" Padding="34,9,34,9" Tag="Поиск: чаты, люди, @ник, ссылка или ID"
                              Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}" />
                     <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" FontSize="13" Margin="13,0,0,0" IsHitTestVisible="False"
-                               HorizontalAlignment="Left" Foreground="{StaticResource TextSecondaryBrush}" />
+                               HorizontalAlignment="Left" Foreground="{DynamicResource TextSecondaryBrush}" />
                     <!-- Идёт глобальный поиск — маленький индикатор внутри поля, справа -->
                     <views:Spinner Width="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0" IsHitTestVisible="False"
                                    Visibility="{Binding ShowSearchSpinner, Converter={StaticResource BoolToVis}}" />
                 </Grid>
 
+                <!-- Связь оборвалась или ещё устанавливается: плашка поверх чатов внизу списка, ничего не сдвигает -->
+                <Border Grid.Row="3" Panel.ZIndex="5" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="10,0,10,12" Padding="12,7"
+                        CornerRadius="14" Background="{DynamicResource Surface3Brush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                        IsHitTestVisible="False" helpers:Anim.FadeOnVisible="True"
+                        Visibility="{Binding Shell.ConnectionStatus, Converter={StaticResource NullToVis}}">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="14" ShadowDepth="0" Opacity="0.35" />
+                    </Border.Effect>
+                    <StackPanel Orientation="Horizontal">
+                        <views:Spinner Width="13" Height="13" Margin="0,0,8,0" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Shell.ConnectionStatus}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Border>
+
                 <!-- Истории -->
-                <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" Margin="6,0,6,6"
+                <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" Margin="6,-6,6,6"
                               Visibility="Collapsed" helpers:Anim.Mode="SlideDown" helpers:Anim.Show="{Binding HasStories}"
                               PreviewMouseWheel="Stories_PreviewMouseWheel">
-                    <ItemsControl ItemsSource="{Binding Stories}">
+                    <ItemsControl ItemsSource="{Binding Stories}" Margin="0,6,0,0"> <!-- запас сверху: увеличенная при наведении аватарка не обрезается -->
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <StackPanel Orientation="Horizontal" />
@@ -99,7 +113,7 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:StoryPeerViewModel}">
-                                <Button Width="66" Margin="0,0,2,0" Cursor="Hand" FocusVisualStyle="{x:Null}" ToolTip="{Binding Title}"
+                                <Button Width="66" Margin="0,0,2,0" Cursor="Hand" FocusVisualStyle="{x:Null}"
                                         Command="{Binding DataContext.OpenStoriesCommand, ElementName=Root}" CommandParameter="{Binding}">
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
@@ -136,7 +150,7 @@
                                                              Initials="{Binding Initials}" Ring="{Binding StoryRing}" />
                                         <TextBlock helpers:RichText.Text="{Binding ShortTitle}" helpers:RichText.EmojiSize="12" FontSize="11"
                                                    HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="62" Margin="0,4,0,0"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                                     </StackPanel>
                                 </Button>
                             </DataTemplate>
@@ -147,20 +161,15 @@
                 <!-- Вкладки / архив -->
                 <Grid Grid.Row="2" Margin="12,0,12,8">
                     <DockPanel Visibility="{Binding ShowArchive, Converter={StaticResource InvBoolToVis}}">
-                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Command="{Binding ToggleArchiveCommand}"
-                                ToolTip="Архив" Padding="8,6" Visibility="{Binding HasArchive, Converter={StaticResource BoolToVis}}">
+                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Command="{Binding ToggleArchiveCommand}" Padding="8,6" Visibility="{Binding HasArchive, Converter={StaticResource BoolToVis}}">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="&#xE7B8;" Style="{StaticResource Icon}" FontSize="15" />
-                                <Border Background="{StaticResource Surface3Brush}" CornerRadius="9" MinWidth="18" Height="18" Padding="5,0" Margin="6,0,0,0"
+                                <Border Background="{DynamicResource Surface3Brush}" CornerRadius="9" MinWidth="18" Height="18" Padding="5,0" Margin="6,0,0,0"
                                         Visibility="{Binding ArchiveUnread, Converter={StaticResource NullToVis}}">
-                                        <controls:BadgeText Text="{Binding ArchiveUnread}" FontSize="11" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        <controls:BadgeText Text="{Binding ArchiveUnread}" FontSize="11" Foreground="{DynamicResource TextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                             </StackPanel>
                         </Button>
-                        <!-- Пока чаты показаны из кэша, а связь ещё устанавливается -->
-                        <TextBlock DockPanel.Dock="Right" Text="{Binding Shell.ConnectionStatus}" FontSize="12" Margin="0,0,6,0"
-                                   VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}"
-                                   Visibility="{Binding Shell.ConnectionStatus, Converter={StaticResource NullToVis}}" />
                         <StackPanel Orientation="Horizontal">
                             <RadioButton Style="{StaticResource ChipRadio}" GroupName="tabs"
                                          IsChecked="{Binding Tab, Converter={StaticResource EnumToBool}, ConverterParameter=All}">
@@ -183,8 +192,7 @@
                         </StackPanel>
                     </DockPanel>
                     <DockPanel Visibility="Collapsed" helpers:Anim.Mode="SlideDown" helpers:Anim.Show="{Binding ShowArchive}">
-                        <Button Style="{StaticResource IconButton}" Content="&#xE72B;" Padding="8" Command="{Binding ToggleArchiveCommand}"
-                                ToolTip="Назад к чатам (Esc)" />
+                        <Button Style="{StaticResource IconButton}" Content="&#xE72B;" Padding="8" Command="{Binding ToggleArchiveCommand}" />
                         <TextBlock Text="Архив" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" Margin="6,0,0,0" />
                     </DockPanel>
                 </Grid>
@@ -250,7 +258,7 @@
                                     <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource Avatar48}"
                                                       MouseLeftButtonUp="Avatar_MouseLeftButtonUp" />
                                     <Border Width="14" Height="14" CornerRadius="7" Background="#4FCE5D" BorderThickness="2.5"
-                                            BorderBrush="{StaticResource SurfaceBrush}" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                            BorderBrush="{DynamicResource SurfaceBrush}" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                             Margin="0,0,-1,-1" Visibility="{Binding IsOnline, Converter={StaticResource BoolToVis}}" />
                                 </Grid>
                                 <Grid Grid.Column="1" Margin="11,1,2,1">
@@ -260,7 +268,7 @@
                                     </Grid.RowDefinitions>
                                     <DockPanel>
                                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
-                                            <TextBlock FontSize="11" Margin="0,0,4,0" Foreground="#6AB3F3"
+                                            <TextBlock FontSize="11" Margin="0,0,4,0" Foreground="{DynamicResource LinkBrush}"
                                                        Visibility="{Binding ShowChecks, Converter={StaticResource BoolToVis}}">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock" BasedOn="{StaticResource Icon}">
@@ -281,7 +289,7 @@
                                             <controls:StickerView CustomEmojiId="{Binding Peer.EmojiStatusId, TargetNullValue=0}" Visibility="{Binding Peer.EmojiStatusId, Converter={StaticResource NullToVis}}" Width="16" Height="16"
                                                                   Margin="4,0,0,0" Animate="False" />
                                             <TextBlock Text="&#xE74F;" Style="{StaticResource Icon}" FontSize="11" Margin="5,0,0,0"
-                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                                        Visibility="{Binding IsMuted, Converter={StaticResource BoolToVis}}" />
                                         </StackPanel>
                                     </DockPanel>
@@ -290,10 +298,10 @@
                                                 VerticalAlignment="Center" Visibility="{Binding HasUnread, Converter={StaticResource BoolToVis}}">
                                             <Border.Style>
                                                 <Style TargetType="Border">
-                                                    <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+                                                    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding IsMuted}" Value="True">
-                                                            <Setter Property="Background" Value="#4D5B6A" />
+                                                            <Setter Property="Background" Value="{DynamicResource MutedBadgeBrush}" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
@@ -302,12 +310,12 @@
                                         </Border>
                                         <!-- Непросмотренные реакции на ваши сообщения — красное сердечко, как в Telegram -->
                                         <Border DockPanel.Dock="Right" Width="20" Height="20" CornerRadius="10" Background="#E5534B" Margin="6,0,0,0"
-                                                VerticalAlignment="Center" ToolTip="Новые реакции"
+                                                VerticalAlignment="Center"
                                                 Visibility="{Binding HasUnreadReactions, Converter={StaticResource BoolToVis}}">
                                             <Path Data="{StaticResource HeartGeometry}" Fill="White" Stretch="Uniform" Margin="5" />
                                         </Border>
                                         <TextBlock DockPanel.Dock="Right" Text="&#xE718;" Style="{StaticResource Icon}" FontSize="12"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="6,0,0,0">
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="6,0,0,0">
                                             <TextBlock.Visibility>
                                                 <MultiBinding Converter="{x:Static views:ChatsView.PinVisibility}">
                                                     <Binding Path="IsPinned" />
@@ -315,16 +323,16 @@
                                                 </MultiBinding>
                                             </TextBlock.Visibility>
                                         </TextBlock>
-                                        <controls:TypingDots DockPanel.Dock="Left" DotBrush="{StaticResource AccentBrush}" Margin="0,1,6,0"
+                                        <controls:TypingDots DockPanel.Dock="Left" DotBrush="{DynamicResource AccentBrush}" Margin="0,1,6,0"
                                                              Visibility="{Binding IsTyping, Converter={StaticResource BoolToVis}}" />
                                         <TextBlock helpers:RichText.Text="{Binding LastText}" helpers:RichText.EmojiSize="15"
                                                    TextTrimming="CharacterEllipsis" FontSize="13" TextWrapping="NoWrap">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
-                                                    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding IsTyping}" Value="True">
-                                                            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
@@ -352,8 +360,8 @@
                 </ListBox>
 
                 <!-- Играет песня — плеер музыки островком под списком чатов (голосовые и кружки — в панели над чатом) -->
-                <Border Grid.Row="4" Margin="8,4,8,8" Padding="10,8,6,8" CornerRadius="18" Background="{StaticResource Surface2Brush}"
-                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Visibility="Collapsed"
+                <Border Grid.Row="4" Margin="8,4,8,8" Padding="10,8,6,8" CornerRadius="18" Background="{DynamicResource Surface2Brush}"
+                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Visibility="Collapsed"
                         DataContext="{x:Static vm:MusicNow.Instance}"
                         helpers:Anim.Mode="SlideUp" helpers:Anim.Show="{Binding ShowMusicBar}">
                     <views:MusicPlayerBar />
@@ -374,7 +382,7 @@
                 </StackPanel>
 
                 <!-- История поиска: при фокусе на пустом поиске (как в Telegram) -->
-                <Border Grid.Row="3" Background="{StaticResource SurfaceBrush}" Visibility="Collapsed"
+                <Border Grid.Row="3" Background="{DynamicResource SurfaceBrush}" Visibility="Collapsed"
                         helpers:Anim.Mode="Fade" helpers:Anim.Show="{Binding ShowRecentSearch}">
                     <DockPanel>
                         <DockPanel DockPanel.Dock="Top" Margin="18,4,10,4">
@@ -387,7 +395,7 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate DataType="{x:Type vm:ChatItemViewModel}">
                                         <Button Style="{StaticResource GhostButton}" HorizontalContentAlignment="Stretch" Padding="12,6" Margin="6,0"
-                                                Focusable="False" Foreground="{StaticResource TextBrush}"
+                                                Focusable="False" Foreground="{DynamicResource TextBrush}"
                                                 Command="{Binding DataContext.OpenRecentSearchCommand, ElementName=Root}" CommandParameter="{Binding}">
                                             <DockPanel>
                                                 <controls:AvatarView DockPanel.Dock="Left" Width="40" Height="40" Margin="0,0,12,0" Source="{Binding Avatar}"
@@ -414,7 +422,7 @@
             <Grid>
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
                             Visibility="{Binding Conversation, Converter={StaticResource InvNullToVis}}">
-                    <TextBlock Text="&#xE8BD;" Style="{StaticResource Icon}" FontSize="44" Foreground="{StaticResource Surface3Brush}"
+                    <TextBlock Text="&#xE8BD;" Style="{StaticResource Icon}" FontSize="44" Foreground="{DynamicResource Surface3Brush}"
                                HorizontalAlignment="Center" />
                     <TextBlock Text="Выберите чат, чтобы начать общение" Style="{StaticResource Muted}" Margin="0,14,0,0" />
                 </StackPanel>
@@ -426,7 +434,7 @@
         <!-- ================================================= Подтверждение -->
         <Grid Grid.ColumnSpan="3" Margin="-18,-12,-18,-18" Visibility="Collapsed" helpers:Anim.Mode="Scale"
               helpers:Anim.Show="{Binding Confirm, Converter={x:Static views:ChatsView.NotNull}}">
-            <Border Background="{StaticResource OverlayBrush}">
+            <Border Background="{DynamicResource OverlayBrush}">
                 <Border.InputBindings>
                     <MouseBinding MouseAction="LeftClick" Command="{Binding CancelConfirmCommand}" />
                 </Border.InputBindings>
@@ -448,8 +456,8 @@
                     <!-- Поле ввода (новое название, описание) -->
                     <TextBox x:Name="ConfirmInputBox" Margin="0,16,0,0" Padding="10,8" FontSize="14" DataContext="{Binding Confirm.Input}"
                              Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="{Binding IsMultiline}" TextWrapping="Wrap"
-                             MaxHeight="160" VerticalScrollBarVisibility="Auto" Background="{StaticResource Surface2Brush}" Foreground="{StaticResource TextBrush}"
-                             CaretBrush="{StaticResource TextBrush}" BorderThickness="0"
+                             MaxHeight="160" VerticalScrollBarVisibility="Auto" Background="{DynamicResource Surface2Brush}" Foreground="{DynamicResource TextBrush}"
+                             CaretBrush="{DynamicResource TextBrush}" BorderThickness="0"
                              Visibility="{Binding Converter={StaticResource NullToVis}}" IsVisibleChanged="ConfirmInputBox_IsVisibleChanged" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
                         <Button Content="Отмена" Style="{StaticResource SecondaryButton}" Margin="0,0,10,0" Command="{Binding CancelConfirmCommand}" />
@@ -458,7 +466,7 @@
                                 <Style TargetType="Button" BasedOn="{StaticResource DangerButton}">
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding Confirm.IsDanger}" Value="False">
-                                            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+                                            <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>

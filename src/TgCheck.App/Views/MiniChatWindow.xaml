@@ -4,9 +4,9 @@
         xmlns:views="clr-namespace:TgCheck.App.Views"
         xmlns:controls="clr-namespace:TgCheck.App.Controls"
         xmlns:helpers="clr-namespace:TgCheck.App.Helpers"
-        Title="TG Check — чат" Width="390" Height="720" WindowStyle="None" Background="{StaticResource SurfaceBrush}"
+        Title="TG Check — чат" Width="390" Height="720" WindowStyle="None" Background="{DynamicResource SurfaceBrush}"
         Topmost="True" ShowInTaskbar="False" ResizeMode="CanResize" MinWidth="320" MinHeight="360"
-        FontFamily="{StaticResource UiFont}" FontSize="14" Foreground="{StaticResource TextBrush}" UseLayoutRounding="True"
+        FontFamily="{StaticResource UiFont}" FontSize="14" Foreground="{DynamicResource TextBrush}" UseLayoutRounding="True"
         TextOptions.TextFormattingMode="Display">
 
     <!-- Обычное (не прозрачное) окно: углы и тень рисует Windows — без программной перерисовки и мерцания -->
@@ -15,7 +15,7 @@
     </WindowChrome.WindowChrome>
 
     <Grid>
-        <Border x:Name="Card" Background="{StaticResource SurfaceBrush}"
+        <Border x:Name="Card" Background="{DynamicResource SurfaceBrush}"
                 RenderTransformOrigin="0.5,0">
             <Border.RenderTransform>
                 <ScaleTransform x:Name="CardScale" />
@@ -27,16 +27,16 @@
                 </Grid.RowDefinitions>
 
                 <!-- Полоса окна: назад в приложение / закрыть; за неё можно перетаскивать -->
-                <Border Background="#0B1016" Padding="6,5" MouseLeftButtonDown="Header_MouseLeftButtonDown">
+                <Border Background="{DynamicResource MiniHeaderBrush}" Padding="6,5" MouseLeftButtonDown="Header_MouseLeftButtonDown">
                     <DockPanel>
-                        <Button DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE72B;" ToolTip="Открыть в приложении"
+                        <Button DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE72B;"
                                 Click="Back_Click" Padding="8" />
-                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" ToolTip="Закрыть (Esc)"
+                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;"
                                 Click="Close_Click" Padding="8" FontSize="13" />
                         <!-- Развернуть: при наведении Windows 11 показывает раскладки прикрепления (как у обычных окон) -->
-                        <Button x:Name="MaxButton" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE922;" ToolTip="Развернуть"
+                        <Button x:Name="MaxButton" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE922;"
                                 Click="Max_Click" Padding="8" FontSize="12" />
-                        <Border Width="36" Height="4" CornerRadius="2" Background="#44FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <Border Width="36" Height="4" CornerRadius="2" Background="{DynamicResource GripBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </DockPanel>
                 </Border>
 

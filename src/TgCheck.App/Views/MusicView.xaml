@@ -10,7 +10,7 @@
         <!-- Кнопка без фона (плитка, строка): подсветку рисует шаблон содержимого -->
         <Style x:Key="PlainButton" TargetType="Button">
             <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Template">
@@ -43,20 +43,20 @@
 
         <!-- Плитка полки: обложка, при наведении — кнопка «играть», играющий — подсвечен -->
         <DataTemplate x:Key="Tile" DataType="{x:Type vm:MusicTrackViewModel}">
-            <Button x:Name="TileButton" Style="{StaticResource PlainButton}" Width="156" Margin="0,0,14,0" ToolTip="{Binding Title}"
+            <Button x:Name="TileButton" Style="{StaticResource PlainButton}" Width="156" Margin="0,0,14,0"
                     Command="{Binding DataContext.PlayCommand, ElementName=Root}" CommandParameter="{Binding}">
                 <StackPanel>
                     <Grid Width="156" Height="156">
                         <ContentControl Content="{Binding}" ContentTemplate="{StaticResource CoverArt}" Tag="14" Focusable="False" />
                         <Border x:Name="Shade" CornerRadius="14" Background="#73000000" Opacity="0" />
-                        <Border x:Name="PlayDot" Width="46" Height="46" CornerRadius="23" Background="{StaticResource AccentBrush}"
+                        <Border x:Name="PlayDot" Width="46" Height="46" CornerRadius="23" Background="{DynamicResource AccentBrush}"
                                 HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="10" Opacity="0">
                             <TextBlock x:Name="PlayIcon" Text="&#xE768;" Style="{StaticResource Icon}" FontSize="17" Foreground="White"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" Margin="2,0,0,0" />
                         </Border>
                     </Grid>
                     <TextBlock x:Name="TileTitle" Text="{Binding Title}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" Margin="2,8,2,0" />
-                    <TextBlock Text="{Binding Artist}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="2,1,2,0" />
+                    <TextBlock Text="{Binding Artist}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="2,1,2,0" />
                 </StackPanel>
             </Button>
             <DataTemplate.Triggers>
@@ -68,27 +68,27 @@
                     <Setter TargetName="PlayDot" Property="Opacity" Value="1" />
                     <Setter TargetName="PlayIcon" Property="Text" Value="&#xE995;" />
                     <Setter TargetName="PlayIcon" Property="Margin" Value="0" />
-                    <Setter TargetName="TileTitle" Property="Foreground" Value="{StaticResource AccentBrush}" />
+                    <Setter TargetName="TileTitle" Property="Foreground" Value="{DynamicResource AccentBrush}" />
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
 
         <!-- Плитка сетки «Для вас»: ширина — по сетке, обложка квадратная -->
         <DataTemplate x:Key="GridTile" DataType="{x:Type vm:MusicTrackViewModel}">
-            <Button x:Name="TileButton" Style="{StaticResource PlainButton}" Margin="0,0,14,0" ToolTip="{Binding Title}"
+            <Button x:Name="TileButton" Style="{StaticResource PlainButton}" Margin="0,0,14,0"
                     Command="{Binding DataContext.PlayCommand, ElementName=Root}" CommandParameter="{Binding}">
                 <StackPanel>
                     <Grid Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}}">
                         <ContentControl Content="{Binding}" ContentTemplate="{StaticResource CoverArt}" Tag="16" Focusable="False" />
                         <Border x:Name="Shade" CornerRadius="16" Background="#73000000" Opacity="0" />
-                        <Border x:Name="PlayDot" Width="50" Height="50" CornerRadius="25" Background="{StaticResource AccentBrush}"
+                        <Border x:Name="PlayDot" Width="50" Height="50" CornerRadius="25" Background="{DynamicResource AccentBrush}"
                                 HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="12" Opacity="0">
                             <TextBlock x:Name="PlayIcon" Text="&#xE768;" Style="{StaticResource Icon}" FontSize="18" Foreground="White"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" Margin="2,0,0,0" />
                         </Border>
                     </Grid>
                     <TextBlock x:Name="TileTitle" Text="{Binding Title}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis" Margin="2,9,2,0" />
-                    <TextBlock Text="{Binding Artist}" FontSize="12.5" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="2,1,2,0" />
+                    <TextBlock Text="{Binding Artist}" FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="2,1,2,0" />
                 </StackPanel>
             </Button>
             <DataTemplate.Triggers>
@@ -100,15 +100,15 @@
                     <Setter TargetName="PlayDot" Property="Opacity" Value="1" />
                     <Setter TargetName="PlayIcon" Property="Text" Value="&#xE995;" />
                     <Setter TargetName="PlayIcon" Property="Margin" Value="0" />
-                    <Setter TargetName="TileTitle" Property="Foreground" Value="{StaticResource AccentBrush}" />
+                    <Setter TargetName="TileTitle" Property="Foreground" Value="{DynamicResource AccentBrush}" />
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
         <DataTemplate x:Key="GridSkeleton">
             <StackPanel Margin="0,0,14,0">
-                <Border Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}}" CornerRadius="16" Background="{StaticResource Surface2Brush}" />
-                <Border Height="12" Width="130" CornerRadius="6" Background="{StaticResource Surface2Brush}" HorizontalAlignment="Left" Margin="2,12,0,0" />
-                <Border Height="10" Width="86" CornerRadius="5" Background="{StaticResource Surface2Brush}" HorizontalAlignment="Left" Margin="2,7,0,0" />
+                <Border Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}}" CornerRadius="16" Background="{DynamicResource Surface2Brush}" />
+                <Border Height="12" Width="130" CornerRadius="6" Background="{DynamicResource Surface2Brush}" HorizontalAlignment="Left" Margin="2,12,0,0" />
+                <Border Height="10" Width="86" CornerRadius="5" Background="{DynamicResource Surface2Brush}" HorizontalAlignment="Left" Margin="2,7,0,0" />
             </StackPanel>
         </DataTemplate>
 
@@ -125,16 +125,16 @@
                             </Border>
                         </Grid>
                         <Button x:Name="RemoveBtn" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="10" Padding="7"
-                                VerticalAlignment="Center" Margin="6,0,0,0" ToolTip="Убрать из «Вы слушали»" Visibility="Collapsed"
+                                VerticalAlignment="Center" Margin="6,0,0,0" Visibility="Collapsed"
                                 Command="{Binding DataContext.RemoveFromHistoryCommand, ElementName=Root}" CommandParameter="{Binding}" />
                         <TextBlock DockPanel.Dock="Right" Text="{Binding DurationText}" Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="10,0,4,0" />
-                        <Border DockPanel.Dock="Right" CornerRadius="6" Padding="6,1" Background="{StaticResource Surface3Brush}" VerticalAlignment="Center"
+                        <Border DockPanel.Dock="Right" CornerRadius="6" Padding="6,1" Background="{DynamicResource Surface3Brush}" VerticalAlignment="Center"
                                 Visibility="{Binding ShowSource, Converter={StaticResource BoolToVis}}">
-                            <TextBlock Text="{Binding SourceText}" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource TextSecondaryBrush}" />
+                            <TextBlock Text="{Binding SourceText}" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
                         </Border>
                         <StackPanel VerticalAlignment="Center" Margin="0,0,8,0">
                             <TextBlock x:Name="RowTitle" Text="{Binding Title}" FontWeight="SemiBold" FontSize="13.5" TextTrimming="CharacterEllipsis" />
-                            <TextBlock FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis">
+                            <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis">
                                 <Run Text="{Binding Artist, Mode=OneWay}" /><Run x:Name="Plays" Text="{Binding PlaysText, StringFormat=' · {0}', Mode=OneWay}" />
                             </TextBlock>
                         </StackPanel>
@@ -143,7 +143,7 @@
             </Button>
             <DataTemplate.Triggers>
                 <DataTrigger Binding="{Binding IsMouseOver, ElementName=RowButton}" Value="True">
-                    <Setter TargetName="Bd" Property="Background" Value="#12FFFFFF" />
+                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Hover3Brush}" />
                 </DataTrigger>
                 <MultiDataTrigger>
                     <MultiDataTrigger.Conditions>
@@ -157,8 +157,8 @@
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsCurrent}" Value="True">
                     <Setter TargetName="Eq" Property="Visibility" Value="Visible" />
-                    <Setter TargetName="RowTitle" Property="Foreground" Value="{StaticResource AccentBrush}" />
-                    <Setter TargetName="Bd" Property="Background" Value="#14FFFFFF" />
+                    <Setter TargetName="RowTitle" Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}" />
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
@@ -187,17 +187,17 @@
         </Style>
         <DataTemplate x:Key="TileSkeleton">
             <StackPanel Width="156" Margin="0,0,14,0">
-                <Border Height="156" CornerRadius="14" Background="{StaticResource Surface2Brush}" />
-                <Border Height="12" Width="118" CornerRadius="6" Background="{StaticResource Surface2Brush}" HorizontalAlignment="Left" Margin="2,11,0,0" />
-                <Border Height="10" Width="78" CornerRadius="5" Background="{StaticResource Surface2Brush}" HorizontalAlignment="Left" Margin="2,7,0,0" />
+                <Border Height="156" CornerRadius="14" Background="{DynamicResource Surface2Brush}" />
+                <Border Height="12" Width="118" CornerRadius="6" Background="{DynamicResource Surface2Brush}" HorizontalAlignment="Left" Margin="2,11,0,0" />
+                <Border Height="10" Width="78" CornerRadius="5" Background="{DynamicResource Surface2Brush}" HorizontalAlignment="Left" Margin="2,7,0,0" />
             </StackPanel>
         </DataTemplate>
         <DataTemplate x:Key="RowSkeleton">
             <DockPanel Margin="8,6">
-                <Border DockPanel.Dock="Left" Width="44" Height="44" CornerRadius="8" Background="{StaticResource Surface2Brush}" Margin="0,0,12,0" />
+                <Border DockPanel.Dock="Left" Width="44" Height="44" CornerRadius="8" Background="{DynamicResource Surface2Brush}" Margin="0,0,12,0" />
                 <StackPanel VerticalAlignment="Center">
-                    <Border Height="12" Width="220" CornerRadius="6" Background="{StaticResource Surface2Brush}" HorizontalAlignment="Left" />
-                    <Border Height="10" Width="130" CornerRadius="5" Background="{StaticResource Surface2Brush}" HorizontalAlignment="Left" Margin="0,7,0,0" />
+                    <Border Height="12" Width="220" CornerRadius="6" Background="{DynamicResource Surface2Brush}" HorizontalAlignment="Left" />
+                    <Border Height="10" Width="130" CornerRadius="5" Background="{DynamicResource Surface2Brush}" HorizontalAlignment="Left" Margin="0,7,0,0" />
                 </StackPanel>
             </DockPanel>
         </DataTemplate>
@@ -215,13 +215,12 @@
                             </StackPanel>
                         </Button>
                         <Button Style="{StaticResource SecondaryButton}" Padding="12,5" FontSize="12" Margin="0,0,8,0" Content="Все"
-                                ToolTip="Открыть списком и искать только среди них"
                                 Command="{Binding DataContext.OpenChatsPageCommand, ElementName=Root}"
                                 Visibility="{Binding CanOpenPage, Converter={StaticResource BoolToVis}}" />
                         <Button Style="{StaticResource IconButton}" Content="&#xE76B;" FontSize="12" Padding="8" Tag="{Binding ElementName=ShelfScroll}"
-                                Click="ShelfLeft_Click" ToolTip="Назад" />
+                                Click="ShelfLeft_Click" />
                         <Button Style="{StaticResource IconButton}" Content="&#xE76C;" FontSize="12" Padding="8" Tag="{Binding ElementName=ShelfScroll}"
-                                Click="ShelfRight_Click" ToolTip="Дальше" />
+                                Click="ShelfRight_Click" />
                     </StackPanel>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="{Binding Title}" FontSize="19" FontWeight="SemiBold" />
@@ -323,9 +322,9 @@
                 <Grid Margin="0,16,0,14" MaxWidth="560" HorizontalAlignment="Left" Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=StackPanel}}">
                     <TextBox x:Name="SearchInput" Style="{StaticResource SearchBox}" Padding="40,11,40,11" FontSize="14"
                              Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" FontSize="15" Foreground="{StaticResource TextSecondaryBrush}"
+                    <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" FontSize="15" Foreground="{DynamicResource TextSecondaryBrush}"
                                HorizontalAlignment="Left" VerticalAlignment="Center" Margin="14,0,0,0" IsHitTestVisible="False" />
-                    <TextBlock Text="Исполнитель, песня…" Foreground="{StaticResource TextSecondaryBrush}" FontSize="14" IsHitTestVisible="False"
+                    <TextBlock Text="Исполнитель, песня…" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="14" IsHitTestVisible="False"
                                VerticalAlignment="Center" Margin="42,0,0,0"
                                Visibility="{Binding IsSearch, Converter={StaticResource InvBoolToVis}}" />
                     <Button Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="11" Padding="8" HorizontalAlignment="Right" Margin="0,0,6,0"
@@ -387,12 +386,12 @@
         </DockPanel>
 
         <!-- ================================================= Страница «Музыка из ваших чатов»: списком и поиск только по чатам -->
-        <Grid Background="{StaticResource BgBrush}" Visibility="{Binding IsChatsPage, Converter={StaticResource BoolToVis}}"
+        <Grid Background="{DynamicResource BgBrush}" Visibility="{Binding IsChatsPage, Converter={StaticResource BoolToVis}}"
               helpers:Anim.FadeOnVisible="True">
             <DockPanel Margin="30,10,26,0">
                 <StackPanel DockPanel.Dock="Top">
                     <DockPanel>
-                        <Button DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE72B;" ToolTip="Назад (Esc)"
+                        <Button DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE72B;"
                                 Command="{Binding CloseChatsPageCommand}" VerticalAlignment="Center" Margin="-8,0,8,0" />
                         <StackPanel>
                             <TextBlock Text="{Binding ChatsPage.Title}" FontSize="26" FontWeight="Bold" />
@@ -402,9 +401,9 @@
                     <Grid Margin="0,16,0,14" MaxWidth="560" HorizontalAlignment="Left" Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=StackPanel}}">
                         <TextBox Style="{StaticResource SearchBox}" Padding="40,11,40,11" FontSize="14"
                                  Text="{Binding ChatsQuery, UpdateSourceTrigger=PropertyChanged}" />
-                        <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" FontSize="15" Foreground="{StaticResource TextSecondaryBrush}"
+                        <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" FontSize="15" Foreground="{DynamicResource TextSecondaryBrush}"
                                    HorizontalAlignment="Left" VerticalAlignment="Center" Margin="14,0,0,0" IsHitTestVisible="False" />
-                        <TextBlock Text="Искать в чатах…" Foreground="{StaticResource TextSecondaryBrush}" FontSize="14" IsHitTestVisible="False"
+                        <TextBlock Text="Искать в чатах…" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="14" IsHitTestVisible="False"
                                    VerticalAlignment="Center" Margin="42,0,0,0"
                                    Visibility="{Binding ChatsQuery, Converter={StaticResource InvNullToVis}}" />
                     </Grid>
@@ -438,7 +437,7 @@
         </Grid>
 
         <!-- ================================================= Справа: альбомный плеер и «Вы слушали» -->
-        <Border Grid.Column="1" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0">
+        <Border Grid.Column="1" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1,0,0,0">
             <DockPanel>
                 <Grid DockPanel.Dock="Top" ClipToBounds="True" DataContext="{x:Static vm:MusicNow.Instance}">
                     <!-- Фон — размытая обложка (рисуется один раз на трек). Кистью, а не картинкой: картинка растягивалась
@@ -458,7 +457,7 @@
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
                                 <GradientStop Color="#33000000" Offset="0" />
-                                <GradientStop Color="{StaticResource SurfaceColor}" Offset="1" />
+                                <GradientStop Color="{DynamicResource SurfaceColor}" Offset="1" />
                             </LinearGradientBrush>
                         </Border.Background>
                     </Border>
@@ -472,9 +471,9 @@
                             <Border CornerRadius="18" Background="{Binding CoverBrush}" />
                             <Path Data="{StaticResource PlaneGeometry}" Fill="#B3FFFFFF" Stretch="Uniform" Width="96" HorizontalAlignment="Center" VerticalAlignment="Center"
                                   Margin="0,0,6,0" Visibility="{Binding Cover, Converter={StaticResource InvNullToVis}}" />
-                            <Border CornerRadius="18" Background="{StaticResource Surface2Brush}"
+                            <Border CornerRadius="18" Background="{DynamicResource Surface2Brush}"
                                     Visibility="{Binding IsActive, Converter={StaticResource InvBoolToVis}}">
-                                <TextBlock Text="&#xEC4F;" Style="{StaticResource Icon}" FontSize="64" Foreground="{StaticResource TextSecondaryBrush}"
+                                <TextBlock Text="&#xEC4F;" Style="{StaticResource Icon}" FontSize="64" Foreground="{DynamicResource TextSecondaryBrush}"
                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
                             <Border CornerRadius="18">
@@ -487,9 +486,9 @@
 
                         <TextBlock Text="{Binding Title, TargetNullValue='Ничего не играет'}" FontSize="19" FontWeight="SemiBold" HorizontalAlignment="Center"
                                    TextTrimming="CharacterEllipsis" Margin="0,20,0,0" />
-                        <TextBlock Text="{Binding Subtitle}" FontSize="13.5" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"
+                        <TextBlock Text="{Binding Subtitle}" FontSize="13.5" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center"
                                    TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
-                        <TextBlock Text="{Binding DataContext.PlayingNote, ElementName=Root}" FontSize="11.5" Foreground="{StaticResource AccentBrush}"
+                        <TextBlock Text="{Binding DataContext.PlayingNote, ElementName=Root}" FontSize="11.5" Foreground="{DynamicResource AccentBrush}"
                                    HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,5,0,0"
                                    Visibility="{Binding DataContext.PlayingNote, ElementName=Root, Converter={StaticResource NullToVis}}" />
 
@@ -497,14 +496,14 @@
                         <Grid x:Name="Seek" Height="16" Margin="0,14,0,0" Background="Transparent" Cursor="Hand"
                               MouseLeftButtonDown="Seek_Down" MouseMove="Seek_Move" MouseLeftButtonUp="Seek_Up"
                               IsEnabled="{Binding IsActive}">
-                            <Border Height="4" CornerRadius="2" Background="#33FFFFFF" VerticalAlignment="Center" />
+                            <Border Height="4" CornerRadius="2" Background="{DynamicResource Tint2Brush}" VerticalAlignment="Center" />
                             <Border Height="4" CornerRadius="2" Background="White" VerticalAlignment="Center" RenderTransformOrigin="0,0.5">
                                 <Border.RenderTransform>
                                     <ScaleTransform ScaleX="{Binding Progress}" />
                                 </Border.RenderTransform>
                             </Border>
                         </Grid>
-                        <TextBlock Text="{Binding TimeText}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center" Margin="0,2,0,0" />
+                        <TextBlock Text="{Binding TimeText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" Margin="0,2,0,0" />
 
                         <!-- Управление -->
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0">
@@ -513,19 +512,19 @@
                             <Button Content="&#xE8EE;" FontSize="15" Padding="10" VerticalAlignment="Center" Command="{Binding ToggleLoopCommand}" ToolTip="Повторять">
                                 <Button.Style>
                                     <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
-                                        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding Loop}" Value="True">
-                                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                                                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
                                 </Button.Style>
                             </Button>
                             <Button Style="{StaticResource IconButton}" Content="&#xE892;" FontSize="17" Padding="11" Margin="8,0,0,0" VerticalAlignment="Center"
-                                    Foreground="{StaticResource TextBrush}" Command="{Binding DataContext.PreviousCommand, ElementName=Root}" ToolTip="Предыдущий" />
+                                    Foreground="{DynamicResource TextBrush}" Command="{Binding DataContext.PreviousCommand, ElementName=Root}" />
                             <Button Style="{StaticResource RoundButton}" Width="58" Height="58" Margin="10,0" VerticalAlignment="Center"
-                                    Click="PlayPause_Click" ToolTip="Играть / пауза">
+                                    Click="PlayPause_Click">
                                 <TextBlock FontSize="21" Foreground="White">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock" BasedOn="{StaticResource Icon}">
@@ -542,9 +541,9 @@
                                 </TextBlock>
                             </Button>
                             <Button Style="{StaticResource IconButton}" Content="&#xE893;" FontSize="17" Padding="11" Margin="0,0,8,0" VerticalAlignment="Center"
-                                    Foreground="{StaticResource TextBrush}" Command="{Binding DataContext.NextCommand, ElementName=Root}" ToolTip="Следующий" />
+                                    Foreground="{DynamicResource TextBrush}" Command="{Binding DataContext.NextCommand, ElementName=Root}" />
                             <Button Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="12" Padding="12" VerticalAlignment="Center"
-                                    Click="CloseMusic_Click" ToolTip="Закрыть плеер" IsEnabled="{Binding IsActive}" />
+                                    Click="CloseMusic_Click" IsEnabled="{Binding IsActive}" />
                         </StackPanel>
                         <TextBlock Text="{Binding DataContext.NextUpText, ElementName=Root}" Style="{StaticResource Caption}" HorizontalAlignment="Center"
                                    TextTrimming="CharacterEllipsis" Margin="0,8,0,0"
@@ -554,7 +553,7 @@
 
                 <DockPanel DockPanel.Dock="Top" Margin="22,10,16,6">
                     <Button DockPanel.Dock="Right" Style="{StaticResource SecondaryButton}" Padding="10,4" FontSize="12" Margin="10,0,0,0"
-                            VerticalAlignment="Center" Command="{Binding PlayHistoryCommand}" ToolTip="Слушать всё по порядку, потом — подбор"
+                            VerticalAlignment="Center" Command="{Binding PlayHistoryCommand}"
                             Visibility="{Binding HasHistory, Converter={StaticResource BoolToVis}}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE768;" Style="{StaticResource Icon}" FontSize="10" Margin="0,0,6,0" VerticalAlignment="Center" />

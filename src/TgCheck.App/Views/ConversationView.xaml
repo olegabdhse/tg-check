@@ -14,9 +14,6 @@
                       Command="{Binding PlacementTarget.Tag.ShowInChatCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                       CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
         </ContextMenu>
-        <SolidColorBrush x:Key="OutBubble" Color="#2B5278" />
-        <SolidColorBrush x:Key="InBubble" Color="#182533" />
-        <SolidColorBrush x:Key="ChatBg" Color="#0E1621" />
 
         <!-- Кнопка бота (инлайн под сообщением и клавиатура под полем ввода) -->
         <Style x:Key="BotButton" TargetType="Button">
@@ -26,19 +23,19 @@
             <Setter Property="FontSize" Value="13" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="MinHeight" Value="36" />
-            <Setter Property="Background" Value="#3D1E2C3A" />
+            <Setter Property="Background" Value="{DynamicResource BotButtonBrush}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="#66223344" CornerRadius="10" Padding="8,6">
+                        <Border x:Name="Bd" Background="{DynamicResource BotButton2Brush}" CornerRadius="10" Padding="8,6">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#88304458" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BotButton3Brush}" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#AA3A5470" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BotButton4Brush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -98,12 +95,12 @@
             <DockPanel Margin="0,2,0,4" MinWidth="230">
                 <Button DockPanel.Dock="Left" Width="44" Height="44" Margin="0,0,10,0" Style="{StaticResource RoundButton}"
                         Command="{Binding DataContext.DownloadCommand, ElementName=Root}" CommandParameter="{Binding}"
-                        IsEnabled="{Binding CanDownload}" ToolTip="Сохранить">
+                        IsEnabled="{Binding CanDownload}">
                     <TextBlock Text="{Binding FileIcon}" Style="{StaticResource Icon}" FontSize="17" Foreground="White" />
                 </Button>
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="{Binding FileTitle}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" MaxWidth="340" />
-                    <TextBlock Text="{Binding FileSubtitle}" FontSize="12" Foreground="#8FA3B5"
+                    <TextBlock Text="{Binding FileSubtitle}" FontSize="12" Foreground="{DynamicResource BubbleDimBrush}"
                                Visibility="{Binding FileSubtitle, Converter={StaticResource NullToVis}}" />
                     <Grid Height="3" Margin="0,5,0,0" Width="160" HorizontalAlignment="Left">
                         <Grid.Style>
@@ -115,8 +112,8 @@
                                 </Style.Triggers>
                             </Style>
                         </Grid.Style>
-                        <Border Background="#22FFFFFF" CornerRadius="1.5" />
-                        <Border Background="{StaticResource AccentBrush}" CornerRadius="1.5" HorizontalAlignment="Left"
+                        <Border Background="{DynamicResource TintBrush}" CornerRadius="1.5" />
+                        <Border Background="{DynamicResource AccentBrush}" CornerRadius="1.5" HorizontalAlignment="Left"
                                 Width="{Binding DownloadProgress, Converter={StaticResource Mul}, ConverterParameter=160}" />
                     </Grid>
                 </StackPanel>
@@ -125,8 +122,8 @@
 
         <!-- Разделитель дат -->
         <DataTemplate x:Key="DateTpl" DataType="{x:Type vm:DateSeparatorViewModel}">
-            <Border HorizontalAlignment="Center" Margin="0,12,0,8" Padding="12,4" CornerRadius="12" Background="#99182533">
-                <TextBlock Text="{Binding Text}" FontSize="12" FontWeight="SemiBold" Foreground="#C9D4DF" />
+            <Border HorizontalAlignment="Center" Margin="0,12,0,8" Padding="12,4" CornerRadius="12" Background="{DynamicResource DatePillBrush}">
+                <TextBlock Text="{Binding Text}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSoftBrush}" />
             </Border>
         </DataTemplate>
 
@@ -137,7 +134,7 @@
             <Button Style="{StaticResource BareButton}" Width="{Binding MediaWidth}" Height="{Binding MediaHeight}" Margin="-6,0,-6,4"
                     Command="{Binding DataContext.OpenMediaCommand, ElementName=Root}" CommandParameter="{Binding}">
                 <Grid helpers:RoundClip.Radius="10">
-                    <Border Background="#22FFFFFF" />
+                    <Border Background="{DynamicResource TintBrush}" />
                     <Image Source="{Binding Preview}" Stretch="UniformToFill" />
                     <Border Width="48" Height="48" CornerRadius="24" Background="#88000000"
                             Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}">
@@ -162,8 +159,7 @@
         </DataTemplate>
 
         <DataTemplate x:Key="MediaSticker" DataType="{x:Type vm:MessageViewModel}">
-            <controls:StickerView Media="{Binding Item}" Width="{Binding MediaWidth}" Height="{Binding MediaHeight}" Cursor="Hand"
-                                  ToolTip="Открыть набор стикеров">
+            <controls:StickerView Media="{Binding Item}" Width="{Binding MediaWidth}" Height="{Binding MediaHeight}" Cursor="Hand">
                 <controls:StickerView.InputBindings>
                     <MouseBinding MouseAction="LeftClick" Command="{Binding DataContext.OpenStickerPackCommand, ElementName=Root}" CommandParameter="{Binding}" />
                 </controls:StickerView.InputBindings>
@@ -174,7 +170,7 @@
             <Grid>
                 <controls:VideoNoteView Media="{Binding Item}" Title="{Binding SenderName}" Width="{Binding MediaWidth}" Height="{Binding MediaHeight}"
                                     IsUnlistened="{Binding IsMediaUnread}" />
-                <Button Style="{StaticResource BareButton}" Width="52" Height="52" Cursor="Hand" ToolTip="Остановить загрузку"
+                <Button Style="{StaticResource BareButton}" Width="52" Height="52" Cursor="Hand"
                         Command="{Binding DataContext.CancelDownloadCommand, ElementName=Root}" CommandParameter="{Binding}"
                         Visibility="{Binding IsFileDownloading, Converter={StaticResource BoolToVis}}">
                     <controls:ProgressArc Width="52" Height="52" Progress="{Binding FileProgress}" />
@@ -204,15 +200,15 @@
                 </Button>
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="{Binding SongTitle}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis" MaxWidth="260" />
-                    <TextBlock Text="{Binding SongPerformer}" FontSize="12" Foreground="#8FA3B5" TextTrimming="CharacterEllipsis" MaxWidth="260"
+                    <TextBlock Text="{Binding SongPerformer}" FontSize="12" Foreground="{DynamicResource BubbleDimBrush}" TextTrimming="CharacterEllipsis" MaxWidth="260"
                                Visibility="{Binding SongPerformer, Converter={StaticResource NullToVis}}" />
                     <Grid Height="14" Width="200" Margin="0,4,0,0" HorizontalAlignment="Left" Background="Transparent" Cursor="Hand"
                           MouseLeftButtonDown="Wave_MouseLeftButtonDown">
-                        <Border Height="3" CornerRadius="1.5" Background="#33FFFFFF" VerticalAlignment="Center" />
-                        <Border Height="3" CornerRadius="1.5" Background="{StaticResource AccentBrush}" VerticalAlignment="Center" HorizontalAlignment="Left"
+                        <Border Height="3" CornerRadius="1.5" Background="{DynamicResource Tint2Brush}" VerticalAlignment="Center" />
+                        <Border Height="3" CornerRadius="1.5" Background="{DynamicResource AccentBrush}" VerticalAlignment="Center" HorizontalAlignment="Left"
                                 Width="{Binding PlayProgress, Converter={StaticResource Mul}, ConverterParameter=200}" />
                     </Grid>
-                    <TextBlock Text="{Binding VoiceDurationText}" FontSize="11" Foreground="{StaticResource MetaBrush}" />
+                    <TextBlock Text="{Binding VoiceDurationText}" FontSize="11" Foreground="{DynamicResource MetaBrush}" />
                 </StackPanel>
             </DockPanel>
         </DataTemplate>
@@ -230,10 +226,10 @@
                     </Grid>
                 </Button>
                 <!-- Загружается само (на экране): белый ободок с крестиком, как при отправке; крестик — остановить -->
-                <Button Style="{StaticResource BareButton}" Cursor="Hand" ToolTip="Остановить загрузку"
+                <Button Style="{StaticResource BareButton}" Cursor="Hand"
                         Command="{Binding DataContext.CancelDownloadCommand, ElementName=Root}" CommandParameter="{Binding}"
                         Visibility="{Binding IsFileDownloading, Converter={StaticResource BoolToVis}}">
-                    <controls:ProgressArc Width="44" Height="44" Progress="{Binding FileProgress}" Fill="{StaticResource AccentBrush}" />
+                    <controls:ProgressArc Width="44" Height="44" Progress="{Binding FileProgress}" Fill="{DynamicResource AccentBrush}" />
                 </Button>
                 </Grid>
                 <StackPanel VerticalAlignment="Center">
@@ -249,7 +245,7 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Rectangle Width="3" Height="{Binding}" Margin="0,0,1,0" RadiusX="1.5" RadiusY="1.5" Fill="#5C7A96" VerticalAlignment="Center" />
+                                    <Rectangle Width="3" Height="{Binding}" Margin="0,0,1,0" RadiusX="1.5" RadiusY="1.5" Fill="{DynamicResource WaveBrush}" VerticalAlignment="Center" />
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
@@ -270,16 +266,16 @@
                         </Border>
                     </Grid>
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{Binding VoiceDurationText}" FontSize="11" Foreground="{StaticResource MetaBrush}" />
+                        <TextBlock Text="{Binding VoiceDurationText}" FontSize="11" Foreground="{DynamicResource MetaBrush}" />
                         <!-- Не прослушано (у своих — собеседником): маленькая закрашенная точка, как в Telegram -->
                         <Ellipse Width="6" Height="6" Margin="5,1,0,0" VerticalAlignment="Center"
                                  Visibility="{Binding IsMediaUnread, Converter={StaticResource BoolToVis}}">
                             <Ellipse.Style>
                                 <Style TargetType="Ellipse">
-                                    <Setter Property="Fill" Value="{StaticResource AccentBrush}" />
+                                    <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsOut}" Value="True">
-                                            <Setter Property="Fill" Value="{StaticResource MetaBrush}" />
+                                            <Setter Property="Fill" Value="{DynamicResource MetaBrush}" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -294,7 +290,7 @@
         <DataTemplate x:Key="MediaPoll" DataType="{x:Type vm:MessageViewModel}">
             <StackPanel MinWidth="290" MaxWidth="400" Margin="0,2,0,4">
                 <TextBlock helpers:RichText.Text="{Binding Poll.Question}" FontWeight="SemiBold" FontSize="14" TextWrapping="Wrap" />
-                <TextBlock Text="{Binding PollKind}" FontSize="12" Foreground="{StaticResource MetaBrush}" Margin="0,2,0,8" />
+                <TextBlock Text="{Binding PollKind}" FontSize="12" Foreground="{DynamicResource MetaBrush}" Margin="0,2,0,8" />
                 <ItemsControl ItemsSource="{Binding PollOptions}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate DataType="{x:Type vm:PollOptionViewModel}">
@@ -303,8 +299,8 @@
                                 <Grid Margin="4,5">
                                     <DockPanel Visibility="{Binding ShowResults, Converter={StaticResource InvBoolToVis}}">
                                         <Grid DockPanel.Dock="Left" Width="20" Height="20" Margin="0,0,10,0">
-                                            <Ellipse Stroke="#6F8BA5" StrokeThickness="2" />
-                                            <Ellipse Margin="4" Fill="{StaticResource AccentBrush}"
+                                            <Ellipse Stroke="{DynamicResource WaveRingBrush}" StrokeThickness="2" />
+                                            <Ellipse Margin="4" Fill="{DynamicResource AccentBrush}"
                                                      Visibility="{Binding IsSelected, Converter={StaticResource BoolToVis}}" />
                                         </Grid>
                                         <TextBlock helpers:RichText.Text="{Binding Text}" TextWrapping="Wrap" VerticalAlignment="Center" />
@@ -320,17 +316,17 @@
                                                             <DataTrigger Binding="{Binding Chosen}" Value="True">
                                                                 <Setter Property="Visibility" Value="Visible" />
                                                                 <Setter Property="Text" Value="&#xE73E;" />
-                                                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                                                                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
                                                             </DataTrigger>
                                                             <DataTrigger Binding="{Binding Correct}" Value="True">
                                                                 <Setter Property="Visibility" Value="Visible" />
                                                                 <Setter Property="Text" Value="&#xE73E;" />
-                                                                <Setter Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                                                <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
                                                             </DataTrigger>
                                                             <DataTrigger Binding="{Binding Wrong}" Value="True">
                                                                 <Setter Property="Visibility" Value="Visible" />
                                                                 <Setter Property="Text" Value="&#xE711;" />
-                                                                <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                                                <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
@@ -339,18 +335,18 @@
                                             <TextBlock helpers:RichText.Text="{Binding Text}" TextWrapping="Wrap" />
                                         </DockPanel>
                                         <Grid Height="4" Margin="44,5,0,0" HorizontalAlignment="Left" Width="240">
-                                            <Border CornerRadius="2" Background="#22FFFFFF" />
+                                            <Border CornerRadius="2" Background="{DynamicResource TintBrush}" />
                                             <Border CornerRadius="2" HorizontalAlignment="Left"
                                                     Width="{Binding Percent, Converter={StaticResource Mul}, ConverterParameter=240}">
                                                 <Border.Style>
                                                     <Style TargetType="Border">
-                                                        <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+                                                        <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding Correct}" Value="True">
-                                                                <Setter Property="Background" Value="{StaticResource SuccessBrush}" />
+                                                                <Setter Property="Background" Value="{DynamicResource SuccessBrush}" />
                                                             </DataTrigger>
                                                             <DataTrigger Binding="{Binding Wrong}" Value="True">
-                                                                <Setter Property="Background" Value="{StaticResource DangerBrush}" />
+                                                                <Setter Property="Background" Value="{DynamicResource DangerBrush}" />
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
@@ -372,9 +368,9 @@
                             Visibility="{Binding CanRetractVote, Converter={StaticResource BoolToVis}}" />
                     <views:Spinner DockPanel.Dock="Right" Width="16" Height="16" Margin="6,0"
                                    Visibility="{Binding IsVoting, Converter={StaticResource BoolToVis}}" />
-                    <TextBlock Text="{Binding PollVotersText}" FontSize="12" Foreground="{StaticResource MetaBrush}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding PollVotersText}" FontSize="12" Foreground="{DynamicResource MetaBrush}" VerticalAlignment="Center" />
                 </DockPanel>
-                <TextBlock Text="{Binding Poll.Solution}" FontSize="12" Foreground="#C9D4DF" TextWrapping="Wrap" Margin="0,6,0,0"
+                <TextBlock Text="{Binding Poll.Solution}" FontSize="12" Foreground="{DynamicResource TextSoftBrush}" TextWrapping="Wrap" Margin="0,6,0,0"
                            Visibility="{Binding Poll.Solution, Converter={StaticResource NullToVis}}" />
             </StackPanel>
         </DataTemplate>
@@ -397,7 +393,7 @@
                         <Button Style="{StaticResource BareButton}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                                 Command="{Binding DataContext.OpenMediaCommand, ElementName=Root}" CommandParameter="{Binding}">
                             <Grid helpers:RoundClip.Radius="6">
-                                <Border Background="#22FFFFFF" />
+                                <Border Background="{DynamicResource TintBrush}" />
                                 <Image Source="{Binding Preview}" Stretch="UniformToFill" />
                                 <Border Width="40" Height="40" CornerRadius="20" Background="#88000000"
                                         Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}">
@@ -418,22 +414,22 @@
 
         <!-- Геопозиция: карта с сервера Telegram -->
         <DataTemplate x:Key="MediaMap" DataType="{x:Type vm:MessageViewModel}">
-            <Button Style="{StaticResource BareButton}" Width="300" Margin="-6,0,-6,4" ToolTip="Открыть карту"
+            <Button Style="{StaticResource BareButton}" Width="300" Margin="-6,0,-6,4"
                     Command="{Binding DataContext.OpenMapCommand, ElementName=Root}" CommandParameter="{Binding}">
                 <StackPanel>
                     <Grid Height="170" helpers:RoundClip.Radius="10">
-                        <Border Background="#22FFFFFF" />
+                        <Border Background="{DynamicResource TintBrush}" />
                         <Image Source="{Binding Preview}" Stretch="UniformToFill" />
                         <!-- Метка-капля: остриё ровно в точке координат (центр карты) -->
                         <Ellipse Width="14" Height="6" Fill="#55000000" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,4,0,0" />
                         <Canvas Width="30" Height="40" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,40">
-                            <Path Fill="{StaticResource AccentBrush}" Stroke="White" StrokeThickness="2"
+                            <Path Fill="{DynamicResource AccentBrush}" Stroke="White" StrokeThickness="2"
                                   Data="M15,39 C15,39 2,24 2,14.5 A13,13 0 1 1 28,14.5 C28,24 15,39 15,39 Z" />
                             <Ellipse Canvas.Left="10" Canvas.Top="9.5" Width="10" Height="10" Fill="White" />
                         </Canvas>
                     </Grid>
                     <TextBlock Text="{Binding FileTitle}" FontWeight="SemiBold" FontSize="13" Margin="8,6,8,0" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding Item.VenueAddress}" FontSize="12" Foreground="{StaticResource MetaBrush}" Margin="8,0,8,2"
+                    <TextBlock Text="{Binding Item.VenueAddress}" FontSize="12" Foreground="{DynamicResource MetaBrush}" Margin="8,0,8,2"
                                TextTrimming="CharacterEllipsis" Visibility="{Binding Item.VenueAddress, Converter={StaticResource NullToVis}}" />
                 </StackPanel>
             </Button>
@@ -487,7 +483,7 @@
                                 <Setter Property="ContentTemplate">
                                     <Setter.Value>
                                         <DataTemplate>
-                                            <Border BorderBrush="{StaticResource AccentBrush}" BorderThickness="3,0,0,0" Padding="10,2,0,2" Margin="0,3,0,5" MaxWidth="440"
+                                            <Border BorderBrush="{DynamicResource AccentBrush}" BorderThickness="3,0,0,0" Padding="10,2,0,2" Margin="0,3,0,5" MaxWidth="440"
                                                     HorizontalAlignment="Left">
                                                 <controls:SelectableTextBlock helpers:RichText.Text="{Binding Text}" helpers:RichText.EmojiSize="18" TextWrapping="Wrap" FontStyle="Italic" />
                                             </Border>
@@ -510,7 +506,7 @@
                                 <Setter Property="ContentTemplate">
                                     <Setter.Value>
                                         <DataTemplate>
-                                            <Border Height="1" Background="{StaticResource BorderBrush}" Margin="0,8" />
+                                            <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,8" />
                                         </DataTemplate>
                                     </Setter.Value>
                                 </Setter>
@@ -543,7 +539,7 @@
                                                 <Button Grid.Column="1" Style="{StaticResource BareButton}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                                                         Command="{Binding DataContext.OpenMediaCommand, ElementName=Root}" CommandParameter="{Binding Current}">
                                                     <Grid>
-                                                        <Border Background="#22FFFFFF" />
+                                                        <Border Background="{DynamicResource TintBrush}" />
                                                         <Image Source="{Binding Current.Preview}" Stretch="UniformToFill" />
                                                         <!-- Видео загружается и играет само (без звука, по кругу) — открывать в просмотре не нужно -->
                                                         <controls:GifView Media="{Binding Current.Item}" CornerRadius="0"
@@ -558,7 +554,7 @@
                                                     </Grid>
                                                 </Button>
                                                 <Button Grid.Column="0" Style="{StaticResource BareButton}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                                                        Command="{Binding PrevSlideCommand}" ToolTip="Назад" IsEnabled="{Binding HasPrev}">
+                                                        Command="{Binding PrevSlideCommand}" IsEnabled="{Binding HasPrev}">
                                                     <Grid Background="Transparent">
                                                         <TextBlock Text="&#xE76B;" Style="{StaticResource Icon}" FontSize="15" Foreground="White"
                                                                    HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -566,7 +562,7 @@
                                                     </Grid>
                                                 </Button>
                                                 <Button Grid.Column="2" Style="{StaticResource BareButton}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                                                        Command="{Binding NextSlideCommand}" ToolTip="Дальше" IsEnabled="{Binding HasNext}">
+                                                        Command="{Binding NextSlideCommand}" IsEnabled="{Binding HasNext}">
                                                     <Grid Background="Transparent">
                                                         <TextBlock Text="&#xE76C;" Style="{StaticResource Icon}" FontSize="15" Foreground="White"
                                                                    HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -586,7 +582,7 @@
                                                                 <Ellipse Width="6" Height="6" Margin="2,0">
                                                                     <Ellipse.Style>
                                                                         <Style TargetType="Ellipse">
-                                                                            <Setter Property="Fill" Value="#66FFFFFF" />
+                                                                            <Setter Property="Fill" Value="{DynamicResource WaveDimBrush}" />
                                                                             <Style.Triggers>
                                                                                 <DataTrigger Binding="{Binding IsActive}" Value="True">
                                                                                     <Setter Property="Fill" Value="White" />
@@ -622,10 +618,10 @@
         <!-- ================================================= Служебное сообщение -->
         <DataTemplate x:Key="ServiceTpl" DataType="{x:Type vm:MessageViewModel}">
             <Grid>
-                <Border HorizontalAlignment="Center" Margin="40,6" Padding="12,5" CornerRadius="12" Background="#99182533"
+                <Border HorizontalAlignment="Center" Margin="40,6" Padding="12,5" CornerRadius="12" Background="{DynamicResource DatePillBrush}"
                         Visibility="{Binding HasGift, Converter={StaticResource InvBoolToVis}}">
                     <TextBlock helpers:RichText.Text="{Binding Item.ServiceText}" helpers:RichText.EmojiSize="16" FontSize="12"
-                               Foreground="#C9D4DF" TextWrapping="Wrap" TextAlignment="Center" />
+                               Foreground="{DynamicResource TextSoftBrush}" TextWrapping="Wrap" TextAlignment="Center" />
                 </Border>
                 <!-- Подарок — карточка как в Telegram: стикер подарка, от кого, название, сообщение, цена -->
                 <Grid HorizontalAlignment="Center" Margin="40,8" Width="250" helpers:RoundClip.Radius="18"
@@ -644,7 +640,7 @@
                                    Visibility="{Binding Gift.Message, Converter={StaticResource NullToVis}}" />
                         <TextBlock Text="{Binding Gift.Note}" FontSize="12" Foreground="#AAC0D4" TextAlignment="Center" TextWrapping="Wrap" Margin="0,8,0,0"
                                    Visibility="{Binding Gift.Note, Converter={StaticResource NullToVis}}" />
-                        <Border HorizontalAlignment="Center" Margin="0,12,0,0" Padding="12,4" CornerRadius="12" Background="#33FFFFFF"
+                        <Border HorizontalAlignment="Center" Margin="0,12,0,0" Padding="12,4" CornerRadius="12" Background="{DynamicResource Tint2Brush}"
                                 Visibility="{Binding Gift.Stars, Converter={StaticResource NullToVis}}">
                             <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="#FFD15C">
                                 <Run Text="⭐" /> <Run Text="{Binding Gift.Stars, Mode=OneWay}" />
@@ -678,8 +674,7 @@
                     <StackPanel x:Name="BubbleCol" DockPanel.Dock="Left" MaxWidth="520">
                     <Grid x:Name="BubbleWrap" HorizontalAlignment="Left">
                     <Border x:Name="Bubble" HorizontalAlignment="Left" CornerRadius="14" Padding="10,6,10,6"
-                            Background="{StaticResource InBubble}" Tag="{Binding DataContext, ElementName=Root}"
-                            ToolTip="{Binding FullTime}" ToolTipService.InitialShowDelay="900">
+                            Background="{DynamicResource InBubbleBrush}" Tag="{Binding DataContext, ElementName=Root}" ToolTip="{Binding FullTime}" ToolTipService.InitialShowDelay="900">
                         <Border.InputBindings>
                             <MouseBinding MouseAction="LeftDoubleClick" Command="{Binding DataContext.ReplyCommand, ElementName=Root}"
                                           CommandParameter="{Binding}" />
@@ -697,17 +692,16 @@
                                         <StackPanel>
                                             <DockPanel>
                                                 <!-- «Ещё» — раскрыть все реакции -->
-                                                <ToggleButton x:Name="MoreReactions" DockPanel.Dock="Right" Width="30" Height="34" Cursor="Hand" FocusVisualStyle="{x:Null}"
-                                                              ToolTip="Все реакции">
+                                                <ToggleButton x:Name="MoreReactions" DockPanel.Dock="Right" Width="30" Height="34" Cursor="Hand" FocusVisualStyle="{x:Null}">
                                                     <ToggleButton.Template>
                                                         <ControlTemplate TargetType="ToggleButton">
                                                             <Border x:Name="Bd" CornerRadius="15" Background="Transparent">
                                                                 <TextBlock x:Name="Arrow" Text="&#xE70D;" Style="{StaticResource Icon}" FontSize="12"
-                                                                           Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                                           Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                                             </Border>
                                                             <ControlTemplate.Triggers>
                                                                 <Trigger Property="IsMouseOver" Value="True">
-                                                                    <Setter TargetName="Bd" Property="Background" Value="#14FFFFFF" />
+                                                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}" />
                                                                 </Trigger>
                                                                 <Trigger Property="IsChecked" Value="True">
                                                                     <Setter TargetName="Arrow" Property="Text" Value="&#xE70E;" />
@@ -808,8 +802,7 @@
                                                   CommandParameter="{Binding}" />
                                 </TextBlock.InputBindings>
                             </TextBlock>
-                            <TextBlock Text="{Binding ViaBotText}" Foreground="#6AB3F3" FontSize="13" Margin="0,0,0,2" Cursor="Hand"
-                                       ToolTip="Написать этому боту запрос" Visibility="{Binding ViaBotText, Converter={StaticResource NullToVis}}">
+                            <TextBlock Text="{Binding ViaBotText}" Foreground="{DynamicResource LinkBrush}" FontSize="13" Margin="0,0,0,2" Cursor="Hand" Visibility="{Binding ViaBotText, Converter={StaticResource NullToVis}}">
                                 <TextBlock.InputBindings>
                                     <MouseBinding MouseAction="LeftClick" Command="{Binding DataContext.UseInlineBotCommand, ElementName=Root}"
                                                   CommandParameter="{Binding Item.ViaBot}" />
@@ -817,12 +810,12 @@
                             </TextBlock>
                             </StackPanel>
 
-                            <TextBlock FontSize="12" Foreground="#6AB3F3" Margin="0,0,0,3"
+                            <TextBlock FontSize="12" Foreground="{DynamicResource LinkBrush}" Margin="0,0,0,3"
                                        Visibility="{Binding IsForwarded, Converter={StaticResource BoolToVis}}">
                                 <Run Text="Переслано от" /> <Run Text="{Binding Item.ForwardedFrom, Mode=OneWay}" FontWeight="SemiBold" />
                             </TextBlock>
 
-                            <Border Margin="0,2,0,5" Padding="8,3" CornerRadius="6" Background="#22FFFFFF" BorderThickness="3,0,0,0"
+                            <Border Margin="0,2,0,5" Padding="8,3" CornerRadius="6" Background="{DynamicResource TintBrush}" BorderThickness="3,0,0,0"
                                     BorderBrush="{Binding ReplyBrush}" Visibility="{Binding HasReply, Converter={StaticResource BoolToVis}}" Cursor="Hand">
                                 <Border.InputBindings>
                                     <MouseBinding MouseAction="LeftClick" Command="{Binding DataContext.JumpToReplyCommand, ElementName=Root}"
@@ -831,21 +824,21 @@
                                 <StackPanel>
                                     <TextBlock Text="{Binding ReplySender}" Foreground="{Binding ReplyBrush}" FontSize="12" FontWeight="SemiBold"
                                                TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding ReplyText}" FontSize="12" Foreground="#C9D4DF" TextTrimming="CharacterEllipsis" MaxWidth="440" />
+                                    <TextBlock Text="{Binding ReplyText}" FontSize="12" Foreground="{DynamicResource TextSoftBrush}" TextTrimming="CharacterEllipsis" MaxWidth="440" />
                                 </StackPanel>
                             </Border>
 
                             <!-- Ответ на историю: миниатюра истории, «История · имя» и подпись (или «Фото» / «Видео») -->
-                            <Border Margin="0,2,0,5" Padding="4,4,10,4" CornerRadius="6" Background="#22FFFFFF" BorderThickness="3,0,0,0"
-                                    BorderBrush="#6AB3F3" Visibility="{Binding HasStoryReply, Converter={StaticResource BoolToVis}}">
+                            <Border Margin="0,2,0,5" Padding="4,4,10,4" CornerRadius="6" Background="{DynamicResource TintBrush}" BorderThickness="3,0,0,0"
+                                    BorderBrush="{DynamicResource LinkBrush}" Visibility="{Binding HasStoryReply, Converter={StaticResource BoolToVis}}">
                                 <DockPanel>
                                     <Grid DockPanel.Dock="Left" Width="30" Height="40" Margin="2,0,8,0" helpers:RoundClip.Radius="4">
-                                        <Border Background="#33FFFFFF" />
+                                        <Border Background="{DynamicResource Tint2Brush}" />
                                         <Image Source="{Binding StoryReplyImage}" Stretch="UniformToFill" />
                                     </Grid>
                                     <StackPanel VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding StoryReplyTitle}" Foreground="#6AB3F3" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Text="{Binding StoryReplyText}" FontSize="12" LineHeight="16" Foreground="#C9D4DF" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxWidth="400" MaxHeight="32" />
+                                        <TextBlock Text="{Binding StoryReplyTitle}" Foreground="{DynamicResource LinkBrush}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding StoryReplyText}" FontSize="12" LineHeight="16" Foreground="{DynamicResource TextSoftBrush}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxWidth="400" MaxHeight="32" />
                                     </StackPanel>
                                 </DockPanel>
                             </Border>
@@ -872,7 +865,7 @@
                                            helpers:RichText.Text="{Binding Text}" helpers:RichText.EmojiSize="{Binding TextEmojiSize}"
                                            helpers:RichText.TrailingSpace="{Binding ActualWidth, ElementName=Meta}"
                                            TextWrapping="Wrap" FontSize="14" LineHeight="21" HorizontalAlignment="Left"
-                                           Foreground="#F5F7FA" Margin="0,0,0,0" MaxWidth="{Binding TextMaxWidth}"
+                                           Foreground="{DynamicResource BubbleTextBrush}" Margin="0,0,0,0" MaxWidth="{Binding TextMaxWidth}"
                                            Visibility="{Binding ShowPlainText, Converter={StaticResource BoolToVis}}" />
                                 <!-- Текст с блоками кода: куски по порядку, блоки — во всю ширину пузыря; время — под последним -->
                                 <!-- Создаётся только у сообщений с кодом (свёрнутый элемент шаблон не строит) -->
@@ -893,22 +886,22 @@
                                             <Grid>
                                                 <controls:SelectableTextBlock helpers:RichText.CustomEmoji="{Binding Emoji}" helpers:RichText.Formatting="{Binding Formatting}"
                                                            helpers:RichText.Text="{Binding Text}" helpers:RichText.EmojiSize="20"
-                                                           TextWrapping="Wrap" FontSize="14" LineHeight="21" Foreground="#F5F7FA" Margin="0,2"
+                                                           TextWrapping="Wrap" FontSize="14" LineHeight="21" Foreground="{DynamicResource BubbleTextBrush}" Margin="0,2"
                                                            Visibility="{Binding IsCode, Converter={StaticResource InvBoolToVis}}" />
                                                 <Border CornerRadius="7" Background="#2E000000" Margin="0,4" Padding="11,7,8,9" ClipToBounds="True"
                                                         Visibility="{Binding IsCode, Converter={StaticResource BoolToVis}}">
                                                     <Grid>
                                                         <!-- Полоска слева, как у блоков кода в Telegram -->
-                                                        <Border Width="3" HorizontalAlignment="Left" Margin="-11,-7,0,-9" Background="#7CC4FA" />
+                                                        <Border Width="3" HorizontalAlignment="Left" Margin="-11,-7,0,-9" Background="{DynamicResource CodeBarBrush}" />
                                                         <StackPanel>
                                                             <DockPanel>
                                                                 <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE8C8;" FontSize="13"
-                                                                        Padding="4" Margin="8,-3,0,0" Foreground="#9CD2FA" ToolTip="Копировать" Focusable="False" />
-                                                                <TextBlock Text="{Binding LanguageText}" Foreground="#9CD2FA" FontWeight="SemiBold" FontSize="13"
+                                                                        Padding="4" Margin="8,-3,0,0" Foreground="{DynamicResource CodeAccentBrush}" Focusable="False" />
+                                                                <TextBlock Text="{Binding LanguageText}" Foreground="{DynamicResource CodeAccentBrush}" FontWeight="SemiBold" FontSize="13"
                                                                            VerticalAlignment="Center" />
                                                             </DockPanel>
                                                             <TextBlock Text="{Binding Text}" FontFamily="Consolas" FontSize="13.5" LineHeight="19"
-                                                                       TextWrapping="Wrap" Foreground="#EEF3F8" Margin="0,5,0,0" />
+                                                                       TextWrapping="Wrap" Foreground="{DynamicResource CodeTextBrush}" Margin="0,5,0,0" />
                                                         </StackPanel>
                                                     </Grid>
                                                 </Border>
@@ -926,32 +919,32 @@
                                 </ContentControl>
                                 <!-- Превью ссылки (как в Telegram): полоска слева, сайт, заголовок, описание; картинка — крупно снизу или маленькая справа -->
                                 <Button Style="{StaticResource BareButton}" Margin="0,6,0,19" MinWidth="240" MaxWidth="{Binding TextMaxWidth}" HorizontalAlignment="Stretch"
-                                        HorizontalContentAlignment="Stretch" Cursor="Hand" ToolTip="{Binding Link.Url}" Command="{Binding OpenLinkCommand}"
+                                        HorizontalContentAlignment="Stretch" Cursor="Hand" Command="{Binding OpenLinkCommand}"
                                         Visibility="{Binding HasLink, Converter={StaticResource BoolToVis}}">
-                                    <Border CornerRadius="6" Background="#1F6AB3F3" Padding="10,7,10,9" ClipToBounds="True">
+                                    <Border CornerRadius="6" Background="{DynamicResource LinkTintBrush}" Padding="10,7,10,9" ClipToBounds="True">
                                         <Grid>
-                                            <Border Width="3" HorizontalAlignment="Left" Margin="-10,-7,0,-9" Background="#6AB3F3" />
+                                            <Border Width="3" HorizontalAlignment="Left" Margin="-10,-7,0,-9" Background="{DynamicResource LinkBrush}" />
                                             <StackPanel>
                                                 <DockPanel>
                                                     <Grid DockPanel.Dock="Right" Width="54" Height="54" Margin="10,2,0,0" VerticalAlignment="Top" helpers:RoundClip.Radius="6"
                                                           Visibility="{Binding HasSmallLinkImage, Converter={StaticResource BoolToVis}}">
-                                                        <Border Background="#22FFFFFF" />
+                                                        <Border Background="{DynamicResource TintBrush}" />
                                                         <Image Source="{Binding LinkImage}" Stretch="UniformToFill" />
                                                     </Grid>
                                                     <StackPanel>
-                                                        <TextBlock Text="{Binding Link.SiteName}" Foreground="#6AB3F3" FontWeight="SemiBold" FontSize="13"
+                                                        <TextBlock Text="{Binding Link.SiteName}" Foreground="{DynamicResource LinkBrush}" FontWeight="SemiBold" FontSize="13"
                                                                    TextTrimming="CharacterEllipsis" Visibility="{Binding HasLinkSite, Converter={StaticResource BoolToVis}}" />
-                                                        <TextBlock Text="{Binding Link.Title}" Foreground="#F5F7FA" FontWeight="SemiBold" FontSize="13.5" TextWrapping="Wrap"
+                                                        <TextBlock Text="{Binding Link.Title}" Foreground="{DynamicResource BubbleTextBrush}" FontWeight="SemiBold" FontSize="13.5" TextWrapping="Wrap"
                                                                    MaxHeight="40" TextTrimming="CharacterEllipsis" Margin="0,1,0,0"
                                                                    Visibility="{Binding HasLinkTitle, Converter={StaticResource BoolToVis}}" />
-                                                        <TextBlock Text="{Binding Link.Description}" Foreground="#D9E2EA" FontSize="13" LineHeight="18" TextWrapping="Wrap"
+                                                        <TextBlock Text="{Binding Link.Description}" Foreground="{DynamicResource LinkDescBrush}" FontSize="13" LineHeight="18" TextWrapping="Wrap"
                                                                    MaxHeight="72" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"
                                                                    Visibility="{Binding HasLinkDescription, Converter={StaticResource BoolToVis}}" />
                                                     </StackPanel>
                                                 </DockPanel>
                                                 <Grid Margin="0,8,0,0" MaxHeight="260" helpers:RoundClip.Radius="6"
                                                       Visibility="{Binding HasLargeLinkImage, Converter={StaticResource BoolToVis}}">
-                                                    <Border Background="#22FFFFFF" MinHeight="120" />
+                                                    <Border Background="{DynamicResource TintBrush}" MinHeight="120" />
                                                     <Image Source="{Binding LinkImage}" Stretch="UniformToFill" MaxHeight="260" />
                                                 </Grid>
                                             </StackPanel>
@@ -961,19 +954,19 @@
                                 </StackPanel>
                                 <Border x:Name="Meta" Grid.ColumnSpan="2" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,2,0,-1" CornerRadius="8" Padding="8,0,0,0">
                                     <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="&#xE7B3;" Style="{StaticResource Icon}" FontSize="11" Foreground="{StaticResource MetaBrush}" Margin="0,0,3,0"
+                                        <TextBlock Text="&#xE7B3;" Style="{StaticResource Icon}" FontSize="11" Foreground="{DynamicResource MetaBrush}" Margin="0,0,3,0"
                                                    Visibility="{Binding ViewsText, Converter={StaticResource NullToVis}}" />
-                                        <TextBlock Text="{Binding ViewsText}" FontSize="11" Foreground="{StaticResource MetaBrush}" Margin="0,0,8,0"
+                                        <TextBlock Text="{Binding ViewsText}" FontSize="11" Foreground="{DynamicResource MetaBrush}" Margin="0,0,8,0"
                                                    Visibility="{Binding ViewsText, Converter={StaticResource NullToVis}}" />
-                                        <TextBlock Text="изменено" FontSize="11" Foreground="{StaticResource MetaBrush}" Margin="0,0,5,0"
+                                        <TextBlock Text="изменено" FontSize="11" Foreground="{DynamicResource MetaBrush}" Margin="0,0,5,0"
                                                    Visibility="{Binding IsEdited, Converter={StaticResource BoolToVis}}" />
-                                        <TextBlock Text="{Binding TimeText}" FontSize="11" Foreground="{StaticResource MetaBrush}" />
+                                        <TextBlock Text="{Binding TimeText}" FontSize="11" Foreground="{DynamicResource MetaBrush}" />
                                         <!-- Галочки как в Telegram: «прочитано» — вторая поверх первой со сдвигом -->
                                         <Canvas Width="16" Height="10" Margin="4,0,0,0" VerticalAlignment="Center"
                                                 Visibility="{Binding ShowChecks, Converter={StaticResource BoolToVis}}">
-                                            <Path Data="M0.8,5.2 L3.8,8.2 L10.2,1.4" Stroke="#6AB3F3" StrokeThickness="1.5"
+                                            <Path Data="M0.8,5.2 L3.8,8.2 L10.2,1.4" Stroke="{DynamicResource LinkBrush}" StrokeThickness="1.5"
                                                   StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
-                                            <Path Canvas.Left="4.6" Data="M2.2,6.6 L3.8,8.2 L10.2,1.4" Stroke="#6AB3F3" StrokeThickness="1.5"
+                                            <Path Canvas.Left="4.6" Data="M2.2,6.6 L3.8,8.2 L10.2,1.4" Stroke="{DynamicResource LinkBrush}" StrokeThickness="1.5"
                                                   StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
                                                   Visibility="{Binding IsRead, Converter={StaticResource BoolToVis}}" />
                                         </Canvas>
@@ -998,7 +991,7 @@
                                             <Button.Template>
                                                 <ControlTemplate TargetType="Button">
                                                     <Grid>
-                                                        <Border x:Name="Pill" CornerRadius="16" Height="32" Padding="6,0,11,0" Background="#24FFFFFF">
+                                                        <Border x:Name="Pill" CornerRadius="16" Height="32" Padding="6,0,11,0" Background="{DynamicResource PillBrush}">
                                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                                                 <controls:StickerView Width="24" Height="24" Once="True" Media="{Binding Icon}" VerticalAlignment="Center"
                                                                                       Visibility="{Binding HasIcon, Converter={StaticResource BoolToVis}}" />
@@ -1018,11 +1011,11 @@
                                                     </Grid>
                                                     <ControlTemplate.Triggers>
                                                         <DataTrigger Binding="{Binding Chosen}" Value="True">
-                                                            <Setter TargetName="Pill" Property="Background" Value="{StaticResource AccentBrush}" />
+                                                            <Setter TargetName="Pill" Property="Background" Value="{DynamicResource AccentBrush}" />
                                                         </DataTrigger>
                                                         <DataTrigger Binding="{Binding IsPaid}" Value="True">
                                                             <Setter TargetName="Pill" Property="Background" Value="#33FFB82E" />
-                                                            <Setter TargetName="Count" Property="Foreground" Value="{StaticResource GoldBrush}" />
+                                                            <Setter TargetName="Count" Property="Foreground" Value="{DynamicResource GoldBrush}" />
                                                         </DataTrigger>
                                                         <MultiDataTrigger>
                                                             <MultiDataTrigger.Conditions>
@@ -1065,11 +1058,11 @@
                             <Button Style="{StaticResource BareButton}" Margin="-10,6,-10,-6" HorizontalAlignment="Stretch"
                                     Command="{Binding DataContext.OpenCommentsCommand, ElementName=Root}" CommandParameter="{Binding}"
                                     Visibility="{Binding HasComments, Converter={StaticResource BoolToVis}}">
-                                <Border BorderBrush="#22FFFFFF" BorderThickness="0,1,0,0" Padding="12,8">
+                                <Border BorderBrush="{DynamicResource TintBrush}" BorderThickness="0,1,0,0" Padding="12,8">
                                     <DockPanel>
-                                        <TextBlock DockPanel.Dock="Right" Text="&#xE76C;" Style="{StaticResource Icon}" FontSize="11" Foreground="#6AB3F3" />
-                                        <TextBlock Text="&#xE8BD;" Style="{StaticResource Icon}" FontSize="14" Foreground="#6AB3F3" Margin="0,0,8,0" />
-                                        <TextBlock Text="{Binding CommentsText}" Foreground="#6AB3F3" FontSize="13" FontWeight="SemiBold" />
+                                        <TextBlock DockPanel.Dock="Right" Text="&#xE76C;" Style="{StaticResource Icon}" FontSize="11" Foreground="{DynamicResource LinkBrush}" />
+                                        <TextBlock Text="&#xE8BD;" Style="{StaticResource Icon}" FontSize="14" Foreground="{DynamicResource LinkBrush}" Margin="0,0,8,0" />
+                                        <TextBlock Text="{Binding CommentsText}" Foreground="{DynamicResource LinkBrush}" FontSize="13" FontWeight="SemiBold" />
                                     </DockPanel>
                                 </Border>
                             </Button>
@@ -1077,16 +1070,16 @@
                     </Border>
                     <!-- Быстрая реакция: кружок у пузыря при наведении (как в Telegram Desktop) -->
                     <Button x:Name="ReactButton" Width="34" Height="34" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-40,0"
-                            Cursor="Hand" FocusVisualStyle="{x:Null}" Visibility="Hidden" ToolTip="Реакция" Click="ReactButton_Click">
+                            Cursor="Hand" FocusVisualStyle="{x:Null}" Visibility="Hidden" Click="ReactButton_Click">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
                                 <Grid>
-                                    <Ellipse x:Name="C" Fill="{StaticResource Surface2Brush}" Stroke="{StaticResource Surface3Brush}" StrokeThickness="1" />
+                                    <Ellipse x:Name="C" Fill="{DynamicResource Surface2Brush}" Stroke="{DynamicResource Surface3Brush}" StrokeThickness="1" />
                                     <TextBlock helpers:RichText.Text="🙂" helpers:RichText.EmojiSize="20" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Grid>
                                 <ControlTemplate.Triggers>
                                     <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="C" Property="Fill" Value="{StaticResource Surface3Brush}" />
+                                        <Setter TargetName="C" Property="Fill" Value="{DynamicResource Surface3Brush}" />
                                     </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
@@ -1149,7 +1142,7 @@
                     <Setter TargetName="BubbleWrap" Property="HorizontalAlignment" Value="Right" />
                     <Setter TargetName="ReactButton" Property="HorizontalAlignment" Value="Left" />
                     <Setter TargetName="ReactButton" Property="Margin" Value="-40,0,0,0" />
-                    <Setter TargetName="Bubble" Property="Background" Value="{StaticResource OutBubble}" />
+                    <Setter TargetName="Bubble" Property="Background" Value="{DynamicResource OutBubbleBrush}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsFirstInGroup}" Value="True">
                     <Setter TargetName="Row" Property="Margin" Value="0,6,0,1" />
@@ -1183,13 +1176,13 @@
         <DataTemplate x:Key="UploadTpl" DataType="{x:Type vm:UploadViewModel}">
             <!-- Отправка: пузырь той же формы, что будет после (голосовое, сетка медиа, файлы); вместо плеера/значка —
                  белый ободок загрузки с крестиком. Заготовка живёт до конца отправки — меняется только ободок. -->
-            <Border HorizontalAlignment="Right" Margin="0,1" Padding="10,6,10,6" CornerRadius="14" Background="{StaticResource OutBubble}" MaxWidth="520">
+            <Border HorizontalAlignment="Right" Margin="0,1" Padding="10,6,10,6" CornerRadius="14" Background="{DynamicResource OutBubbleBrush}" MaxWidth="520">
                 <StackPanel>
                     <!-- Голосовое -->
                     <DockPanel Margin="0,2,0,2" MinWidth="250" Visibility="{Binding IsVoice, Converter={StaticResource BoolToVis}}">
                         <Button DockPanel.Dock="Left" Width="44" Height="44" Margin="0,0,10,0" Style="{StaticResource BareButton}"
-                                Command="{Binding CancelCommand}" ToolTip="Отменить отправку" Cursor="Hand">
-                            <controls:ProgressArc Width="44" Height="44" Progress="{Binding Progress}" Fill="{StaticResource AccentBrush}" />
+                                Command="{Binding CancelCommand}" Cursor="Hand">
+                            <controls:ProgressArc Width="44" Height="44" Progress="{Binding Progress}" Fill="{DynamicResource AccentBrush}" />
                         </Button>
                         <StackPanel VerticalAlignment="Center">
                             <ItemsControl ItemsSource="{Binding WaveBars}" Height="28" HorizontalAlignment="Left" IsHitTestVisible="False">
@@ -1200,11 +1193,11 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Rectangle Width="3" Height="{Binding}" Margin="0,0,1,0" RadiusX="1.5" RadiusY="1.5" Fill="#5C7A96" VerticalAlignment="Center" />
+                                        <Rectangle Width="3" Height="{Binding}" Margin="0,0,1,0" RadiusX="1.5" RadiusY="1.5" Fill="{DynamicResource WaveBrush}" VerticalAlignment="Center" />
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                            <TextBlock Text="{Binding VoiceDuration}" FontSize="11" Foreground="{StaticResource MetaBrush}" />
+                            <TextBlock Text="{Binding VoiceDuration}" FontSize="11" Foreground="{DynamicResource MetaBrush}" />
                         </StackPanel>
                     </DockPanel>
 
@@ -1214,9 +1207,9 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:UploadPart}">
                                 <Grid Width="{Binding SingleWidth}" Height="{Binding SingleHeight}" helpers:RoundClip.Radius="10">
-                                    <Border Background="#22FFFFFF" />
+                                    <Border Background="{DynamicResource TintBrush}" />
                                     <Image Source="{Binding Preview}" Stretch="UniformToFill" />
-                                    <Button Style="{StaticResource BareButton}" Width="48" Height="48" Cursor="Hand" ToolTip="Отменить отправку"
+                                    <Button Style="{StaticResource BareButton}" Width="48" Height="48" Cursor="Hand"
                                             Command="{Binding DataContext.CancelCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
                                         <controls:ProgressArc Width="48" Height="48" Progress="{Binding Progress}" />
                                     </Button>
@@ -1236,9 +1229,9 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:UploadPart}">
                                 <Grid helpers:RoundClip.Radius="6">
-                                    <Border Background="#22FFFFFF" />
+                                    <Border Background="{DynamicResource TintBrush}" />
                                     <Image Source="{Binding Preview}" Stretch="UniformToFill" />
-                                    <Button Style="{StaticResource BareButton}" Width="40" Height="40" Cursor="Hand" ToolTip="Отменить отправку"
+                                    <Button Style="{StaticResource BareButton}" Width="40" Height="40" Cursor="Hand"
                                             Command="{Binding DataContext.CancelCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
                                         <controls:ProgressArc Width="40" Height="40" Progress="{Binding Progress}" />
                                     </Button>
@@ -1253,13 +1246,12 @@
                             <DataTemplate DataType="{x:Type vm:UploadPart}">
                                 <DockPanel Margin="0,2,0,4" MinWidth="230">
                                     <Button DockPanel.Dock="Left" Width="44" Height="44" Margin="0,0,10,0" Style="{StaticResource BareButton}" Cursor="Hand"
-                                            ToolTip="Отменить отправку"
                                             Command="{Binding DataContext.CancelCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
-                                        <controls:ProgressArc Width="44" Height="44" Progress="{Binding Progress}" Fill="{StaticResource AccentBrush}" />
+                                        <controls:ProgressArc Width="44" Height="44" Progress="{Binding Progress}" Fill="{DynamicResource AccentBrush}" />
                                     </Button>
                                     <StackPanel VerticalAlignment="Center">
                                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" MaxWidth="340" />
-                                        <TextBlock Text="{Binding Size}" FontSize="12" Foreground="#8FA3B5" />
+                                        <TextBlock Text="{Binding Size}" FontSize="12" Foreground="{DynamicResource BubbleDimBrush}" />
                                     </StackPanel>
                                 </DockPanel>
                             </DataTemplate>
@@ -1269,8 +1261,8 @@
                     <!-- Прочее -->
                     <DockPanel Visibility="{Binding IsPlain, Converter={StaticResource BoolToVis}}">
                         <Button DockPanel.Dock="Left" Width="44" Height="44" Margin="0,0,10,0" Style="{StaticResource BareButton}" Cursor="Hand"
-                                Command="{Binding CancelCommand}" ToolTip="Отменить отправку">
-                            <controls:ProgressArc Width="44" Height="44" Progress="{Binding Progress}" Fill="{StaticResource AccentBrush}" />
+                                Command="{Binding CancelCommand}">
+                            <controls:ProgressArc Width="44" Height="44" Progress="{Binding Progress}" Fill="{DynamicResource AccentBrush}" />
                         </Button>
                         <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="240" VerticalAlignment="Center" />
                     </DockPanel>
@@ -1280,9 +1272,9 @@
                                Visibility="{Binding HasCaption, Converter={StaticResource BoolToVis}}" />
 
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,2,0,-1">
-                        <TextBlock Text="{Binding TimeText}" FontSize="11" Foreground="{StaticResource MetaBrush}" />
-                        <TextBlock Text="&#xE823;" Style="{StaticResource Icon}" FontSize="10" Foreground="{StaticResource MetaBrush}" Margin="5,0,0,0"
-                                   VerticalAlignment="Center" ToolTip="Отправляется" />
+                        <TextBlock Text="{Binding TimeText}" FontSize="11" Foreground="{DynamicResource MetaBrush}" />
+                        <TextBlock Text="&#xE823;" Style="{StaticResource Icon}" FontSize="10" Foreground="{DynamicResource MetaBrush}" Margin="5,0,0,0"
+                                   VerticalAlignment="Center" />
                     </StackPanel>
                 </StackPanel>
             </Border>
@@ -1308,12 +1300,12 @@
             </Grid.RowDefinitions>
 
             <!-- ================================================= Шапка -->
-            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,9">
+            <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,9">
                 <DockPanel>
-                    <Button x:Name="BackButton" DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE72B;" ToolTip="Назад (Esc)"
+                    <Button x:Name="BackButton" DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE72B;"
                             Command="{Binding CloseChatCommand}" Margin="0,0,4,0" Visibility="Collapsed" />
                     <!-- Меню чата (⋮): уведомления, очистка, удаление, блокировка, управление группой -->
-                    <Button x:Name="ChatMenuButton" DockPanel.Dock="Right" Style="{StaticResource IconButton}" ToolTip="Меню чата" Click="ChatMenu_Click">
+                    <Button x:Name="ChatMenuButton" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Click="ChatMenu_Click">
                         <!-- Три точки по вертикали (в шрифте иконок символа «⋮» нет) -->
                         <Path Width="16" Height="16" Stretch="Uniform" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                               Data="M12,3.4 A1.9,1.9 0 1 1 12,7.2 A1.9,1.9 0 1 1 12,3.4 Z M12,10.1 A1.9,1.9 0 1 1 12,13.9 A1.9,1.9 0 1 1 12,10.1 Z M12,16.8 A1.9,1.9 0 1 1 12,20.6 A1.9,1.9 0 1 1 12,16.8 Z" />
@@ -1368,22 +1360,21 @@
                             <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock helpers:RichText.Text="{Binding HeaderTitle}" FontWeight="SemiBold" FontSize="15" TextTrimming="CharacterEllipsis" MaxWidth="440" />
-                                    <controls:StickerView CustomEmojiId="{Binding Peer.EmojiStatusId, TargetNullValue=0}" Visibility="{Binding Peer.EmojiStatusId, Converter={StaticResource NullToVis}}" Width="18" Height="18" Margin="5,0,0,0"
-                                                          ToolTip="Эмодзи-статус" />
+                                    <controls:StickerView CustomEmojiId="{Binding Peer.EmojiStatusId, TargetNullValue=0}" Visibility="{Binding Peer.EmojiStatusId, Converter={StaticResource NullToVis}}" Width="18" Height="18" Margin="5,0,0,0" ToolTip="Эмодзи-статус" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal">
-                                    <controls:TypingDots DotBrush="{StaticResource AccentBrush}" Margin="0,2,6,0"
+                                    <controls:TypingDots DotBrush="{DynamicResource AccentBrush}" Margin="0,2,6,0"
                                                          Visibility="{Binding IsTypingNow, Converter={StaticResource BoolToVis}}" />
                                     <TextBlock Text="{Binding Status}" FontSize="12">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
-                                                <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding IsTypingNow}" Value="True">
-                                                        <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                                                        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
                                                     </DataTrigger>
                                                     <DataTrigger Binding="{Binding Status}" Value="в сети">
-                                                        <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                                                        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
@@ -1396,14 +1387,14 @@
                 </DockPanel>
             </Border>
             <!-- Выделено несколько сообщений: панель действий вместо шапки (как в Telegram) -->
-            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,9" Background="{StaticResource SurfaceBrush}"
+            <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,9" Background="{DynamicResource SurfaceBrush}"
                     Visibility="{Binding IsSelecting, Converter={StaticResource BoolToVis}}">
                 <DockPanel Height="42">
-                    <Button DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE711;" ToolTip="Отменить (Esc)"
+                    <Button DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE711;"
                             Command="{Binding ClearSelectionCommand}" Margin="0,0,8,0" />
                     <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Margin="6,0,0,0" Command="{Binding DeleteSelectedCommand}"
                             Visibility="{Binding CanDeleteSelected, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="Удалить" Foreground="{StaticResource DangerBrush}" />
+                        <TextBlock Text="Удалить" Foreground="{DynamicResource DangerBrush}" />
                     </Button>
                     <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="Копировать" Margin="6,0,0,0" Command="{Binding CopySelectedCommand}" />
                     <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="Переслать" Padding="16,7" Command="{Binding ForwardSelectedCommand}" />
@@ -1412,7 +1403,7 @@
             </Border>
 
             <!-- ================================================= Лента -->
-            <Grid Grid.Row="1" Background="{StaticResource ChatBg}">
+            <Grid Grid.Row="1" Background="{DynamicResource ChatBgBrush}">
                 <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto" Padding="18,6,12,10"
                               helpers:SmoothScroll.IsEnabled="True" ScrollChanged="Scroller_ScrollChanged">
                     <ItemsControl x:Name="Feed" ItemsSource="{Binding Items}" Focusable="False" ItemTemplateSelector="{StaticResource MessageSelector}" />
@@ -1423,22 +1414,22 @@
 
                 <!-- Дата, когда её разделитель ушёл за верх: стоит под закреплёнными, а следующий разделитель плавно её выталкивает -->
                 <Border x:Name="FloatingDate" HorizontalAlignment="Center" VerticalAlignment="Top" Padding="12,4" CornerRadius="12"
-                        Background="#99182533" IsHitTestVisible="False" Opacity="0">
+                        Background="{DynamicResource DatePillBrush}" IsHitTestVisible="False" Opacity="0">
                     <Border.RenderTransform>
                         <TranslateTransform x:Name="FloatingDateShift" />
                     </Border.RenderTransform>
-                    <TextBlock x:Name="FloatingDateText" FontSize="12" FontWeight="SemiBold" Foreground="#C9D4DF" />
+                    <TextBlock x:Name="FloatingDateText" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSoftBrush}" />
                 </Border>
 
                 <!-- Верх ленты: панель плеера (голосовые, аудио, кружки) и закреплённые -->
                 <StackPanel x:Name="FeedTop" VerticalAlignment="Top">
-                    <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1"
+                    <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
                             DataContext="{x:Static vm:NowPlaying.Instance}" Visibility="Collapsed"
                             helpers:Anim.Mode="SlideDown" helpers:Anim.Show="{Binding ShowTopBar}">
                         <Grid>
                             <DockPanel Margin="10,5,8,5">
                                 <Button DockPanel.Dock="Left" FontSize="15" Padding="8"
-                                        Command="{Binding ToggleCommand}" Foreground="{StaticResource AccentBrush}">
+                                        Command="{Binding ToggleCommand}" Foreground="{DynamicResource AccentBrush}">
                                     <Button.Style>
                                         <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
                                             <Setter Property="Content" Value="&#xE768;" />
@@ -1451,15 +1442,15 @@
                                     </Button.Style>
                                 </Button>
                                 <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="11" Padding="8"
-                                        Command="{Binding CloseCommand}" ToolTip="Остановить" />
-                                <TextBlock DockPanel.Dock="Right" Text="{Binding TimeText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                                        Command="{Binding CloseCommand}" />
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding TimeText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
                                            VerticalAlignment="Center" Margin="8,0" />
                                 <StackPanel VerticalAlignment="Center" Margin="6,0,0,0">
                                     <TextBlock helpers:RichText.Text="{Binding Title}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding Subtitle}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Subtitle}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
                             </DockPanel>
-                            <Border Height="2" VerticalAlignment="Bottom" Background="{StaticResource AccentBrush}" RenderTransformOrigin="0,0.5">
+                            <Border Height="2" VerticalAlignment="Bottom" Background="{DynamicResource AccentBrush}" RenderTransformOrigin="0,0.5">
                                 <Border.RenderTransform>
                                     <ScaleTransform ScaleX="{Binding Progress}" />
                                 </Border.RenderTransform>
@@ -1469,14 +1460,14 @@
                 <!-- Закреплённые сообщения -->
                 <Button Style="{StaticResource BareButton}" Command="{Binding OpenPinnedCommand}"
                         Visibility="Collapsed" helpers:Anim.Mode="SlideDown" helpers:Anim.Show="{Binding HasPinned}">
-                    <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="16,7">
+                    <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="16,7">
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Right" Text="&#xE718;" Style="{StaticResource Icon}" FontSize="15" VerticalAlignment="Center"
-                                       Foreground="{StaticResource TextSecondaryBrush}" />
-                            <Border BorderBrush="{StaticResource AccentBrush}" BorderThickness="2,0,0,0" Padding="9,0,0,0">
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Border BorderBrush="{DynamicResource AccentBrush}" BorderThickness="2,0,0,0" Padding="9,0,0,0">
                                 <StackPanel>
-                                    <TextBlock Text="{Binding PinnedTitle}" Foreground="{StaticResource AccentBrush}" FontSize="12" FontWeight="SemiBold" />
-                                    <TextBlock helpers:RichText.Text="{Binding PinnedText}" FontSize="13" TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextBrush}" />
+                                    <TextBlock Text="{Binding PinnedTitle}" Foreground="{DynamicResource AccentBrush}" FontSize="12" FontWeight="SemiBold" />
+                                    <TextBlock helpers:RichText.Text="{Binding PinnedText}" FontSize="13" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextBrush}" />
                                 </StackPanel>
                             </Border>
                         </DockPanel>
@@ -1486,7 +1477,7 @@
 
                 <!-- Кружок, ушедший за экран, закреплён сверху: смотреть дальше и листать чат -->
                 <Grid Width="150" Height="150" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,70,22,0" Cursor="Hand"
-                      DataContext="{x:Static vm:NowPlaying.Instance}" Visibility="Collapsed" ToolTip="Пауза / продолжить"
+                      DataContext="{x:Static vm:NowPlaying.Instance}" Visibility="Collapsed"
                       helpers:Anim.Mode="Scale" helpers:Anim.Show="{Binding ShowFloatingRound}">
                     <Grid.InputBindings>
                         <MouseBinding MouseAction="LeftClick" Command="{Binding ToggleCommand}" />
@@ -1498,7 +1489,7 @@
                     </Ellipse>
                     <Button Style="{StaticResource RoundButton}" Background="#CC000000" Width="26" Height="26"
                             HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0"
-                            Command="{Binding CloseCommand}" ToolTip="Закрыть">
+                            Command="{Binding CloseCommand}">
                         <TextBlock Text="&#xE711;" Style="{StaticResource Icon}" FontSize="10" Foreground="White" />
                     </Button>
                 </Grid>
@@ -1510,13 +1501,13 @@
 
                 <!-- Новые реакции на ваши сообщения: сердечко с числом над «вниз»; нажатие — к следующей реакции -->
                 <Button Width="44" Height="44" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,22,68"
-                        Command="{Binding JumpToReactionCommand}" Cursor="Hand" ToolTip="К новой реакции"
+                        Command="{Binding JumpToReactionCommand}" Cursor="Hand"
                         DataContext="{Binding}" Visibility="Collapsed" helpers:Anim.Mode="SlideUp"
                         helpers:Anim.Show="{Binding ChatRow.HasUnreadReactions, FallbackValue=False}">
                     <Button.Template>
                         <ControlTemplate TargetType="Button">
                             <Grid>
-                                <Ellipse x:Name="C" Fill="{StaticResource Surface2Brush}" Stroke="{StaticResource Surface3Brush}" StrokeThickness="1" />
+                                <Ellipse x:Name="C" Fill="{DynamicResource Surface2Brush}" Stroke="{DynamicResource Surface3Brush}" StrokeThickness="1" />
                                 <Path Data="{StaticResource HeartGeometry}" Fill="#E5534B" Stretch="Uniform" Width="18" Height="18" />
                                 <Border Background="#E5534B" CornerRadius="9" MinWidth="18" Height="18" Padding="5,0"
                                         HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,-10,0,0">
@@ -1525,7 +1516,7 @@
                             </Grid>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="C" Property="Fill" Value="{StaticResource Surface3Brush}" />
+                                    <Setter TargetName="C" Property="Fill" Value="{DynamicResource Surface3Brush}" />
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -1534,17 +1525,17 @@
 
                 <!-- Кнопка «вниз» -->
                 <Button x:Name="JumpButton" Width="44" Height="44" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,22,14"
-                        Command="{Binding JumpToBottomCommand}" Cursor="Hand" ToolTip="К последним сообщениям"
+                        Command="{Binding JumpToBottomCommand}" Cursor="Hand"
                         helpers:Anim.Mode="SlideUp">
                     <Button.Template>
                         <ControlTemplate TargetType="Button">
                             <Grid>
-                                <Ellipse x:Name="C" Fill="{StaticResource Surface2Brush}" Stroke="{StaticResource Surface3Brush}" StrokeThickness="1">
+                                <Ellipse x:Name="C" Fill="{DynamicResource Surface2Brush}" Stroke="{DynamicResource Surface3Brush}" StrokeThickness="1">
                                     
                                 </Ellipse>
                                 <TextBlock Text="&#xE70D;" Style="{StaticResource Icon}" FontSize="16" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource TextBrush}" />
-                                <Border Background="{StaticResource AccentBrush}" CornerRadius="9" MinWidth="18" Height="18" Padding="5,0"
+                                           Foreground="{DynamicResource TextBrush}" />
+                                <Border Background="{DynamicResource AccentBrush}" CornerRadius="9" MinWidth="18" Height="18" Padding="5,0"
                                         HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,-10,0,0"
                                         Visibility="{Binding PendingNewCount, Converter={StaticResource NullToVis}}">
                                     <controls:BadgeText Text="{Binding PendingNewCount}" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -1552,7 +1543,7 @@
                             </Grid>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="C" Property="Fill" Value="{StaticResource Surface3Brush}" />
+                                    <Setter TargetName="C" Property="Fill" Value="{DynamicResource Surface3Brush}" />
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -1561,7 +1552,7 @@
 
                 <!-- Панель эмодзи / стикеров / GIF -->
                 <Border x:Name="PickerPanel" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,12,8" Width="380" Height="430"
-                        CornerRadius="16" Background="{StaticResource Surface2Brush}" BorderBrush="{StaticResource Surface3Brush}" BorderThickness="1"
+                        CornerRadius="16" Background="{DynamicResource Surface2Brush}" BorderBrush="{DynamicResource Surface3Brush}" BorderThickness="1"
                         Visibility="Collapsed" helpers:Anim.Mode="SlideUp" helpers:Anim.Show="{Binding DataContext.IsPickerOpen, ElementName=Root}"
                         DataContext="{Binding Picker}" Tag="{Binding DataContext, ElementName=Root}">
                     <Grid>
@@ -1579,12 +1570,12 @@
                                     <ItemsControl ItemsSource="{Binding RecentEmoji}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
-                                                <WrapPanel />
+                                                <UniformGrid Columns="9" />
                                             </ItemsPanelTemplate>
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate DataType="{x:Type vm:EmojiItem}">
-                                                <Button Style="{StaticResource BareButton}" Width="38" Height="38" ToolTip="{Binding Text}"
+                                                <Button Style="{StaticResource BareButton}" Height="38" HorizontalContentAlignment="Center"
                                                         Command="{Binding DataContext.InsertEmojiCommand, ElementName=Root}" CommandParameter="{Binding Text}">
                                                     <Image Source="{Binding Image}" Width="28" Height="28" />
                                                 </Button>
@@ -1600,12 +1591,12 @@
                                                 <ItemsControl ItemsSource="{Binding Items}">
                                                     <ItemsControl.ItemsPanel>
                                                         <ItemsPanelTemplate>
-                                                            <WrapPanel />
+                                                            <UniformGrid Columns="9" />
                                                         </ItemsPanelTemplate>
                                                     </ItemsControl.ItemsPanel>
                                                     <ItemsControl.ItemTemplate>
                                                         <DataTemplate DataType="{x:Type vm:EmojiItem}">
-                                                            <Button Style="{StaticResource BareButton}" Width="38" Height="38"
+                                                            <Button Style="{StaticResource BareButton}" Height="38" HorizontalContentAlignment="Center"
                                                                     Command="{Binding DataContext.InsertEmojiCommand, ElementName=Root}" CommandParameter="{Binding Text}">
                                                                 <Image Source="{Binding Image}" Width="28" Height="28" />
                                                             </Button>
@@ -1634,7 +1625,7 @@
                                     </ItemsControl.ItemsPanel>
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate DataType="{x:Type vm:StickerSetViewModel}">
-                                            <Button Style="{StaticResource BareButton}" Width="42" Height="42" ToolTip="{Binding Title}" Margin="0,0,2,0"
+                                            <Button Style="{StaticResource BareButton}" Width="42" Height="42" Margin="0,0,2,0"
                                                     Command="{Binding DataContext.SelectSetCommand, ElementName=PickerPanel}" CommandParameter="{Binding}">
                                                 <controls:StickerView Media="{Binding Cover}" Once="True" Width="32" Height="32" />
                                             </Button>
@@ -1648,12 +1639,12 @@
                                     <ItemsControl ItemsSource="{Binding SelectedSet.Stickers}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
-                                                <WrapPanel />
+                                                <UniformGrid Columns="4" />
                                             </ItemsPanelTemplate>
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <Button Style="{StaticResource BareButton}" Width="84" Height="84" Padding="4"
+                                                <Button Style="{StaticResource BareButton}" Height="84" HorizontalContentAlignment="Center" Padding="4"
                                                         Command="{Binding Tag.SendStickerCommand, ElementName=PickerPanel}" CommandParameter="{Binding}">
                                                     <controls:StickerView Media="{Binding}" Once="True" Width="72" Height="72" />
                                                 </Button>
@@ -1671,16 +1662,17 @@
                             <ItemsControl ItemsSource="{Binding Gifs}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
-                                        <WrapPanel />
+                                        <UniformGrid Columns="3" />
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Button Style="{StaticResource BareButton}" Width="115" Height="90" Margin="0,0,3,3"
+                                        <Button Style="{StaticResource BareButton}" Height="86" Margin="2"
                                                 Command="{Binding Tag.SendStickerCommand, ElementName=PickerPanel}" CommandParameter="{Binding}">
-                                            <Border CornerRadius="8" ClipToBounds="True" Background="#22FFFFFF">
-                                                <controls:StickerView Media="{Binding}" Animate="False" Stretch="UniformToFill" Width="115" Height="90" />
-                                            </Border>
+                                            <Grid helpers:RoundClip.Radius="8">
+                                                <Border Background="{DynamicResource TintBrush}" />
+                                                <controls:StickerView Media="{Binding}" Animate="False" Stretch="UniformToFill" />
+                                            </Grid>
                                         </Button>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -1688,7 +1680,7 @@
                         </ScrollViewer>
 
                         <!-- Вкладки -->
-                        <Border Grid.Row="1" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="6">
+                        <Border Grid.Row="1" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="6">
                             <UniformGrid Columns="3">
                                 <RadioButton Style="{StaticResource SegmentRadio}" GroupName="ptab" Content="Эмодзи"
                                              IsChecked="{Binding Tab, Converter={StaticResource EnumToBool}, ConverterParameter=Emoji}" />
@@ -1703,11 +1695,11 @@
             </Grid>
 
             <!-- ================================================= Ввод -->
-            <Border Grid.Row="2" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="12,10">
+            <Border Grid.Row="2" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="12,10">
                 <Grid>
                     <StackPanel Visibility="{Binding CanWrite, Converter={StaticResource BoolToVis}}">
                         <!-- Инлайн-боты: подсказки недавних ботов («@…») и результаты бота («@бот запрос») -->
-                        <Border Margin="0,0,0,8" CornerRadius="12" Background="{StaticResource Surface2Brush}" Padding="6"
+                        <Border Margin="0,0,0,8" CornerRadius="12" Background="{DynamicResource Surface2Brush}" Padding="6"
                                 Visibility="{Binding HasInlinePanel, Converter={StaticResource BoolToVis}}">
                             <Grid>
                                 <ItemsControl ItemsSource="{Binding InlineSuggestions}" Focusable="False"
@@ -1731,7 +1723,7 @@
                                     <DockPanel DockPanel.Dock="Top" Margin="8,2,8,6">
                                         <views:Spinner DockPanel.Dock="Right" Width="16" Height="16"
                                                        Visibility="{Binding IsInlineLoading, Converter={StaticResource BoolToVis}}" />
-                                        <TextBlock Text="{Binding InlineTitle}" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="13" />
+                                        <TextBlock Text="{Binding InlineTitle}" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" FontSize="13" />
                                     </DockPanel>
                                     <ScrollViewer x:Name="InlineScroll" MaxHeight="300" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                                   helpers:SmoothScroll.IsEnabled="True" ScrollChanged="InlineScroll_ScrollChanged">
@@ -1745,7 +1737,7 @@
                                                                 <Button Style="{StaticResource BareButton}" Margin="0,1"
                                                                         Command="{Binding DataContext.SendInlineResultCommand, ElementName=Root}" CommandParameter="{Binding}">
                                                                     <DockPanel Margin="8,6">
-                                                                        <Border DockPanel.Dock="Left" Width="44" Height="44" CornerRadius="8" Background="#22FFFFFF" Margin="0,0,12,0"
+                                                                        <Border DockPanel.Dock="Left" Width="44" Height="44" CornerRadius="8" Background="{DynamicResource TintBrush}" Margin="0,0,12,0"
                                                                                 helpers:RoundClip.Radius="8">
                                                                             <Image Source="{Binding Thumb}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
                                                                         </Border>
@@ -1772,9 +1764,9 @@
                                                             <Setter Property="ItemTemplate">
                                                                 <Setter.Value>
                                                                     <DataTemplate DataType="{x:Type vm:InlineResultViewModel}">
-                                                                        <Button Style="{StaticResource BareButton}" Margin="2" ToolTip="{Binding Title}"
+                                                                        <Button Style="{StaticResource BareButton}" Margin="2"
                                                                                 Command="{Binding DataContext.SendInlineResultCommand, ElementName=Root}" CommandParameter="{Binding}">
-                                                                            <Border Width="96" Height="96" CornerRadius="8" Background="#22FFFFFF" helpers:RoundClip.Radius="8">
+                                                                            <Border Width="96" Height="96" CornerRadius="8" Background="{DynamicResource TintBrush}" helpers:RoundClip.Radius="8">
                                                                                 <Image Source="{Binding Thumb}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
                                                                             </Border>
                                                                         </Button>
@@ -1793,8 +1785,8 @@
                         <!-- Ответ / редактирование -->
                         <DockPanel Margin="4,0,0,8" Visibility="Collapsed" helpers:Anim.Mode="SlideUp" helpers:Anim.Show="{Binding HasComposerBar}">
                             <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" Padding="7" FontSize="12"
-                                    Command="{Binding CancelComposerBarCommand}" ToolTip="Отмена (Esc)" />
-                            <TextBlock DockPanel.Dock="Left" Foreground="{StaticResource AccentBrush}" FontSize="16" Margin="0,0,12,0">
+                                    Command="{Binding CancelComposerBarCommand}" />
+                            <TextBlock DockPanel.Dock="Left" Foreground="{DynamicResource AccentBrush}" FontSize="16" Margin="0,0,12,0">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock" BasedOn="{StaticResource Icon}">
                                         <Setter Property="Text" Value="&#xE97A;" />
@@ -1806,10 +1798,10 @@
                                     </Style>
                                 </TextBlock.Style>
                             </TextBlock>
-                            <Border BorderBrush="{StaticResource AccentBrush}" BorderThickness="2,0,0,0" Padding="8,0,0,0">
+                            <Border BorderBrush="{DynamicResource AccentBrush}" BorderThickness="2,0,0,0" Padding="8,0,0,0">
                                 <StackPanel>
-                                    <TextBlock Text="{Binding ComposerBarTitle}" Foreground="{StaticResource AccentBrush}" FontSize="12" FontWeight="SemiBold" />
-                                    <TextBlock Text="{Binding ComposerBarText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                                    <TextBlock Text="{Binding ComposerBarTitle}" Foreground="{DynamicResource AccentBrush}" FontSize="12" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding ComposerBarText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
                                                TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
                             </Border>
@@ -1820,7 +1812,7 @@
                             <Button DockPanel.Dock="Left" Style="{StaticResource BotButton}" MinHeight="34" Margin="0,0,6,5" VerticalAlignment="Bottom"
                                     Command="{Binding OpenBotMenuCommand}" ToolTip="Открыть мини-приложение"
                                     Visibility="{Binding HasBotMenu, Converter={StaticResource BoolToVis}}">
-                                <Border Background="{StaticResource AccentBrush}" CornerRadius="8" Margin="-8,-6" Padding="12,6">
+                                <Border Background="{DynamicResource AccentBrush}" CornerRadius="8" Margin="-8,-6" Padding="12,6">
                                     <StackPanel Orientation="Horizontal">
                                         <!-- Иконка «приложение»: четыре скруглённых квадрата (как layout-grid из Lucide) -->
                                         <Path Width="14" Height="14" Margin="0,0,8,0" VerticalAlignment="Center" Stretch="Uniform" Stroke="White" StrokeThickness="1.8"
@@ -1830,10 +1822,10 @@
                                 </Border>
                             </Button>
                             <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" FontSize="18" Padding="10" VerticalAlignment="Bottom"
-                                    Content="&#xE92E;" ToolTip="Клавиатура бота" Command="{Binding ToggleReplyKeyboardCommand}"
+                                    Content="&#xE92E;" Command="{Binding ToggleReplyKeyboardCommand}"
                                     Visibility="{Binding HasReplyKeyboard, Converter={StaticResource BoolToVis}}" />
                             <Grid DockPanel.Dock="Right" Width="44" Height="44" Margin="8,0,0,0" VerticalAlignment="Bottom">
-                                <Button Style="{StaticResource RoundButton}" Command="{Binding SendCommand}" ToolTip="Отправить (Enter)"
+                                <Button Style="{StaticResource RoundButton}" Command="{Binding SendCommand}"
                                         Visibility="{Binding ShowMic, Converter={StaticResource InvBoolToVis}}">
                                     <Grid>
                                         <Path Data="{StaticResource PlaneGeometry}" Fill="White" Stretch="Uniform" Width="18" Height="18" Margin="0,0,2,0"
@@ -1850,12 +1842,12 @@
                                          над ней — замок «вверх — без удержания» -->
                                     <Canvas IsHitTestVisible="False">
                                         <Border x:Name="MicLock" Canvas.Left="5" Canvas.Top="-92" Width="34" Height="62" CornerRadius="17"
-                                                Background="{StaticResource Surface2Brush}" Opacity="0">
+                                                Background="{DynamicResource Surface2Brush}" Opacity="0">
                                             <StackPanel VerticalAlignment="Center">
                                                 <TextBlock Text="&#xE72E;" Style="{StaticResource Icon}" FontSize="14" HorizontalAlignment="Center"
-                                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
                                                 <TextBlock Text="&#xE70E;" Style="{StaticResource Icon}" FontSize="11" HorizontalAlignment="Center" Margin="0,8,0,0"
-                                                           Foreground="{StaticResource TextSecondaryBrush}">
+                                                           Foreground="{DynamicResource TextSecondaryBrush}">
                                                     <TextBlock.RenderTransform>
                                                         <TranslateTransform x:Name="MicLockArrowMove" />
                                                     </TextBlock.RenderTransform>
@@ -1863,7 +1855,7 @@
                                             </StackPanel>
                                         </Border>
                                     </Canvas>
-                                    <Ellipse x:Name="MicPulse" Fill="{StaticResource AccentBrush}" Opacity="0" RenderTransformOrigin="0.5,0.5">
+                                    <Ellipse x:Name="MicPulse" Fill="{DynamicResource AccentBrush}" Opacity="0" RenderTransformOrigin="0.5,0.5">
                                         <Ellipse.RenderTransform>
                                             <ScaleTransform x:Name="MicPulseScale" ScaleX="1" ScaleY="1" />
                                         </Ellipse.RenderTransform>
@@ -1874,7 +1866,7 @@
                                         </Ellipse.RenderTransform>
                                     </Ellipse>
                                     <TextBlock x:Name="MicIcon" Text="&#xE720;" Style="{StaticResource Icon}" FontSize="19" HorizontalAlignment="Center"
-                                               VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
+                                               VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
                                 </Grid>
                             </Grid>
                             <Grid>
@@ -1895,7 +1887,7 @@
                                     HorizontalAlignment="Right" VerticalAlignment="Bottom" ToolTip="Эмодзи, стикеры, GIF" Command="{Binding TogglePickerCommand}"
                                     Visibility="{Binding IsVoiceUi, Converter={StaticResource InvBoolToVis}}" />
                             <!-- Голосовое: вместо поля ввода — запись с живой волной, затем (если остановили) прослушивание и обрезка -->
-                            <Border CornerRadius="22" Background="{StaticResource Surface2Brush}" Height="44" Padding="16,0,8,0"
+                            <Border CornerRadius="22" Background="{DynamicResource Surface2Brush}" Height="44" Padding="16,0,8,0"
                                     Visibility="{Binding IsRecording, Converter={StaticResource BoolToVis}}">
                                 <DockPanel>
                                     <Ellipse DockPanel.Dock="Left" Width="10" Height="10" Fill="#E5534B" VerticalAlignment="Center">
@@ -1916,12 +1908,12 @@
                                                 Visibility="{Binding IsRecordLocked, Converter={StaticResource BoolToVis}}">
                                         <Button Style="{StaticResource GhostButton}" Content="Отмена" Padding="12,6" Command="{Binding CancelRecordingCommand}" />
                                         <Button Style="{StaticResource IconButton}" Width="34" Height="34" Padding="0" Margin="4,0,0,0"
-                                                Command="{Binding StopRecordingCommand}" ToolTip="Остановить — прослушать и обрезать">
+                                                Command="{Binding StopRecordingCommand}">
                                             <Rectangle Width="12" Height="12" RadiusX="2" RadiusY="2" Fill="#E5534B" />
                                         </Button>
                                     </StackPanel>
                                     <!-- Как в Telegram: «‹ влево — отмена», стрелка плавно «зовёт» в сторону -->
-                                    <TextBlock DockPanel.Dock="Right" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
+                                    <TextBlock DockPanel.Dock="Right" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"
                                                Margin="10,0,4,0" Visibility="{Binding IsRecordLocked, Converter={StaticResource InvBoolToVis}}">
                                         <TextBlock.RenderTransform>
                                             <TranslateTransform x:Name="CancelHintMove" />
@@ -1944,13 +1936,13 @@
                                     <controls:VoiceWave Live="True" Peaks="{Binding RecordPeaks}" Height="30" VerticalAlignment="Center" IsHitTestVisible="False" />
                                 </DockPanel>
                             </Border>
-                            <Border CornerRadius="22" Background="{StaticResource Surface2Brush}" Height="44" Padding="4,0,12,0"
+                            <Border CornerRadius="22" Background="{DynamicResource Surface2Brush}" Height="44" Padding="4,0,12,0"
                                     Visibility="{Binding IsVoicePreview, Converter={StaticResource BoolToVis}}">
                                 <DockPanel>
                                     <Button DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE74D;" FontSize="16" Width="36" Height="36" Padding="0"
-                                            Foreground="#E5534B" Command="{Binding CancelRecordingCommand}" ToolTip="Удалить запись" />
+                                            Foreground="#E5534B" Command="{Binding CancelRecordingCommand}" />
                                     <Button DockPanel.Dock="Left" Style="{StaticResource RoundButton}" Width="32" Height="32" Margin="2,0,8,0"
-                                            Command="{Binding TogglePreviewPlayCommand}" ToolTip="Прослушать">
+                                            Command="{Binding TogglePreviewPlayCommand}">
                                         <TextBlock FontSize="13" Foreground="White">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock" BasedOn="{StaticResource Icon}">
@@ -1965,10 +1957,9 @@
                                         </TextBlock>
                                     </Button>
                                     <TextBlock DockPanel.Dock="Right" Text="{Binding PreviewTime}" FontSize="13" Margin="10,0,0,0" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextSecondaryBrush}" FontFamily="Segoe UI" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="Segoe UI" />
                                     <controls:VoiceWave x:Name="PreviewWave" Peaks="{Binding RecordPeaks}" Height="34" VerticalAlignment="Center"
-                                                        TrimStart="{Binding TrimStart}" TrimEnd="{Binding TrimEnd}" Position="{Binding PreviewPosition}"
-                                                        ToolTip="Потяните края, чтобы обрезать; клик — слушать с этого места" />
+                                                        TrimStart="{Binding TrimStart}" TrimEnd="{Binding TrimEnd}" Position="{Binding PreviewPosition}" ToolTip="Потяните края, чтобы обрезать; клик — слушать с этого места" />
                                 </DockPanel>
                             </Border>
                             </Grid>
@@ -2009,11 +2000,11 @@
                                HorizontalAlignment="Center" Margin="0,10"
                                Visibility="{Binding CanWrite, Converter={StaticResource InvBoolToVis}}" />
                     <!-- Бот без переписки: «СТАРТ» вместо поля ввода (как в Telegram) -->
-                    <Button Style="{StaticResource BareButton}" Command="{Binding StartBotCommand}" Background="{StaticResource SurfaceBrush}"
+                    <Button Style="{StaticResource BareButton}" Command="{Binding StartBotCommand}" Background="{DynamicResource SurfaceBrush}"
                             Visibility="{Binding ShowStartBot, Converter={StaticResource BoolToVis}}">
-                        <Border Background="{StaticResource SurfaceBrush}" Height="46">
+                        <Border Background="{DynamicResource SurfaceBrush}" Height="46">
                             <Grid>
-                                <TextBlock Text="СТАРТ" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="15"
+                                <TextBlock Text="СТАРТ" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" FontSize="15"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"
                                            Visibility="{Binding IsStartingBot, Converter={StaticResource InvBoolToVis}}" />
                                 <views:Spinner Width="20" Height="20" Visibility="{Binding IsStartingBot, Converter={StaticResource BoolToVis}}" />
@@ -2024,13 +2015,13 @@
             </Border>
             <!-- ================================================= Островок тем справа (в открытой теме форума) -->
             <Border Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,12,10,12" Width="58"
-                    CornerRadius="29" Background="{StaticResource Surface2Brush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="29" Background="{DynamicResource Surface2Brush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                     Padding="0,8" Visibility="{Binding ShowTopicRail, Converter={StaticResource BoolToVis}}">
                 <ScrollViewer VerticalScrollBarVisibility="Hidden" helpers:SmoothScroll.IsEnabled="True">
                     <ItemsControl ItemsSource="{Binding ForumTopics}" Focusable="False">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:ForumTopicViewModel}">
-                                <Button Width="46" Height="46" Margin="0,2" Cursor="Hand" FocusVisualStyle="{x:Null}" ToolTip="{Binding Title}"
+                                <Button Width="46" Height="46" Margin="0,2" Cursor="Hand" FocusVisualStyle="{x:Null}"
                                         Command="{Binding DataContext.SwitchTopicCommand, ElementName=Root}" CommandParameter="{Binding}">
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
@@ -2045,13 +2036,13 @@
                                                                           Visibility="{Binding HasEmojiIcon, Converter={StaticResource BoolToVis}}" />
                                                 </Grid>
                                                 <!-- Непрочитанные — точка -->
-                                                <Ellipse Width="10" Height="10" Fill="{StaticResource AccentBrush}" Stroke="{StaticResource Surface2Brush}" StrokeThickness="2"
+                                                <Ellipse Width="10" Height="10" Fill="{DynamicResource AccentBrush}" Stroke="{DynamicResource Surface2Brush}" StrokeThickness="2"
                                                          HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,4,4,0"
                                                          Visibility="{Binding HasUnread, Converter={StaticResource BoolToVis}}" />
                                             </Grid>
                                             <ControlTemplate.Triggers>
                                                 <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="Bd" Property="Background" Value="#14FFFFFF" />
+                                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}" />
                                                 </Trigger>
                                                 <DataTrigger Binding="{Binding IsActive}" Value="True">
                                                     <Setter TargetName="Bd" Property="Background" Value="#332AABEE" />
@@ -2067,7 +2058,7 @@
             </Border>
 
             <!-- ================================================= Группа с темами: список тем (как в Telegram) -->
-            <Grid Grid.Row="1" Grid.RowSpan="2" Background="{StaticResource SurfaceBrush}"
+            <Grid Grid.Row="1" Grid.RowSpan="2" Background="{DynamicResource SurfaceBrush}"
                   Visibility="{Binding IsForum, Converter={StaticResource BoolToVis}}">
                 <ListBox ItemsSource="{Binding Topics}" Background="Transparent" BorderThickness="0" Padding="8,6"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled" helpers:SmoothScroll.IsEnabled="True"
@@ -2076,7 +2067,7 @@
                         <Style TargetType="ListBoxItem">
                             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
                             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
                             <Setter Property="Template">
                                 <Setter.Value>
                                     <ControlTemplate TargetType="ListBoxItem">
@@ -2085,7 +2076,7 @@
                                         </Border>
                                         <ControlTemplate.Triggers>
                                             <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface2Brush}" />
+                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Surface2Brush}" />
                                             </Trigger>
                                         </ControlTemplate.Triggers>
                                     </ControlTemplate>
@@ -2109,13 +2100,13 @@
                                                           Visibility="{Binding HasEmojiIcon, Converter={StaticResource BoolToVis}}" />
                                 </Grid>
                                 <StackPanel DockPanel.Dock="Right" Margin="8,0,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding TimeText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Right" />
+                                    <TextBlock Text="{Binding TimeText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Right" />
                                     <!-- Закреп и счётчик — рядом, не друг на друге -->
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,4,0,0">
-                                        <TextBlock Text="&#xE718;" Style="{StaticResource Icon}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                                        <TextBlock Text="&#xE718;" Style="{StaticResource Icon}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
                                                    VerticalAlignment="Center" Margin="0,0,6,0"
                                                    Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}" />
-                                        <Border Background="{StaticResource AccentBrush}" CornerRadius="10" MinWidth="20" Height="20" Padding="6,0"
+                                        <Border Background="{DynamicResource AccentBrush}" CornerRadius="10" MinWidth="20" Height="20" Padding="6,0"
                                                 Visibility="{Binding HasUnread, Converter={StaticResource BoolToVis}}">
                                             <controls:BadgeText Text="{Binding UnreadText}" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                         </Border>
@@ -2124,12 +2115,12 @@
                                 <StackPanel VerticalAlignment="Center">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock helpers:RichText.Text="{Binding Title}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis"
-                                                   Foreground="{StaticResource TextBrush}" />
+                                                   Foreground="{DynamicResource TextBrush}" />
                                         <TextBlock Text="&#xE72E;" Style="{StaticResource Icon}" FontSize="11" Margin="6,0,0,0" ToolTip="Тема закрыта"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"
                                                    Visibility="{Binding IsClosed, Converter={StaticResource BoolToVis}}" />
                                     </StackPanel>
-                                    <TextBlock helpers:RichText.Text="{Binding LastText}" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}"
+                                    <TextBlock helpers:RichText.Text="{Binding LastText}" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}"
                                                TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
                                 </StackPanel>
                             </DockPanel>
@@ -2141,14 +2132,14 @@
 
             <!-- ================================================= Набор стикеров -->
             <Grid Grid.RowSpan="3" Visibility="Collapsed" helpers:Anim.Mode="Fade" helpers:Anim.Show="{Binding IsStickerPackOpen}">
-                <Border Background="{StaticResource OverlayBrush}">
+                <Border Background="{DynamicResource OverlayBrush}">
                     <Border.InputBindings>
                         <MouseBinding MouseAction="LeftClick" Command="{Binding CloseStickerPackCommand}" />
                     </Border.InputBindings>
                 </Border>
-                <Border Width="420" Height="560" MaxHeight="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=Grid}}"
-                        HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="16" Padding="0,12,0,12"
-                        Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                <Border MaxWidth="420" Margin="10,0" Height="560" MaxHeight="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=Grid}}"
+                        HorizontalAlignment="Stretch" VerticalAlignment="Center" CornerRadius="16" Padding="0,12,0,12"
+                        Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                         DataContext="{Binding StickerPack}">
                     <DockPanel>
                         <DockPanel DockPanel.Dock="Top" Margin="18,0,8,8">
@@ -2167,7 +2158,7 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Button Style="{StaticResource BareButton}" Width="78" Height="78" Margin="2" ToolTip="{Binding Emoji}"
+                                        <Button Style="{StaticResource BareButton}" Width="78" Height="78" Margin="2"
                                                 Command="{Binding DataContext.SendFromPackCommand, ElementName=Root}" CommandParameter="{Binding}">
                                             <controls:StickerView Media="{Binding}" Width="68" Height="68" />
                                         </Button>
@@ -2181,14 +2172,14 @@
 
             <!-- ================================================= Пересылка: выбор чата -->
             <Grid Grid.RowSpan="3" Visibility="Collapsed" helpers:Anim.Mode="Fade" helpers:Anim.Show="{Binding IsForwardOpen}">
-                <Border Background="{StaticResource OverlayBrush}">
+                <Border Background="{DynamicResource OverlayBrush}">
                     <Border.InputBindings>
                         <MouseBinding MouseAction="LeftClick" Command="{Binding CancelForwardCommand}" />
                     </Border.InputBindings>
                 </Border>
-                <Border Width="380" Height="520" MaxHeight="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=Grid}}"
-                        HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="16" Padding="0,12,0,8"
-                        Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                <Border MaxWidth="380" Margin="10,0" Height="520" MaxHeight="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=Grid}}"
+                        HorizontalAlignment="Stretch" VerticalAlignment="Center" CornerRadius="16" Padding="0,12,0,8"
+                        Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
                     <DockPanel>
                         <DockPanel DockPanel.Dock="Top" Margin="16,0,8,8">
                             <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" Command="{Binding CancelForwardCommand}" />
@@ -2219,9 +2210,9 @@
 
             <!-- ================================================= Отправка вложений (как в Telegram Desktop) -->
             <Grid Grid.RowSpan="3" Visibility="Collapsed" helpers:Anim.Mode="Fade" helpers:Anim.Show="{Binding HasAttachments}">
-                <Border Background="{StaticResource OverlayBrush}" />
+                <Border Background="{DynamicResource OverlayBrush}" />
                 <Border MaxWidth="460" Margin="12" MaxHeight="640" HorizontalAlignment="Stretch" VerticalAlignment="Center" CornerRadius="16" Padding="16,14"
-                        Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                        Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
                     <DockPanel>
                         <TextBlock DockPanel.Dock="Top" Text="{Binding AttachmentsTitle}" FontSize="17" FontWeight="SemiBold" Margin="2,0,0,12" />
                         <!-- Кнопки -->
@@ -2257,14 +2248,14 @@
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate DataType="{x:Type vm:AttachmentViewModel}">
                                             <Grid helpers:RoundClip.Radius="8">
-                                                <Border Background="#22FFFFFF" />
+                                                <Border Background="{DynamicResource TintBrush}" />
                                                 <Image Source="{Binding Thumb}" Stretch="UniformToFill" />
                                                 <Border Width="34" Height="34" CornerRadius="17" Background="#88000000"
                                                         Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}">
                                                     <TextBlock Text="&#xE768;" Style="{StaticResource Icon}" FontSize="13" Foreground="White" HorizontalAlignment="Center" />
                                                 </Border>
                                                 <Button Style="{StaticResource RoundButton}" Background="#CC000000" Width="24" Height="24"
-                                                        HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0" ToolTip="Убрать"
+                                                        HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0"
                                                         Command="{Binding DataContext.RemoveAttachmentCommand, ElementName=Root}" CommandParameter="{Binding}">
                                                     <TextBlock Text="&#xE711;" Style="{StaticResource Icon}" FontSize="9" Foreground="White" />
                                                 </Button>
@@ -2277,10 +2268,10 @@
                                         <DataTemplate DataType="{x:Type vm:AttachmentViewModel}">
                                             <DockPanel Margin="0,0,0,8">
                                                 <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="10" Padding="8"
-                                                        VerticalAlignment="Center" ToolTip="Убрать"
+                                                        VerticalAlignment="Center"
                                                         Command="{Binding DataContext.RemoveAttachmentCommand, ElementName=Root}" CommandParameter="{Binding}" />
                                                 <Grid DockPanel.Dock="Left" Width="46" Height="46" Margin="0,0,12,0">
-                                                    <Border CornerRadius="23" Background="{StaticResource AccentBrush}">
+                                                    <Border CornerRadius="23" Background="{DynamicResource AccentBrush}">
                                                         <TextBlock Text="{Binding Icon}" Style="{StaticResource Icon}" FontSize="18" Foreground="White"
                                                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                                                     </Border>
@@ -2305,8 +2296,8 @@
         </Grid>
 
         <!-- ================================================= Мини-профиль справа -->
-        <Border x:Name="SidePanel" Grid.Column="1" Width="320" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0"
-                Background="{StaticResource SurfaceBrush}" Visibility="Collapsed"
+        <Border x:Name="SidePanel" Grid.Column="1" Width="320" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1,0,0,0"
+                Background="{DynamicResource SurfaceBrush}" Visibility="Collapsed"
                 helpers:Anim.Mode="SlideRight" helpers:Anim.Show="{Binding IsSideProfileOpen}">
             <Grid DataContext="{Binding SideProfile}">
                 <Grid.RowDefinitions>
@@ -2317,12 +2308,11 @@
                 <DockPanel Margin="14,10,8,4">
                     <!-- В мини-окне профиль на всю ширину: всегда «назад» к чату вместо крестика -->
                     <Button x:Name="SideCompactBack" DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE72B;" FontSize="13" Padding="7"
-                            Margin="-6,0,4,0" ToolTip="Назад (Esc)" Visibility="Collapsed"
+                            Margin="-6,0,4,0" Visibility="Collapsed"
                             Command="{Binding DataContext.SideBackCommand, ElementName=Root}" />
-                    <Button x:Name="SideCloseButton" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="13" ToolTip="Закрыть (Esc)"
+                    <Button x:Name="SideCloseButton" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="13"
                             Command="{Binding DataContext.ToggleSideProfileCommand, ElementName=Root}" />
-                    <Button x:Name="SideStackBack" DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE72B;" FontSize="13" Padding="7" Margin="-6,0,4,0"
-                            ToolTip="Назад" Command="{Binding DataContext.SideBackCommand, ElementName=Root}"
+                    <Button x:Name="SideStackBack" DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE72B;" FontSize="13" Padding="7" Margin="-6,0,4,0" Command="{Binding DataContext.SideBackCommand, ElementName=Root}"
                             Visibility="{Binding DataContext.SideCanGoBack, ElementName=Root, Converter={StaticResource BoolToVis}}" />
                     <TextBlock Text="{Binding PageTitle}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
                 </DockPanel>
@@ -2344,7 +2334,7 @@
                         <TextBlock helpers:RichText.Text="{Binding NameText}" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"
                                    TextAlignment="Center" TextWrapping="Wrap" Margin="0,12,0,0"
                                    Visibility="{Binding NameText, Converter={StaticResource NullToVis}}" />
-                        <TextBlock Text="{Binding UsernameText}" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center" Margin="0,4,0,0"
+                        <TextBlock Text="{Binding UsernameText}" Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" Margin="0,4,0,0"
                                    Visibility="{Binding UsernameText, Converter={StaticResource NullToVis}}" />
                         <TextBlock Text="{Binding KindText}" Style="{StaticResource Caption}" HorizontalAlignment="Center" Margin="0,3,0,0"
                                    Visibility="{Binding KindText, Converter={StaticResource NullToVis}}" />
@@ -2359,11 +2349,11 @@
                         <ItemsControl ItemsSource="{Binding InfoRows}" Margin="-6,14,-6,0">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="{x:Type vm:InfoRow}">
-                                    <Button Style="{StaticResource BareButton}" Margin="0,1" ToolTip="Нажмите, чтобы скопировать"
+                                    <Button Style="{StaticResource BareButton}" Margin="0,1"
                                             Command="{Binding DataContext.SideProfile.CopyRowCommand, ElementName=Root}" CommandParameter="{Binding}">
                                         <DockPanel Margin="6,6">
                                             <TextBlock DockPanel.Dock="Left" Text="{Binding Icon}" Style="{StaticResource Icon}" FontSize="14"
-                                                       Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Top" Margin="0,3,12,0" />
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Top" Margin="0,3,12,0" />
                                             <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Padding="5" FontSize="13"
                                                     Content="{Binding RevealIcon}" Command="{Binding ToggleRevealCommand}"
                                                     Visibility="{Binding IsSecret, Converter={StaticResource BoolToVis}}" />
@@ -2383,7 +2373,7 @@
                             <ItemsControl ItemsSource="{Binding Profile.BotCommands}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,2" />
+                                        <TextBlock Text="{Binding}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,2" />
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
@@ -2391,7 +2381,7 @@
 
                         <!-- Общие медиа, файлы, голосовые -->
                         <StackPanel Visibility="{Binding DataContext.SideCanGoBack, ElementName=Root, Converter={StaticResource InvBoolToVis}}">
-                        <Border Background="{StaticResource Surface2Brush}" CornerRadius="10" Padding="3" Margin="0,16,0,8">
+                        <Border Background="{DynamicResource Surface2Brush}" CornerRadius="10" Padding="3" Margin="0,16,0,8">
                             <UniformGrid Columns="3">
                                 <RadioButton Style="{StaticResource SegmentRadio}" GroupName="shared" Content="Медиа" FontSize="12"
                                              IsChecked="{Binding DataContext.SharedTab, ElementName=Root, Converter={StaticResource EnumToBool}, ConverterParameter=Media}" />
@@ -2417,7 +2407,7 @@
                                             Command="{Binding DataContext.OpenMediaCommand, ElementName=Root}" CommandParameter="{Binding}"
                                             Tag="{Binding DataContext, ElementName=Root}" ContextMenu="{StaticResource SharedItemMenu}">
                                         <Grid helpers:RoundClip.Radius="6">
-                                            <Border Background="#22FFFFFF" />
+                                            <Border Background="{DynamicResource TintBrush}" />
                                             <Image Source="{Binding Preview}" Stretch="UniformToFill" />
                                             <Border Style="{StaticResource Pill}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="4"
                                                     Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}">
@@ -2483,7 +2473,7 @@
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
-                <Border Grid.Row="2" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="12,10"
+                <Border Grid.Row="2" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="12,10"
                         Visibility="{Binding DataContext.SideCanWrite, ElementName=Root, Converter={StaticResource BoolToVis}}">
                     <Button Style="{StaticResource PrimaryButton}" Command="{Binding DataContext.SideWriteCommand, ElementName=Root}"
                             Content="Написать сообщение" />
@@ -2527,16 +2517,16 @@
             </Grid>
             <!-- Листание медиа чата -->
             <Button Style="{StaticResource IconButton}" Content="&#xE76B;" FontSize="22" Padding="14" Margin="14,0,0,0" Foreground="White"
-                    HorizontalAlignment="Left" VerticalAlignment="Center" ToolTip="Предыдущее (←)" Command="{Binding ViewerPrevCommand}"
+                    HorizontalAlignment="Left" VerticalAlignment="Center" Command="{Binding ViewerPrevCommand}"
                     Visibility="{Binding ViewerHasPrev, Converter={StaticResource BoolToVis}}" />
             <Button Style="{StaticResource IconButton}" Content="&#xE76C;" FontSize="22" Padding="14" Margin="0,0,14,0" Foreground="White"
-                    HorizontalAlignment="Right" VerticalAlignment="Center" ToolTip="Следующее (→)" Command="{Binding ViewerNextCommand}"
+                    HorizontalAlignment="Right" VerticalAlignment="Center" Command="{Binding ViewerNextCommand}"
                     Visibility="{Binding ViewerHasNext, Converter={StaticResource BoolToVis}}" />
             <TextBlock Text="{Binding ViewerCounter}" Foreground="White" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Top"
                        Margin="0,18,0,0" />
 
             <!-- Управление -->
-            <Border HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,16" Padding="12,8" CornerRadius="14" Background="#CC17212B">
+            <Border HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,16" Padding="12,8" CornerRadius="14" Background="{DynamicResource HintPillBrush}">
                 <StackPanel Orientation="Horizontal">
                     <StackPanel Orientation="Horizontal" Visibility="{Binding ViewerIsVideo, Converter={StaticResource BoolToVis}}">
                         <Button x:Name="PlayPauseButton" Style="{StaticResource IconButton}" Content="&#xE769;" Foreground="White"
@@ -2546,12 +2536,12 @@
                         <TextBlock x:Name="VideoTime" Foreground="White" FontSize="12" VerticalAlignment="Center" Width="90" />
                         <Button x:Name="MuteButton" Style="{StaticResource IconButton}" Content="&#xE767;" Foreground="White" Click="Mute_Click" />
                     </StackPanel>
-                    <Button Style="{StaticResource IconButton}" Foreground="White" Content="&#xE74E;" ToolTip="Сохранить" Command="{Binding SaveViewerCommand}" />
+                    <Button Style="{StaticResource IconButton}" Foreground="White" Content="&#xE74E;" Command="{Binding SaveViewerCommand}" />
                     <Button Style="{StaticResource IconButton}" Foreground="White" Content="&#xE8A7;" ToolTip="Открыть в отдельном окне" Command="{Binding DetachViewerCommand}" />
                 </StackPanel>
             </Border>
             <Button Style="{StaticResource IconButton}" Content="&#xE711;" Foreground="White" Margin="0,12,14,0" HorizontalAlignment="Right"
-                    VerticalAlignment="Top" Command="{Binding CloseViewerCommand}" ToolTip="Закрыть (Esc)" />
+                    VerticalAlignment="Top" Command="{Binding CloseViewerCommand}" />
         </Grid>
 
         <!-- Фото профиля из мини-профиля -->
@@ -2574,18 +2564,18 @@
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,18">
                 <TextBlock Text="{Binding ViewerCounter}" Foreground="White" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0" />
                 <TextBlock Text="{Binding ViewerCaption}" Foreground="#CCFFFFFF" VerticalAlignment="Center" />
-                <Button Style="{StaticResource IconButton}" Content="&#xE74E;" Foreground="White" Margin="10,0,0,0" ToolTip="Сохранить"
+                <Button Style="{StaticResource IconButton}" Content="&#xE74E;" Foreground="White" Margin="10,0,0,0"
                         Command="{Binding SavePhotoCommand}" />
             </StackPanel>
             <Button Style="{StaticResource IconButton}" Content="&#xE711;" Foreground="White" Margin="0,12,14,0" HorizontalAlignment="Right"
-                    VerticalAlignment="Top" Command="{Binding CloseAvatarCommand}" ToolTip="Закрыть (Esc)" />
+                    VerticalAlignment="Top" Command="{Binding CloseAvatarCommand}" />
         </Grid>
 
         <!-- Перетаскивание файлов -->
-        <Border x:Name="DropHint" Grid.ColumnSpan="2" Margin="12" CornerRadius="16" BorderThickness="2" BorderBrush="{StaticResource AccentBrush}"
+        <Border x:Name="DropHint" Grid.ColumnSpan="2" Margin="12" CornerRadius="16" BorderThickness="2" BorderBrush="{DynamicResource AccentBrush}"
                 Background="#CC0E1621" Visibility="Collapsed" IsHitTestVisible="False">
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                <TextBlock Text="&#xE898;" Style="{StaticResource Icon}" FontSize="40" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center" />
+                <TextBlock Text="&#xE898;" Style="{StaticResource Icon}" FontSize="40" Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" />
                 <TextBlock Text="Отпустите, чтобы прикрепить" FontSize="16" FontWeight="SemiBold" Margin="0,10,0,0" />
             </StackPanel>
         </Border>

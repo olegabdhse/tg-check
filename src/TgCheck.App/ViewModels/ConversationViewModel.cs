@@ -668,10 +668,28 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         };
     }
 
+    /// <summary>
+    /// Сервер говорит, что в этом чате есть непрочитанные, а он открыт и виден: прошлая отметка до сервера не дошла
+    /// (обрыв связи) — отправить ещё раз.
+    /// </summary>
+    public void MarkReadAgain()
+    {
+        _lastMarkedRead = 0;
+        MarkRead();
+    }
+
+    // Отметка «прочитано» не дошла до сервера — вернуть прежнюю, чтобы следующий раз отправить снова (раньше программа
+    // считала её отправленной, и у открытого чата в списке так и висело «3»).
+    private async Task SendReadAsync(int max, int previous)
+    {
+        if (!await _tg.MarkReadAsync(Peer, max) && _lastMarkedRead == max) _lastMarkedRead = previous;
+    }
+
     public void MarkRead()
     {
         // Чат в памяти, но не на экране (быстрый ответ закрыт, окно свёрнуто) — сообщения не прочитаны.
         if (!_owner.Shell.IsOnScreen(Peer.Key)) return;
+        CheckVisibleReactions(); // реакции на видимых сообщениях — просмотрены
         // Читается только то, что видно: пришедшее ниже экрана остаётся непрочитанным, пока до него не прокрутят.
         var max = Math.Min(LastMessageId, VisibleMaxId?.Invoke() ?? int.MaxValue);
         if (IsThread)
@@ -687,10 +705,11 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             if (max > _lastMarkedRead) _ = _tg.ReadTopicAsync(Peer, 1, max);
         }
         if (max <= _lastMarkedRead || max <= 0) { UpdatePendingNew(); return; }
+        var previous = _lastMarkedRead;
         _lastMarkedRead = max;
         UpdatePendingNew();
         _owner.OnChatRead(Peer.Key, IsThread ? 0 : PendingNewCount);
-        _ = _tg.MarkReadAsync(Peer, max);
+        _ = SendReadAsync(max, previous);
     }
 
     // ===================================================================== Esc
@@ -2144,10 +2163,52 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
 
     /// <summary>Строка этого чата в списке (её счётчик реакций показывает и сердечко в чате).</summary>
     public ChatItemViewModel? ChatRow => _owner.FindChat(Peer.Key);
-    private readonly Queue<int> _reactionQueue = new();
+    // Сообщения с непросмотренными реакциями (от старых к новым); null — ещё не спрашивали у сервера.
+    private List<int>? _reactionIds;
+    private Task? _reactionIdsLoading;
+
+    /// <summary>id сообщений, которые сейчас видны на экране (задаёт лента).</summary>
+    public Func<IReadOnlySet<int>>? VisibleIds { get; set; }
 
     /// <summary>Пришла новая реакция — список сообщений с реакциями запросится заново.</summary>
-    public void ResetReactionQueue() => _reactionQueue.Clear();
+    public void ResetReactionQueue() => _reactionIds = null;
+
+    private async Task<List<int>> ReactionIdsAsync()
+    {
+        if (_reactionIds is { } known) return known;
+        _reactionIdsLoading ??= Task.Run(async () =>
+        {
+            try { _reactionIds = [.. await _tg.GetUnreadReactionIdsAsync(Peer)]; }
+            finally { _reactionIdsLoading = null; }
+        });
+        await _reactionIdsLoading;
+        return _reactionIds ?? [];
+    }
+
+    // Реакция просмотрена: сердечко −1; последняя — у сервера отмечаются все.
+    private async Task ReactionSeenAsync(ChatItemViewModel row, int id)
+    {
+        _reactionIds?.Remove(id);
+        row.UnreadReactions = _reactionIds is { } left ? left.Count : Math.Max(0, row.UnreadReactions - 1);
+        await _tg.MarkReactionSeenAsync(Peer, id);
+        if (row.UnreadReactions == 0) await _tg.ReadAllReactionsAsync(Peer);
+    }
+
+    /// <summary>
+    /// Сообщение с реакцией оказалось на экране — реакция просмотрена (как в Telegram): раньше сердечко снималось только
+    /// нажатием на него.
+    /// </summary>
+    private async void CheckVisibleReactions()
+    {
+        if (ChatRow is not { UnreadReactions: > 0 } row || VisibleIds?.Invoke() is not { Count: > 0 } visible) return;
+        try
+        {
+            var ids = await ReactionIdsAsync();
+            if (ids.Count == 0) { row.UnreadReactions = 0; await _tg.ReadAllReactionsAsync(Peer); return; }
+            foreach (var id in ids.Where(visible.Contains).ToList()) await ReactionSeenAsync(row, id);
+        }
+        catch (Exception ex) { Logging.Write($"reactions seen: {ex.Message}"); }
+    }
 
     [RelayCommand]
     private async Task JumpToReaction()
@@ -2155,20 +2216,17 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         if (ChatRow is not { UnreadReactions: > 0 } row) return;
         try
         {
-            if (_reactionQueue.Count == 0)
-                foreach (var id in await _tg.GetUnreadReactionIdsAsync(Peer)) _reactionQueue.Enqueue(id);
-            if (_reactionQueue.Count == 0)
+            var ids = await ReactionIdsAsync();
+            if (ids.Count == 0)
             {
                 // Сервер говорит, что непросмотренных нет, — сердечко убираем.
                 row.UnreadReactions = 0;
                 await _tg.ReadAllReactionsAsync(Peer);
                 return;
             }
-            var target = _reactionQueue.Dequeue();
+            var target = ids[0];
             await JumpToMessageAsync(target);
-            row.UnreadReactions = Math.Max(0, row.UnreadReactions - 1);
-            await _tg.MarkReactionSeenAsync(Peer, target);
-            if (row.UnreadReactions == 0) await _tg.ReadAllReactionsAsync(Peer);
+            await ReactionSeenAsync(row, target);
         }
         catch (Exception ex) { _owner.ShowToast(TgErrors.Describe(ex), true); }
     }

@@ -4,22 +4,21 @@
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         xmlns:views="clr-namespace:TgCheck.App.Views"
         Title="Мини-приложение" Width="400" Height="760" MinWidth="340" MinHeight="480" MaxWidth="600"
-        WindowStartupLocation="Manual" Background="{StaticResource SurfaceBrush}"
-        FontFamily="{StaticResource UiFont}" Foreground="{StaticResource TextBrush}" UseLayoutRounding="True">
+        WindowStartupLocation="Manual" Background="{DynamicResource SurfaceBrush}"
+        FontFamily="{StaticResource UiFont}" Foreground="{DynamicResource TextBrush}" UseLayoutRounding="True">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <Border x:Name="Header" Background="{StaticResource SurfaceBrush}" Padding="12,8" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+        <Border x:Name="Header" Background="{DynamicResource SurfaceBrush}" Padding="12,8" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
             <DockPanel>
-                <Button x:Name="BackButton" DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE72B;" Visibility="Collapsed"
-                        ToolTip="Назад" Click="Back_Click" />
-                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE72C;" ToolTip="Перезагрузить" Click="Reload_Click" />
+                <Button x:Name="BackButton" DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE72B;" Visibility="Collapsed" Click="Back_Click" />
+                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE72C;" Click="Reload_Click" />
                 <TextBlock x:Name="TitleText" FontWeight="SemiBold" FontSize="15" VerticalAlignment="Center" Margin="8,0" TextTrimming="CharacterEllipsis" />
             </DockPanel>
         </Border>
-        <wv2:WebView2 x:Name="Web" Grid.Row="1" DefaultBackgroundColor="#17212B" />
+        <wv2:WebView2 x:Name="Web" Grid.Row="1" DefaultBackgroundColor="{StaticResource SurfaceColor}" />
         <views:Spinner x:Name="Loading" Grid.Row="1" />
     </Grid>
 </Window>

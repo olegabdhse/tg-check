@@ -256,16 +256,23 @@ internal sealed class StreamingDownload
         {
             try
             {
-                // Кусок не пришёл за 15 с (связь замерла — бывало, что ждали по 25 с и дольше) — спрашиваем ещё раз,
-                // а не ждём бесконечно: остальные загрузки и превью не стоят за ним.
-                var request = dc.Upload_GetFile(_location, offset, limit);
-                if (await Task.WhenAny(request, Task.Delay(15_000)).ConfigureAwait(false) != request)
+                // Кусок не пришёл за 20 с (связь замерла) — спрашиваем ещё раз, но прежний запрос не бросаем: какой ответит
+                // первым, тот и берём. Раньше каждый повтор добавлял запросы в уже замершее соединение, и после оживления
+                // оно ещё долго разгребало дубли.
+                var pending = new List<Task<Upload_FileBase>> { dc.Upload_GetFile(_location, offset, limit) };
+                Task<Upload_FileBase>? answered = null;
+                for (var wait = 0; answered is null; wait++)
                 {
-                    _ = request.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
-                    Logging.Write($"stream {_location.id}: кусок {first} не ответил за 15 с — повтор");
-                    throw new TimeoutException("кусок файла не ответил за 15 с");
+                    var delay = Task.Delay(20_000);
+                    var first2 = await Task.WhenAny(pending.Cast<Task>().Append(delay)).ConfigureAwait(false);
+                    if (first2 != delay) { answered = (Task<Upload_FileBase>)first2; break; }
+                    if (wait >= 2) throw new TimeoutException("кусок файла не ответил за минуту");
+                    Logging.Write($"stream {_location.id}: кусок {first} не ответил за 20 с — повтор");
+                    pending.Add(dc.Upload_GetFile(_location, offset, limit));
                 }
-                if (await request is not Upload_File file) throw new IOException("файл отдаётся через CDN");
+                foreach (var other in pending)
+                    if (other != answered) _ = other.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+                if (await answered is not Upload_File file) throw new IOException("файл отдаётся через CDN");
                 lock (_lock)
                 {
                     _file!.Position = offset;
@@ -286,7 +293,7 @@ internal sealed class StreamingDownload
                 // Ссылка устарела (песня из кэша истории или профиля) — свежая и повтор.
                 if (await _refresh() is { } fresh) { _location = Location(fresh); _dcId = fresh.dc_id; }
             }
-            catch (Exception ex) when (attempt < 4 && ex is not OperationCanceledException)
+            catch (Exception ex) when (attempt < 3 && ex is not OperationCanceledException)
             {
                 await Task.Delay(500 * attempt);
             }

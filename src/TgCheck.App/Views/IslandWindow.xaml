@@ -7,10 +7,15 @@
         xmlns:views="clr-namespace:TgCheck.App.Views"
         Title="TG Check" WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize"
-        SizeToContent="WidthAndHeight" FontFamily="{StaticResource UiFont}" Foreground="{StaticResource TextBrush}"
+        SizeToContent="WidthAndHeight" FontFamily="{StaticResource UiFont}" Foreground="#F5F7FA"
         UseLayoutRounding="True" PreviewMouseLeftButtonDown="Island_MouseDown" PreviewMouseLeftButtonUp="Island_MouseUp">
 
     <Window.Resources>
+        <!-- Островок от темы не зависит: цвета свои, как в теме по умолчанию -->
+        <SolidColorBrush x:Key="AccentBrush" Color="#2AABEE" />
+        <SolidColorBrush x:Key="AccentHoverBrush" Color="#46B9F3" />
+        <SolidColorBrush x:Key="TextBrush" Color="#F5F7FA" />
+        <SolidColorBrush x:Key="HoverBrush" Color="#14FFFFFF" />
         <LinearGradientBrush x:Key="RingUnread" StartPoint="0,1" EndPoint="1,0">
             <GradientStop Color="#2AABEE" Offset="0" />
             <GradientStop Color="#8E6BF5" Offset="1" />

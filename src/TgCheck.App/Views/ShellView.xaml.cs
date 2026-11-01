@@ -42,26 +42,20 @@ public partial class ShellView : UserControl
     }
 
     // ===================================================================== Настройки
-    // Панель выезжает слева, контент сдвигается на её ширину, список чатов сжимается до аватарок.
+    // Содержимое подстраивается один раз и сразу, в начале движения (покадровое изменение ширины заставляло сетку подарков и
+    // ленту перестраиваться каждый кадр — они мерцали). Панель плавно едет по подложке того же цвета, поэтому пустоты не видно.
 
     private const double SettingsWidth = 340;
-
-    // Раскладка меняется один раз (сразу), а движение — только сдвигом картинки (без пересчёта раскладки каждый кадр):
-    // раньше каждый кадр менялась ширина, список и чат перестраивались и запускали свои анимации — выходило дёргано.
-    private readonly System.Windows.Media.TranslateTransform _contentShift = new();
 
     private void ShowSettings(bool open)
     {
         var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
         var time = TimeSpan.FromMilliseconds(open ? 260 : 220);
-        ContentArea.RenderTransform = _contentShift;
         SettingsPanel.Visibility = Visibility.Visible;
         SettingsShade.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
-        ContentArea.Margin = new Thickness(open ? SettingsWidth : 0, 0, 0, 0);
+        SettingsBackdrop.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         ChatsPage.SetListCollapsed(open);
-        // Контент уже на новом месте — визуально он стартует со старого и доезжает вместе с панелью.
-        var shift = new System.Windows.Media.Animation.DoubleAnimation(open ? -SettingsWidth : SettingsWidth, 0, time) { EasingFunction = ease };
-        _contentShift.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty, shift);
+        ContentArea.Margin = new Thickness(open ? SettingsWidth : 0, 0, 0, 0);
         var slide = new System.Windows.Media.Animation.DoubleAnimation(open ? 0 : -SettingsWidth, time) { EasingFunction = ease };
         slide.Completed += (_, _) =>
         {

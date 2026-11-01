@@ -19,6 +19,8 @@ public partial class ConversationView : UserControl
     private const double BottomThreshold = 60;
     private ConversationViewModel? _vm;
     private bool _stickToBottom = true;
+    // Прокрутили рукой вверх: лента больше сама не едет вниз (ни свежие сообщения, ни догрузившиеся картинки), пока не вернутся к низу.
+    private bool _userScrolled;
     private bool _loadingOlder, _loadingNewer;
     private readonly DispatcherTimer _videoTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private bool _videoPlaying;
@@ -74,6 +76,21 @@ public partial class ConversationView : UserControl
         }));
         Anim.SetShow(JumpButton, false);
         FeedTop.SizeChanged += (_, _) => UpdateFloatingDate(); // закреплённые появились или скрылись — плашка даты под ними
+        // Панель эмодзи, стикеров и GIF не шире и не выше ленты (мини-окно бывает уже 380): содержимое переносится по строкам.
+        ((FrameworkElement)PickerPanel.Parent).SizeChanged += (_, e) =>
+        {
+            PickerPanel.Width = Math.Min(380, Math.Max(240, e.NewSize.Width - 24));
+            PickerPanel.Height = Math.Min(430, Math.Max(240, e.NewSize.Height - 16));
+        };
+        Scroller.PreviewMouseWheel += (_, e) =>
+        {
+            if (e.Delta > 0) UserScrolledUp();
+            else if (IsNearBottom(Scroller.VerticalOffset)) _userScrolled = false;
+        };
+        Scroller.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            if (e.OriginalSource is DependencyObject d && FindScrollBar(d)) UserScrolledUp();
+        };
         JumpButton.Visibility = Visibility.Collapsed;
     }
 
@@ -90,6 +107,7 @@ public partial class ConversationView : UserControl
         _vm.PropertyChanged += OnVmPropertyChanged;
         _vm.IsAtBottom = () => IsNearBottom(Scroller.VerticalOffset);
         _vm.VisibleMaxId = VisibleMaxId;
+        _vm.VisibleIds = VisibleIds;
         PreviewWave.SeekRequested -= OnPreviewSeek;
         PreviewWave.SeekRequested += OnPreviewSeek;
         _vm.Items.CollectionChanged += OnItemsChanged;
@@ -99,6 +117,7 @@ public partial class ConversationView : UserControl
         JumpButton.Margin = _vm.ShowTopicRail ? new Thickness(0, 0, 84, 14) : new Thickness(0, 0, 22, 14);
         FeedTop.Margin = _vm.ShowTopicRail ? new Thickness(0, 0, 78, 0) : new Thickness(0); // плашка закрепа и плеер — не под островком тем
         // Первая загрузка: лента появляется уже прокрученной вниз, без мигания и прыжка сверху вниз.
+        _userScrolled = false; // другой чат — с чистого листа
         if (_vm.Items.Count == 0) HideFeed();
         _stickToBottom = true;
         ScrollToBottom(false);
@@ -131,14 +150,32 @@ public partial class ConversationView : UserControl
         _vm.PropertyChanged -= OnVmPropertyChanged;
         _vm.IsAtBottom = null;
         _vm.VisibleMaxId = null;
+        _vm.VisibleIds = null;
         _vm.Items.CollectionChanged -= OnItemsChanged;
         _vm = null;
     }
 
     private bool IsNearBottom(double offset) => offset >= Scroller.ScrollableHeight - BottomThreshold;
 
+    private void UserScrolledUp()
+    {
+        _userScrolled = true;
+        _stickToBottom = false;
+        _bottomIntentUntil = default;
+    }
+
+    private static bool FindScrollBar(DependencyObject d)
+    {
+        for (var e = d; e is Visual or System.Windows.Media.Media3D.Visual3D; e = VisualTreeHelper.GetParent(e))
+            if (e is System.Windows.Controls.Primitives.ScrollBar) return true;
+        return false;
+    }
+
     private void ScrollToBottom(bool animated)
     {
+        // Подгрузка при входе в чат (без анимации) не трогает ленту, которую уже крутят рукой — раньше откидывало вниз.
+        if (!animated && _userScrolled) return;
+        _userScrolled = false;
         _stickToBottom = true;
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
@@ -247,6 +284,16 @@ public partial class ConversationView : UserControl
         foreach (var (el, top) in VisibleContainers(fromEnd: true))
             if (el.DataContext is MessageViewModel m && top < Scroller.ViewportHeight - 24) return m.AllIds.Max();
         return 0;
+    }
+
+    // id всех сообщений, которые сейчас на экране (и частей альбомов) — по ним снимаются просмотренные реакции.
+    private IReadOnlySet<int> VisibleIds()
+    {
+        var ids = new HashSet<int>();
+        if (_vm is null || _feedHidden || !IsVisible) return ids;
+        foreach (var (el, _) in VisibleContainers(fromEnd: true))
+            if (el.DataContext is MessageViewModel m) ids.UnionWith(m.AllIds);
+        return ids;
     }
 
     // Голосовые и кружки на экране качаются сами (с ободком и крестиком) — к нажатию «играть» они уже готовы.
@@ -391,7 +438,8 @@ public partial class ConversationView : UserControl
         {
             // Пока лента сама доезжает вниз (после отправки) — «держаться внизу» не сбрасываем: иначе дорастающий
             // новый пузырь оставлял ленту чуть выше конца.
-            _stickToBottom = IsNearBottom(Scroller.VerticalOffset) || DateTime.UtcNow < _bottomIntentUntil;
+            if (e.VerticalChange > 0 && Scroller.ScrollableHeight - Scroller.VerticalOffset < 1) _userScrolled = false; // долистали до самого низа
+            _stickToBottom = !_userScrolled && (IsNearBottom(Scroller.VerticalOffset) || DateTime.UtcNow < _bottomIntentUntil);
         }
 
         var atBottom = IsNearBottom(Scroller.VerticalOffset);

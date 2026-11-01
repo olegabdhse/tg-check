@@ -11,20 +11,20 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TextBox">
-                        <Border x:Name="Bd" CornerRadius="10" Background="{StaticResource Surface2Brush}"
-                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1.5">
+                        <Border x:Name="Bd" CornerRadius="10" Background="{DynamicResource Surface2Brush}"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1.5">
                             <Grid>
                                 <TextBlock Margin="{TemplateBinding Padding}" Padding="2,0,0,0" VerticalAlignment="Center"
                                            FontSize="{TemplateBinding FontSize}" IsHitTestVisible="False">
                                     <Run Text="{Binding MaskTyped, Mode=OneWay}" Foreground="Transparent" /><Run
-                                         Text="{Binding MaskRest, Mode=OneWay}" Foreground="#4F6072" />
+                                         Text="{Binding MaskRest, Mode=OneWay}" Foreground="{DynamicResource MaskBrush}" />
                                 </TextBlock>
                                 <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center" />
                             </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -34,23 +34,23 @@
 
         <!-- Кнопка выбора страны в виде поля ввода -->
         <Style x:Key="CountryToggle" TargetType="ToggleButton">
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="FontSize" Value="15" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ToggleButton">
-                        <Border x:Name="Bd" CornerRadius="10" Background="{StaticResource Surface2Brush}"
-                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1.5" Padding="14,11">
+                        <Border x:Name="Bd" CornerRadius="10" Background="{DynamicResource Surface2Brush}"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1.5" Padding="14,11">
                             <ContentPresenter />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Surface3Brush}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Surface3Brush}" />
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -59,7 +59,7 @@
         </Style>
 
         <Style x:Key="CountryItem" TargetType="ListBoxItem">
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
@@ -70,10 +70,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface3Brush}" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Surface3Brush}" />
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface3Brush}" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Surface3Brush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -105,7 +105,7 @@
                 <StackPanel>
                     <!-- Логотип: картинка из папки logo\ или стандартный значок -->
                     <Grid Width="96" Height="96" HorizontalAlignment="Center">
-                        <Ellipse Fill="{StaticResource AccentBrush}"
+                        <Ellipse Fill="{DynamicResource AccentBrush}"
                                  Visibility="{Binding Logo, Converter={StaticResource InvNullToVis}}" />
                         <Path Data="{StaticResource PlaneGeometry}" Fill="White" Stretch="Uniform" Margin="24,26,28,24"
                               Visibility="{Binding Logo, Converter={StaticResource InvNullToVis}}" />
@@ -117,7 +117,7 @@
                     <TextBlock Text="Вход в аккаунт Telegram" Style="{StaticResource Muted}" HorizontalAlignment="Center" />
 
                     <!-- Переключатель способа входа -->
-                    <Border Background="{StaticResource Surface2Brush}" CornerRadius="12" Padding="4" Margin="0,24,0,22">
+                    <Border Background="{DynamicResource Surface2Brush}" CornerRadius="12" Padding="4" Margin="0,24,0,22">
                         <UniformGrid Columns="2">
                             <RadioButton Style="{StaticResource SegmentRadio}" GroupName="mode"
                                          IsChecked="{Binding Mode, Converter={StaticResource EnumToBool}, ConverterParameter=Phone}">
@@ -140,7 +140,7 @@
                     <StackPanel Visibility="{Binding Mode, Converter={StaticResource EnumToVis}, ConverterParameter=Phone}">
                         <DockPanel Margin="0,0,0,6">
                             <Button DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE72B;" Padding="6"
-                                    Margin="-6,0,6,0" ToolTip="Изменить номер" Command="{Binding BackCommand}"
+                                    Margin="-6,0,6,0" Command="{Binding BackCommand}"
                                     Visibility="{Binding Stage, Converter={StaticResource EnumToVis}, ConverterParameter='Code,Password,Email,EmailCode'}" />
                             <TextBlock Text="{Binding StageTitle}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
                         </DockPanel>
@@ -153,7 +153,7 @@
                                           IsHitTestVisible="{Binding IsOpen, ElementName=CountryPopup, Converter={StaticResource InvBool}}">
                                 <DockPanel>
                                     <TextBlock DockPanel.Dock="Right" Text="&#xE70D;" Style="{StaticResource Icon}" FontSize="12"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                     <TextBlock Text="Страна" Style="{StaticResource Caption}" FontSize="13" Width="62" VerticalAlignment="Center" />
                                     <TextBlock Text="{Binding CountryName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                 </DockPanel>
@@ -163,8 +163,8 @@
                                    PlacementTarget="{Binding ElementName=CountryButton}" Placement="Bottom" VerticalOffset="6"
                                    AllowsTransparency="True" PopupAnimation="Fade" Opened="CountryPopup_Opened"
                                    Width="{Binding ActualWidth, ElementName=CountryButton}">
-                                <Border Background="{StaticResource Surface2Brush}" CornerRadius="12" Padding="8"
-                                        BorderBrush="{StaticResource Surface3Brush}" BorderThickness="1" Margin="0,0,0,12">
+                                <Border Background="{DynamicResource Surface2Brush}" CornerRadius="12" Padding="8"
+                                        BorderBrush="{DynamicResource Surface3Brush}" BorderThickness="1" Margin="0,0,0,12">
                                     <StackPanel>
                                         <TextBox x:Name="CountrySearchBox" Style="{StaticResource SearchBox}" Tag="Поиск страны или кода"
                                                  Text="{Binding CountrySearch, UpdateSourceTrigger=PropertyChanged}"
@@ -179,7 +179,7 @@
                                                 <DataTemplate DataType="{x:Type helpers:Country}">
                                                     <DockPanel>
                                                         <TextBlock DockPanel.Dock="Right" Text="{Binding CodeText}"
-                                                                   Foreground="{StaticResource AccentBrush}" Margin="10,0,0,0" />
+                                                                   Foreground="{DynamicResource AccentBrush}" Margin="10,0,0,0" />
                                                         <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
                                                     </DockPanel>
                                                 </DataTemplate>
@@ -204,7 +204,7 @@
                                         </TextBox.InputBindings>
                                     </TextBox>
                                     <TextBlock Text="+" FontSize="17" Margin="16,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                 </Grid>
                                 <TextBox x:Name="NumberBox" Grid.Column="2" Style="{StaticResource PhoneInput}"
                                          Text="{Binding NationalNumber, UpdateSourceTrigger=PropertyChanged}"
@@ -257,7 +257,7 @@
                             </Grid>
                             <TextBlock Style="{StaticResource Caption}" Margin="2,8,0,0" TextWrapping="Wrap"
                                        Visibility="{Binding PasswordHint, Converter={StaticResource NullToVis}}">
-                                <Run Text="Подсказка:" /> <Run Text="{Binding PasswordHint, Mode=OneWay}" Foreground="{StaticResource TextBrush}" />
+                                <Run Text="Подсказка:" /> <Run Text="{Binding PasswordHint, Mode=OneWay}" Foreground="{DynamicResource TextBrush}" />
                             </TextBlock>
                         </StackPanel>
 
@@ -285,7 +285,7 @@
                                     <Border Width="52" Height="52" CornerRadius="26" Background="White"
                                             Visibility="{Binding QrImage, Converter={StaticResource NullToVis}}">
                                         <Grid Margin="5">
-                                            <Ellipse Fill="{StaticResource AccentBrush}" />
+                                            <Ellipse Fill="{DynamicResource AccentBrush}" />
                                             <Path Data="{StaticResource PlaneGeometry}" Fill="White" Stretch="Uniform" Margin="10,11,12,10" />
                                         </Grid>
                                     </Border>
@@ -326,7 +326,7 @@
                             </Grid>
                             <TextBlock Style="{StaticResource Caption}" Margin="2,8,0,0" TextWrapping="Wrap"
                                        Visibility="{Binding PasswordHint, Converter={StaticResource NullToVis}}">
-                                <Run Text="Подсказка:" /> <Run Text="{Binding PasswordHint, Mode=OneWay}" Foreground="{StaticResource TextBrush}" />
+                                <Run Text="Подсказка:" /> <Run Text="{Binding PasswordHint, Mode=OneWay}" Foreground="{DynamicResource TextBrush}" />
                             </TextBlock>
                             <Button Style="{StaticResource PrimaryButton}" Margin="0,20,0,0" Padding="18,13"
                                     Command="{Binding SubmitQrPasswordCommand}">
@@ -348,21 +348,21 @@
                     <!-- Подключение: встроенный прокси, свой или напрямую -->
                     <StackPanel DataContext="{Binding Proxy}" Margin="0,22,0,0"
                                 Visibility="{Binding Converter={StaticResource NullToVis}}">
-                        <Button HorizontalAlignment="Center" Command="{Binding ToggleCommand}" Cursor="Hand" ToolTip="{Binding Tip}">
+                        <Button HorizontalAlignment="Center" Command="{Binding ToggleCommand}" Cursor="Hand">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
                                     <Border Background="Transparent" Padding="10,6" CornerRadius="8">
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="Подключение: " Foreground="{StaticResource TextSecondaryBrush}" FontSize="13" />
-                                            <TextBlock Text="{Binding Summary}" Foreground="{StaticResource AccentBrush}" FontSize="13" FontWeight="SemiBold" />
+                                            <TextBlock Text="Подключение: " Foreground="{DynamicResource TextSecondaryBrush}" FontSize="13" />
+                                            <TextBlock Text="{Binding Summary}" Foreground="{DynamicResource AccentBrush}" FontSize="13" FontWeight="SemiBold" />
                                             <TextBlock Text="&#xE70D;" Style="{StaticResource Icon}" FontSize="10" Margin="6,2,0,0"
-                                                       Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+                                                       Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
                                         </StackPanel>
                                     </Border>
                                 </ControlTemplate>
                             </Button.Template>
                         </Button>
-                        <Border Margin="0,8,0,0" Padding="16" CornerRadius="10" Background="{StaticResource Surface2Brush}"
+                        <Border Margin="0,8,0,0" Padding="16" CornerRadius="10" Background="{DynamicResource Surface2Brush}"
                                 Visibility="{Binding IsOpen, Converter={StaticResource BoolToVis}}">
                             <views:ProxyPanel />
                         </Border>
