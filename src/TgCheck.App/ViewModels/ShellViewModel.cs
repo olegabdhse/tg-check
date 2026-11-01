@@ -173,6 +173,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         if (StoryViewer is { } stories) { stories.Close(); return true; }
         if (Settings.IsClearDialogOpen) { Settings.CloseClearDialogCommand.Execute(null); return true; }
+        if (Settings.IsSessionConfirmOpen) { Settings.CancelSessionConfirmCommand.Execute(null); return true; }
         if (IsSettingsOpen && Settings.IsSessionsOpen) { Settings.IsSessionsOpen = false; return true; }
         if (IsSettingsOpen) { IsSettingsOpen = false; return true; }
         if (Proxy.IsOpen) { Proxy.IsOpen = false; return true; }

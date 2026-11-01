@@ -158,6 +158,40 @@
             </Grid>
         </Grid>
 
+        <!-- ================================================= Завершить сеанс (один или все, кроме этого) — окно как у очистки кэша -->
+        <Grid Grid.ColumnSpan="2" Panel.ZIndex="20" Visibility="Collapsed" helpers:Anim.Mode="Scale" helpers:Anim.Show="{Binding IsSessionConfirmOpen}"
+              DataContext="{Binding Settings}">
+            <Border Background="{StaticResource OverlayBrush}">
+                <Border.InputBindings>
+                    <MouseBinding MouseAction="LeftClick" Command="{Binding CancelSessionConfirmCommand}" />
+                </Border.InputBindings>
+            </Border>
+            <Border Width="360" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="18" Padding="26,24,26,22"
+                    Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="40" ShadowDepth="0" Opacity="0.5" />
+                </Border.Effect>
+                <StackPanel>
+                    <Border Width="64" Height="64" CornerRadius="32" Background="{Binding SessionConfirmBrush}" HorizontalAlignment="Center">
+                        <TextBlock Text="{Binding SessionConfirmIcon}" Style="{StaticResource Icon}" FontSize="28" Foreground="White"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock Text="{Binding SessionConfirmTitle}" FontSize="19" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,16,0,0" />
+                    <TextBlock Text="{Binding SessionConfirmText}" Style="{StaticResource Caption}" FontSize="13" LineHeight="19" HorizontalAlignment="Center"
+                               TextAlignment="Center" TextWrapping="Wrap" Margin="0,8,0,0" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,22,0,0">
+                        <Button Content="Отмена" Style="{StaticResource SecondaryButton}" MinWidth="120" Margin="0,0,10,0" Command="{Binding CancelSessionConfirmCommand}" />
+                        <Button Style="{StaticResource DangerButton}" MinWidth="120" Command="{Binding ConfirmTerminateCommand}">
+                            <Grid>
+                                <TextBlock Text="Завершить" Visibility="{Binding IsTerminating, Converter={StaticResource InvBoolToVis}}" />
+                                <views:Spinner Width="16" Height="16" Visibility="{Binding IsTerminating, Converter={StaticResource BoolToVis}}" />
+                            </Grid>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+
         <!-- ================================================= Очистка кэша: вопрос → утка с веником и полоска → итог -->
         <Grid Grid.ColumnSpan="2" Panel.ZIndex="20" Visibility="Collapsed" helpers:Anim.Mode="Scale" helpers:Anim.Show="{Binding IsClearDialogOpen}"
               DataContext="{Binding Settings}">
@@ -293,24 +327,18 @@
                         </Setter.Value>
                     </Setter>
                 </Style>
-                <!-- Сеанс: значок устройства, устройство и приложение, место и когда был активен; «Завершить» спрашивает в самой строке -->
+                <!-- Сеанс: значок устройства (однотонный круг), устройство и приложение, место и когда был активен; крестик — окно «Завершить сеанс?» -->
                 <DataTemplate x:Key="SessionRow" DataType="{x:Type vm:SessionItemViewModel}">
                     <Border Padding="22,9,14,9">
                         <StackPanel>
                             <DockPanel>
-                                <Border DockPanel.Dock="Left" Width="40" Height="40" CornerRadius="10" Background="{Binding IconBrush}" Margin="0,0,14,0" VerticalAlignment="Top">
+                                <Border DockPanel.Dock="Left" Width="40" Height="40" CornerRadius="20" Background="{Binding IconBrush}" Margin="0,0,14,0" VerticalAlignment="Top">
                                     <TextBlock Text="{Binding Icon}" Style="{StaticResource Icon}" FontSize="18" Foreground="White"
                                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                                 <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="11" Padding="8" VerticalAlignment="Top"
-                                        ToolTip="Завершить сеанс" Command="{Binding AskTerminateCommand}">
-                                    <Button.Visibility>
-                                        <MultiBinding Converter="{x:Static views:ShellView.NotCurrentNotConfirming}">
-                                            <Binding Path="Info.IsCurrent" />
-                                            <Binding Path="IsConfirming" />
-                                        </MultiBinding>
-                                    </Button.Visibility>
-                                </Button>
+                                        ToolTip="Завершить сеанс" Command="{Binding AskTerminateCommand}"
+                                        Visibility="{Binding Info.IsCurrent, Converter={StaticResource InvBoolToVis}}" />
                                 <TextBlock DockPanel.Dock="Right" Text="{Binding ActiveText}" Style="{StaticResource Caption}" VerticalAlignment="Top" Margin="8,2,4,0" />
                                 <StackPanel>
                                     <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
@@ -320,13 +348,6 @@
                                     <TextBlock Text="Вход не завершён — ждёт пароль" Foreground="{StaticResource DangerBrush}" FontSize="12" Margin="0,2,0,0"
                                                Visibility="{Binding IsPending, Converter={StaticResource BoolToVis}}" />
                                 </StackPanel>
-                            </DockPanel>
-                            <DockPanel Margin="54,8,0,0" Visibility="{Binding IsConfirming, Converter={StaticResource BoolToVis}}">
-                                <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Command="{Binding TerminateCommand}" Margin="6,0,0,0">
-                                    <TextBlock Text="Завершить" Foreground="{StaticResource DangerBrush}" FontWeight="SemiBold" />
-                                </Button>
-                                <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="Отмена" Command="{Binding CancelTerminateCommand}" />
-                                <TextBlock Text="Завершить этот сеанс?" VerticalAlignment="Center" TextWrapping="Wrap" />
                             </DockPanel>
                         </StackPanel>
                     </Border>
@@ -473,22 +494,9 @@
                                                 Visibility="{Binding CurrentSession, Converter={StaticResource NullToVis}}" />
                                 <!-- Завершить все, кроме этого — с подтверждением -->
                                 <StackPanel Visibility="{Binding HasOtherSessions, Converter={StaticResource BoolToVis}}">
-                                    <Button Style="{StaticResource TgRow}" Tag="&#xE7E8;" Command="{Binding AskTerminateOthersCommand}"
-                                            Visibility="{Binding IsConfirmingOthers, Converter={StaticResource InvBoolToVis}}">
+                                    <Button Style="{StaticResource TgRow}" Tag="&#xE7E8;" Command="{Binding AskTerminateOthersCommand}">
                                         <TextBlock Text="Завершить все другие сеансы" Foreground="{StaticResource DangerBrush}" VerticalAlignment="Center" />
                                     </Button>
-                                    <Border Margin="22,6,16,6" Padding="12,10" CornerRadius="10" Background="#1FE5534B"
-                                            Visibility="{Binding IsConfirmingOthers, Converter={StaticResource BoolToVis}}">
-                                        <StackPanel>
-                                            <TextBlock Text="Выйти из аккаунта на всех других устройствах?" TextWrapping="Wrap" />
-                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-                                                <Button Style="{StaticResource GhostButton}" Content="Отмена" Command="{Binding CancelTerminateOthersCommand}" />
-                                                <Button Style="{StaticResource GhostButton}" Command="{Binding TerminateOthersCommand}" Margin="6,0,0,0">
-                                                    <TextBlock Text="Завершить" Foreground="{StaticResource DangerBrush}" FontWeight="SemiBold" />
-                                                </Button>
-                                            </StackPanel>
-                                        </StackPanel>
-                                    </Border>
                                     <TextBlock Text="Другие сеансы" Style="{StaticResource TgSection}" />
                                     <ItemsControl ItemsSource="{Binding OtherSessions}" ItemTemplate="{StaticResource SessionRow}" Focusable="False" />
                                 </StackPanel>

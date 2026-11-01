@@ -117,7 +117,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _isSessionsOpen;
     [ObservableProperty] private bool _isSessionsLoading;
     [ObservableProperty] private SessionItemViewModel? _currentSession;
-    [ObservableProperty] private bool _isConfirmingOthers;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsSessionConfirmOpen), nameof(SessionConfirmTitle), nameof(SessionConfirmText), nameof(SessionConfirmIcon), nameof(SessionConfirmBrush))]
+    private SessionItemViewModel? _confirmSession;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsSessionConfirmOpen), nameof(SessionConfirmTitle), nameof(SessionConfirmText), nameof(SessionConfirmIcon), nameof(SessionConfirmBrush))]
+    private bool _confirmOthers;
     [ObservableProperty] private string? _sessionsError;
     public System.Collections.ObjectModel.ObservableCollection<SessionItemViewModel> OtherSessions { get; } = [];
     public bool HasOtherSessions => OtherSessions.Count > 0;
@@ -127,7 +130,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     private async Task OpenSessions()
     {
         IsSessionsOpen = true;
-        IsConfirmingOthers = false;
         await LoadSessionsAsync();
     }
 
@@ -152,41 +154,59 @@ public sealed partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(HasOtherSessions));
     }
 
-    [RelayCommand]
-    private void AskTerminateOthers() => IsConfirmingOthers = true;
+    // ---- окно подтверждения (как очистка кэша): один сеанс или все, кроме этого
+
+    public bool IsSessionConfirmOpen => ConfirmSession is not null || ConfirmOthers;
+    public string SessionConfirmTitle => ConfirmOthers ? "Завершить другие сеансы?" : "Завершить сеанс?";
+    public string SessionConfirmText => ConfirmOthers
+        ? $"Вы выйдете из аккаунта на всех устройствах, кроме этого ({Fmt.N(OtherSessions.Count)})."
+        : ConfirmSession is { } s ? $"{s.Title}\n{s.AppText}" + (s.PlaceText.Length > 0 ? "\n" + s.PlaceText : "") : "";
+    public string SessionConfirmIcon => ConfirmSession?.Icon ?? "";
+    public Brush SessionConfirmBrush => ConfirmSession?.IconBrush ?? SessionItemViewModel.DangerFill;
+    [ObservableProperty] private bool _isTerminating;
 
     [RelayCommand]
-    private void CancelTerminateOthers() => IsConfirmingOthers = false;
+    private void AskTerminateOthers() => ConfirmOthers = true;
+
+    internal void AskTerminate(SessionItemViewModel s) => ConfirmSession = s;
 
     [RelayCommand]
-    private async Task TerminateOthers()
+    private void CancelSessionConfirm()
     {
-        if (TerminateOthersAction is null) return;
-        IsConfirmingOthers = false;
-        try
-        {
-            await TerminateOthersAction();
-            OtherSessions.Clear();
-            OnPropertyChanged(nameof(HasOtherSessions));
-        }
-        catch (Exception ex) { SessionsError = TgCheck.Core.Services.TgErrors.Describe(ex); }
-        await LoadSessionsAsync();
+        if (IsTerminating) return;
+        ConfirmSession = null;
+        ConfirmOthers = false;
     }
 
-    internal async Task TerminateAsync(SessionItemViewModel s)
+    [RelayCommand]
+    private async Task ConfirmTerminate()
     {
-        if (TerminateSessionAction is null) return;
+        if (IsTerminating) return;
+        IsTerminating = true;
+        SessionsError = null;
         try
         {
-            await TerminateSessionAction(s.Info.Hash);
-            OtherSessions.Remove(s);
-            OnPropertyChanged(nameof(HasOtherSessions));
+            if (ConfirmOthers && TerminateOthersAction is not null)
+            {
+                await TerminateOthersAction();
+                OtherSessions.Clear();
+            }
+            else if (ConfirmSession is { } s && TerminateSessionAction is not null)
+            {
+                await TerminateSessionAction(s.Info.Hash);
+                OtherSessions.Remove(s);
+            }
         }
         catch (Exception ex) { SessionsError = TgCheck.Core.Services.TgErrors.Describe(ex); }
+        IsTerminating = false;
+        ConfirmSession = null;
+        ConfirmOthers = false;
+        OnPropertyChanged(nameof(HasOtherSessions));
+        await LoadSessionsAsync();
     }
 }
 
-/// <summary>Строка сеанса: устройство, приложение, место и время; «Завершить» — с подтверждением в самой строке.</summary>
+/// <summary>Строка сеанса: устройство, приложение, место и время; крестик — окно «Завершить сеанс?».</summary>
 public sealed partial class SessionItemViewModel(SessionInfo info, SettingsViewModel owner) : ObservableObject
 {
     public SessionInfo Info { get; } = info;
@@ -196,28 +216,47 @@ public sealed partial class SessionItemViewModel(SessionInfo info, SettingsViewM
     public string PlaceText => string.Join(" · ", new[] { Info.Ip, Info.Country }.Where(s => s.Length > 0));
     public string SystemText => string.Join(" ", new[] { Info.Platform, Info.SystemVersion }.Where(s => s.Length > 0));
     public string ActiveText => Info.IsCurrent ? "в сети" : Fmt.ChatTime(Info.ActiveUtc);
-    /// <summary>Значок по системе: телефон, компьютер, браузер.</summary>
-    public string Icon => (Info.Platform + " " + Info.Device + " " + Info.AppName).ToLowerInvariant() switch
-    {
-        var p when p.Contains("android") || p.Contains("ios") || p.Contains("iphone") || p.Contains("ipad") => "",
-        var p when p.Contains("web") || p.Contains("chrome") || p.Contains("firefox") || p.Contains("safari") || p.Contains("edge") => "",
-        _ => "",
-    };
-    public Brush IconBrush { get; } = MessageViewModel.GradientFor(info.Device, info.AppName);
     public bool IsPending => Info.IsPending;
 
-    [ObservableProperty] private bool _isConfirming;
-    [ObservableProperty] private bool _isBusy;
+    private enum Kind { Android, Apple, Web, Desktop }
 
-    [RelayCommand] private void AskTerminate() => IsConfirming = true;
-    [RelayCommand] private void CancelTerminate() => IsConfirming = false;
-
-    [RelayCommand]
-    private async Task Terminate()
+    private Kind DeviceKind => (Info.Platform + " " + Info.Device + " " + Info.AppName + " " + Info.SystemVersion).ToLowerInvariant() switch
     {
-        IsBusy = true;
-        await owner.TerminateAsync(this);
-        IsBusy = false;
-        IsConfirming = false;
+        var p when p.Contains("android") => Kind.Android,
+        var p when p.Contains("ios") || p.Contains("iphone") || p.Contains("ipad") || p.Contains("macos") || p.Contains("mac os") => Kind.Apple,
+        var p when p.Contains("web") || p.Contains("chrome") || p.Contains("firefox") || p.Contains("safari") || p.Contains("edge") => Kind.Web,
+        _ => Kind.Desktop,
+    };
+
+    /// <summary>Значок: телефон, браузер или компьютер.</summary>
+    public string Icon => DeviceKind switch
+    {
+        Kind.Android or Kind.Apple when !Info.Platform.Contains("mac", StringComparison.OrdinalIgnoreCase) => "",
+        Kind.Web => "",
+        _ => "",
+    };
+
+    /// <summary>Однотонный круг по типу устройства, как в Telegram: Android — зелёный, Apple — серый, браузер — оранжевый, компьютер — синий.</summary>
+    public Brush IconBrush => DeviceKind switch
+    {
+        Kind.Android => AndroidFill,
+        Kind.Apple => AppleFill,
+        Kind.Web => WebFill,
+        _ => DesktopFill,
+    };
+
+    private static Brush Solid(byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
     }
+
+    private static readonly Brush AndroidFill = Solid(0x4C, 0xAF, 0x50);
+    private static readonly Brush AppleFill = Solid(0x8E, 0x8E, 0x93);
+    private static readonly Brush WebFill = Solid(0xF2, 0x99, 0x4A);
+    private static readonly Brush DesktopFill = Solid(0x3E, 0x8E, 0xDE);
+    internal static readonly Brush DangerFill = Solid(0xE5, 0x53, 0x4B);
+
+    [RelayCommand] private void AskTerminate() => owner.AskTerminate(this);
 }

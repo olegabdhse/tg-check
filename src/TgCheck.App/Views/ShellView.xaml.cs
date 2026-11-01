@@ -11,18 +11,6 @@ namespace TgCheck.App.Views;
 
 public partial class ShellView : UserControl
 {
-    /// <summary>Крестик «завершить» — у чужого сеанса и пока не спрашиваем подтверждение.</summary>
-    public static readonly System.Windows.Data.IMultiValueConverter NotCurrentNotConfirming = new SessionCloseVisibility();
-
-    private sealed class SessionCloseVisibility : System.Windows.Data.IMultiValueConverter
-    {
-        public object Convert(object[] values, Type targetType, object? parameter, System.Globalization.CultureInfo culture) =>
-            values is [false, false] ? Visibility.Visible : Visibility.Collapsed;
-
-        public object[] ConvertBack(object value, Type[] targetTypes, object? parameter, System.Globalization.CultureInfo culture) =>
-            throw new NotSupportedException();
-    }
-
     private ShellViewModel? _vm;
     private readonly DispatcherTimer _storyTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
 
