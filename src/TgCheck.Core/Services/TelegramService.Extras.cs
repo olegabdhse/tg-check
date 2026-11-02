@@ -50,7 +50,7 @@ public sealed partial class TelegramService
         foreach (var (k, v) in all.chats) _chats[k] = v;
         foreach (var ps in all.peer_stories)
         {
-            if (IsIgnored(ps.peer) || PeerOf(ps.peer) is not { } peer) continue;
+            if (PeerOf(ps.peer) is not { } peer) continue;
             var stories = ps.stories.OfType<StoryItem>().Select(MapStory).OfType<StoryInfo>().Select(s => { s.Owner = peer; return s; })
                 .Where(s => !onlyFresh || s.DateUtc > DateTime.UtcNow.AddHours(-24)) // из кэша — только ещё не истёкшие
                 .OrderBy(s => s.Id).ToList();
@@ -66,7 +66,6 @@ public sealed partial class TelegramService
     /// <summary>Ответ на историю — сообщение автору в личный чат с цитатой истории.</summary>
     public async Task<MessageItem> ReplyToStoryAsync(PeerRef peer, int storyId, string text)
     {
-        EnsureNotIgnored(peer);
         var reply = new InputReplyToStory { peer = peer.Info.ToInputPeer(), story_id = storyId };
         var updates = await _client.Messages_SendMessage(peer.Info.ToInputPeer(), text, WTelegram.Helpers.RandomLong(), reply_to: reply);
         var sent = updates.UpdateList.OfType<UpdateNewMessage>().Select(u => u.message).FirstOrDefault();
@@ -81,7 +80,7 @@ public sealed partial class TelegramService
         foreach (var (k, v) in res.chats) _chats[k] = v;
         var viewers = res.views.Select(v => v switch
             {
-                StoryView sv when !IsIgnored(sv.user_id) && _users.GetValueOrDefault(sv.user_id) is { } u =>
+                StoryView sv when _users.GetValueOrDefault(sv.user_id) is { } u =>
                     new StoryViewer(PeerOf(u), sv.date, (sv.reaction as ReactionEmoji)?.emoticon ?? (sv.reaction is null ? null : "❤")),
                 _ => null,
             })
@@ -93,7 +92,6 @@ public sealed partial class TelegramService
     /// <summary>Истории в профиле (закреплённые), для своего профиля — по желанию архив. Новые первыми.</summary>
     public async Task<IReadOnlyList<StoryInfo>> GetProfileStoriesAsync(PeerRef peer, bool archive = false)
     {
-        if (IsIgnored(peer)) return [];
         try
         {
             var res = archive
@@ -239,7 +237,6 @@ public sealed partial class TelegramService
     /// <summary>Отправить стикер или GIF (готовый документ Telegram).</summary>
     public async Task<MessageItem> SendDocumentAsync(PeerRef peer, MediaHolder media, int? replyToId = null)
     {
-        EnsureNotIgnored(peer);
         if (media.Document is not { } doc) throw new InvalidOperationException("Нет документа для отправки.");
         var input = new InputMediaDocument { id = new InputDocument { id = doc.id, access_hash = doc.access_hash, file_reference = doc.file_reference } };
         var msg = await _client.SendMessageAsync(peer.Info.ToInputPeer(), "", input, replyToId ?? 0);
@@ -255,7 +252,7 @@ public sealed partial class TelegramService
         var res = await _client.Messages_GetForumTopics(channel, default, 0, 0, 100).ConfigureAwait(false); // разбор ответа — не в потоке интерфейса
         await Task.Yield(); // ответ получен — дальше в пуле потоков, а не в сетевом потоке библиотеки (иначе обновления ждут)
         res.CollectUsersChats(_users, _chats);
-        var lastMessages = res.messages.Where(m => m is Message && !IsHiddenMessage(m)).ToDictionary(m => m.ID, MapMessage);
+        var lastMessages = res.messages.Where(m => m is Message).ToDictionary(m => m.ID, MapMessage);
         return res.topics.OfType<ForumTopic>()
             .Select(t => new ForumTopicInfo
             {
@@ -296,6 +293,10 @@ public sealed partial class TelegramService
     public async Task SetPinnedAsync(PeerRef peer, bool pinned) =>
         await _client.Messages_ToggleDialogPin(new InputDialogPeer { peer = peer.Info.ToInputPeer() }, pinned);
 
+    /// <summary>Убрать чат в архив (папка 1) или вернуть в основной список (папка 0).</summary>
+    public async Task SetArchivedAsync(PeerRef peer, bool archived) =>
+        await _client.Folders_EditPeerFolders(new InputFolderPeer { peer = peer.Info.ToInputPeer(), folder_id = archived ? 1 : 0 });
+
     /// <summary>Выключить уведомления чата (навсегда) или включить снова.</summary>
     public async Task SetMutedAsync(PeerRef peer, bool muted) =>
         await _client.Account_UpdateNotifySettings(new InputNotifyPeer { peer = peer.Info.ToInputPeer() },
@@ -317,7 +318,6 @@ public sealed partial class TelegramService
     /// <summary>Очистить историю (чат остаётся). forEveryone — и у собеседника (личка, бот, обычная группа).</summary>
     public async Task ClearHistoryAsync(PeerRef peer, bool forEveryone)
     {
-        EnsureNotIgnored(peer);
         if (peer.Info is Channel ch) { await _client.Channels_DeleteHistory(ch, 0, for_everyone: true); return; }
         await DeleteHistoryAllAsync(peer, justClear: true, revoke: forEveryone);
     }
@@ -328,7 +328,6 @@ public sealed partial class TelegramService
     /// </summary>
     public async Task DeleteChatAsync(PeerRef peer, bool forEveryone)
     {
-        EnsureNotIgnored(peer);
         switch (peer.Info)
         {
             case Channel ch when peer.IsCreator && forEveryone:
@@ -487,7 +486,6 @@ public sealed partial class TelegramService
     /// <summary>Переслать сообщения (альбом — целиком) в другой чат.</summary>
     public async Task ForwardAsync(PeerRef from, IReadOnlyList<int> ids, PeerRef to)
     {
-        EnsureNotIgnored(to);
         var random = ids.Select(_ => WTelegram.Helpers.RandomLong()).ToArray();
         await _client.Messages_ForwardMessages(from.Info.ToInputPeer(), [.. ids], random, to.Info.ToInputPeer());
     }
@@ -499,7 +497,6 @@ public sealed partial class TelegramService
     public async Task<MessageItem> SendVoiceAsync(PeerRef peer, Media.VoiceRecording voice, int? replyToId = null,
         IProgress<double>? progress = null, CancellationToken ct = default)
     {
-        EnsureNotIgnored(peer);
         // Отмена — исключением из обратного вызова загрузки (своей отмены у библиотеки нет).
         var file = await _client.UploadFileAsync(voice.Path, (done, total) =>
         {
@@ -539,7 +536,6 @@ public sealed partial class TelegramService
     public async Task<IReadOnlyList<MessageItem>> SendFilesAsync(PeerRef peer, IReadOnlyList<string> paths, string? caption, int? replyToId,
         bool asFiles, IProgress<(int Index, double Fraction)>? progress = null, CancellationToken ct = default)
     {
-        EnsureNotIgnored(peer);
         var input = peer.Info.ToInputPeer();
         var medias = new List<InputMedia>();
         for (var i = 0; i < paths.Count; i++)
@@ -681,7 +677,6 @@ public sealed partial class TelegramService
     public async Task StartBotAsync(PeerRef bot)
     {
         if (bot.Info is not User user) return;
-        EnsureNotIgnored(bot);
         await _client.Messages_StartBot(user, bot.Info.ToInputPeer(), WTelegram.Helpers.RandomLong(), "");
     }
 
@@ -725,7 +720,7 @@ public sealed partial class TelegramService
             return await Task.Run(() =>
             {
                 res.CollectUsersChats(_users, _chats);
-                return res.Messages.Where(m => m is Message && !IsHiddenMessage(m)).Select(MapMessage).ToList();
+                return res.Messages.Where(m => m is Message).Select(MapMessage).ToList();
             });
         }
         catch (Exception ex)
@@ -733,6 +728,18 @@ public sealed partial class TelegramService
             Logging.Write("pinned: " + ex.Message);
             return [];
         }
+    }
+
+    /// <summary>Поиск по сообщениям чата: от новых к старым, плюс сколько найдено всего.</summary>
+    public async Task<(IReadOnlyList<MessageItem> Messages, int Total)> SearchChatMessagesAsync(PeerRef peer, string query, int offsetId, int limit)
+    {
+        var res = await _client.Messages_Search(peer.Info.ToInputPeer(), query, null, offset_id: offsetId, limit: limit);
+        return await Task.Run(() =>
+        {
+            res.CollectUsersChats(_users, _chats);
+            var list = res.Messages.Where(m => m is Message).Select(MapMessage).ToList();
+            return ((IReadOnlyList<MessageItem>)list, Math.Max(res.Count, list.Count));
+        });
     }
 
     /// <summary>История вокруг сообщения (для перехода к нему), по порядку.</summary>
@@ -836,7 +843,7 @@ public sealed partial class TelegramService
         return await Task.Run(() =>
         {
             res.CollectUsersChats(_users, _chats);
-            return res.Messages.Where(m => m is Message && !IsHiddenMessage(m)).Select(MapMessage).ToList();
+            return res.Messages.Where(m => m is Message).Select(MapMessage).ToList();
         });
     }
 
@@ -853,13 +860,13 @@ public sealed partial class TelegramService
                     var res = await _client.Channels_GetParticipants(channel, new ChannelParticipantsRecent(), 0, 200, 0);
                     foreach (var (k, v) in res.users) _users[k] = v;
                     return res.participants.Select(p => _users.TryGetValue(p.UserId, out var u) ? PeerOf(u) : null)
-                        .OfType<PeerRef>().Where(p => !IsIgnored(p)).ToList();
+                        .OfType<PeerRef>().ToList();
                 case Chat chat:
                     var full = await _client.Messages_GetFullChat(chat.id);
                     full.CollectUsersChats(_users, _chats);
                     return ((full.full_chat as ChatFull)?.participants as ChatParticipants)?.participants
                         .Select(p => _users.TryGetValue(p.UserId, out var u) ? PeerOf(u) : null)
-                        .OfType<PeerRef>().Where(p => !IsIgnored(p)).ToList() ?? [];
+                        .OfType<PeerRef>().ToList() ?? [];
             }
         }
         catch (RpcException ex)

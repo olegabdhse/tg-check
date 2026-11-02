@@ -275,11 +275,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             CurrentPage = MyProfile;
             return;
         }
-        if (_tg.IsIgnored(peer))
-        {
-            ShowToast("Пользователь не найден", true);
-            return;
-        }
         var vm = new ProfileViewModel(_tg, peer, LogoutAsync, this);
         if (seed?.Profile?.Peer?.Key == peer.Key) vm.SeedFrom(seed);
         if (CurrentPage is ProfileViewModel previous) previous.Suspend(); // ушёл назад — подарки отпускаем

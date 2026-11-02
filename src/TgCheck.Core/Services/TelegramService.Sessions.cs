@@ -45,7 +45,7 @@ public sealed partial class TelegramService
     {
         InputPeer? input = null;
         if (peerKey == _client.UserId) input = InputPeer.Self;
-        else if (peerKey > 0 && _users.TryGetValue(peerKey, out var u) && !IsIgnored(u.id)) input = u;
+        else if (peerKey > 0 && _users.TryGetValue(peerKey, out var u)) input = u;
         else if (peerKey < -1_000_000_000_000 && _chats.TryGetValue(-1_000_000_000_000 - peerKey, out var ch)) input = ch;
         else if (peerKey < 0 && _chats.TryGetValue(-peerKey, out var c)) input = c;
         if (input is null) return null;
@@ -70,11 +70,10 @@ public sealed partial class TelegramService
     /// <summary>Сообщения с непросмотренными реакциями, от старых к новым.</summary>
     public async Task<IReadOnlyList<int>> GetUnreadReactionIdsAsync(PeerRef peer)
     {
-        if (IsIgnored(peer)) return [];
         var res = await _client.Messages_GetUnreadReactions(peer.Info.ToInputPeer(), 0, 0, 100, 0, 0).ConfigureAwait(false);
         await Task.Yield();
         res.CollectUsersChats(_users, _chats);
-        return res.Messages.Where(m => !IsHiddenMessage(m)).Select(m => m.ID).OrderBy(id => id).ToList();
+        return res.Messages.Select(m => m.ID).OrderBy(id => id).ToList();
     }
 
     /// <summary>Реакции на сообщение просмотрены (у сообщения — как прочитанное содержимое).</summary>

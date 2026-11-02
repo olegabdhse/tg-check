@@ -3,7 +3,7 @@
 #
 # Запуск: Actions → «Сборка релиза» → Run workflow → версия (например 2.1.1).
 # Ключи — из секретов репозитория (Settings → Secrets and variables → Actions):
-#   TG_API_ID, TG_API_HASH — обязательно; TG_PROXY, TG_XRAY, TG_IGNORE_IDS — если используются.
+#   TG_API_ID, TG_API_HASH — обязательно; TG_PROXY, TG_XRAY — если используются.
 # Они попадают только во временный .env на машине сборки и зашиваются в exe зашифрованными (build\embed-env.ps1);
 # в логах GitHub прячет их звёздочками, машина сборки после работы удаляется.
 name: Сборка релиза
@@ -40,9 +40,8 @@ jobs:
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
           TG_PROXY: ${{ secrets.TG_PROXY }}
           TG_XRAY: ${{ secrets.TG_XRAY }}
-          TG_IGNORE_IDS: ${{ secrets.TG_IGNORE_IDS }}
         run: |
-          $names = 'TG_API_ID', 'TG_API_HASH', 'TG_PROXY', 'TG_XRAY', 'TG_IGNORE_IDS'
+          $names = 'TG_API_ID', 'TG_API_HASH', 'TG_PROXY', 'TG_XRAY'
           $lines = foreach ($n in $names) { $v = [Environment]::GetEnvironmentVariable($n); if ($v) { "$n=$v" } }
           if (-not ($lines -match '^TG_API_ID=') -or -not ($lines -match '^TG_API_HASH=')) {
             throw 'Нет секретов TG_API_ID и TG_API_HASH (Settings → Secrets and variables → Actions)'

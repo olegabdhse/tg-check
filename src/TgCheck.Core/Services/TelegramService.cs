@@ -353,7 +353,6 @@ public sealed partial class TelegramService : IAsyncDisposable
     /// <param name="withAvatar">false — не скачивать большое фото (мини-профиль, аватар уже есть).</param>
     public async Task<ProfileInfo> GetProfileAsync(PeerRef? peer = null, bool withAvatar = true)
     {
-        if (peer is not null) EnsureNotIgnored(peer);
         if (peer is { IsSelf: false, IsUser: false }) return await GetChatProfileAsync(peer, withAvatar);
         // Тот же человек только что загружен (боковая панель → полный профиль, обновление ссылки на песню) — не спрашиваем
         // Telegram снова: частые запросы одного профиля он тормозит (FLOOD_WAIT), и профиль открывался по 20 с.
@@ -412,7 +411,7 @@ public sealed partial class TelegramService : IAsyncDisposable
     /// <summary>Профиль другого пользователя из локального кэша (null — ещё не открывали); свежий придёт следом.</summary>
     public ProfileInfo? GetCachedProfile(PeerRef peer)
     {
-        if (!peer.IsUser || peer.IsSelf || IsIgnored(peer.Id) || _cache.Load<Users_UserFull>($"user_full_{peer.Id}") is not { } full) return null;
+        if (!peer.IsUser || peer.IsSelf || _cache.Load<Users_UserFull>($"user_full_{peer.Id}") is not { } full) return null;
         full.CollectUsersChats(_users, _chats);
         return full.users.TryGetValue(full.full_user.id, out var user) ? BuildUserProfile(full, user, false, 0, null, null) : null;
     }
@@ -599,6 +598,19 @@ public sealed partial class TelegramService : IAsyncDisposable
         return result;
     }
 
+    /// <summary>Закреплённые подарки: Telegram отдаёт их первыми, всех подарков ради них не грузим.</summary>
+    public async Task<IReadOnlyList<GiftItem>> GetPinnedGiftsAsync(PeerRef peer)
+    {
+        if (_freshGifts.TryGetValue(peer.Key, out var fresh) && DateTime.UtcNow - fresh.At < TimeSpan.FromSeconds(60))
+            return fresh.Gifts.Where(g => g.IsPinned).ToList();
+        var period = await GetConvertPeriodAsync().ConfigureAwait(false);
+        var page = await _client.Payments_GetSavedStarGifts(peer.Info.ToInputPeer(), "", 12);
+        await Task.Yield();
+        var result = new List<GiftItem>();
+        MapGiftPage(page, period, isSelf: false, result);
+        return result.Where(g => g.IsPinned).ToList();
+    }
+
     /// <summary>Свои подарки из локального кэша (null — кэша нет).</summary>
     public IReadOnlyList<GiftItem>? GetCachedSelfGifts()
     {
@@ -618,7 +630,6 @@ public sealed partial class TelegramService : IAsyncDisposable
         page.CollectUsersChats(_users, _chats);
         foreach (var sg in page.gifts)
         {
-            if (sg.from_id is { } from && IsIgnored(from)) continue;
             try { result.Add(Map(sg, page, period, isSelf)); }
             catch (Exception ex) { Logging.Write("gift map: " + ex); }
         }

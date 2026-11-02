@@ -59,9 +59,31 @@ public sealed partial class TelegramService
         return await Task.Run(() =>
         {
             res.CollectUsersChats(_users, _chats);
-            return res.Messages.Where(m => m is Message && !IsHiddenMessage(m)).Select(MapMessage)
+            return res.Messages.Where(m => m is Message).Select(MapMessage)
                 .Where(m => m.Media == MediaKind.Audio && m.CanDownload).ToList();
         });
+    }
+
+    /// <summary>Чаты и каналы, где больше всего песен (по свежим находкам), и их песни. Боты — нет: это служебные выдачи, а не чья-то музыка.</summary>
+    public async Task<IReadOnlyList<(PeerRef Peer, IReadOnlyList<MessageItem> Songs)>> GetMusicChatsAsync(int maxChats)
+    {
+        var recent = await SearchMusicAsync("", 100, background: true).ConfigureAwait(false);
+        var result = new List<(PeerRef, IReadOnlyList<MessageItem>)>();
+        foreach (var group in recent.GroupBy(m => m.PeerKey).OrderByDescending(g => g.Count()).Take(maxChats * 2))
+        {
+            if (result.Count >= maxChats) break;
+            if (KnownPeer(group.Key) is not { } peer || peer.Kind == PeerKind.Bot) continue;
+            var songs = await MusicRequestAsync(true, () => SearchMediaAsync(peer, SharedMediaKind.Music, 0, 100)).ConfigureAwait(false);
+            result.Add((peer, songs));
+        }
+        return result;
+    }
+
+    private PeerRef? KnownPeer(long key)
+    {
+        if (key > 0) return _users.TryGetValue(key, out var user) ? PeerOf(user) : null;
+        var id = key < -1_000_000_000_000 ? -1_000_000_000_000 - key : -key;
+        return _chats.TryGetValue(id, out var chat) ? PeerOf(chat) : null;
     }
 
     /// <summary>
@@ -283,7 +305,7 @@ public sealed partial class TelegramService
             // Своя музыка профиля («Любимые») — через Self: себя в списке пользователей может не быть.
             InputUserBase input;
             if (peerKey == _client.UserId) input = InputUser.Self;
-            else if (_users.TryGetValue(peerKey, out var user) && !IsIgnored(user.id)) input = user;
+            else if (_users.TryGetValue(peerKey, out var user)) input = user;
             else return null;
             var res = await _client.Users_GetSavedMusic(input, 0, 100, 0).ConfigureAwait(false);
             await Task.Yield();
@@ -292,7 +314,7 @@ public sealed partial class TelegramService
                 : null;
         }
         var m = await RefetchMessageAsync(peerKey, messageId).ConfigureAwait(false);
-        if (m is null || IsHiddenMessage(m)) return null;
+        if (m is null) return null;
         var item = MapMessage(m);
         return item.MediaId == mediaId ? item : null;
     }

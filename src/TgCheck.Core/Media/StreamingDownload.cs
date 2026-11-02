@@ -184,8 +184,13 @@ internal sealed class StreamingDownload
         {
             // В лог — откуда качается и когда пришли первые данные: если песня или видео «висят», видно, на каком сервере.
             var started = Environment.TickCount64;
-            var dc = await _client().GetClientForDC(-_dcId, true);
-            Logging.Write($"stream {_location.id}: DC {_dcId}, {_size / 1024} КБ, подключение {Environment.TickCount64 - started} мс");
+            // Не вышло сразу (идёт переподключение) — не страшно: каждый кусок берёт соединение сам и повторяет.
+            try
+            {
+                await _client().GetClientForDC(-_dcId, true);
+                Logging.Write($"stream {_location.id}: DC {_dcId}, {_size / 1024} КБ, подключение {Environment.TickCount64 - started} мс");
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException) { Logging.Write($"stream {_location.id}: подключение: {ex.Message}"); }
             _startedAt = started;
             while (true)
             {
@@ -205,7 +210,7 @@ internal sealed class StreamingDownload
                     if (_shouldYield()) { await _wake.WaitAsync(250); continue; } // предзагрузка — после превью и истории
                     int? unit;
                     lock (_lock) { unit = PrefetchUnit(); if (unit is { } u) _inflight[u] = true; }
-                    if (unit is { } p) { _ = FetchAsync(dc, p, 1).ContinueWith(_ => _wake.Release(), TaskScheduler.Default); continue; }
+                    if (unit is { } p) { _ = FetchAsync(p, 1).ContinueWith(_ => _wake.Release(), TaskScheduler.Default); continue; }
                     await _wake.WaitAsync(2000); // нужна снова — разбудят сразу; опрос 4 раза в секунду у каждой брошенной загрузки зря будил процессор
                     continue;
                 }
@@ -224,7 +229,7 @@ internal sealed class StreamingDownload
                     continue;
                 }
                 var (first, count) = request.Value;
-                _ = FetchAsync(dc, first, count).ContinueWith(_ => { slots.Release(); _wake.Release(); }, TaskScheduler.Default);
+                _ = FetchAsync(first, count).ContinueWith(_ => { slots.Release(); _wake.Release(); }, TaskScheduler.Default);
             }
             lock (_lock)
                 if (_failed) throw new IOException("часть файла не скачалась");
@@ -273,14 +278,21 @@ internal sealed class StreamingDownload
         return null;
     }
 
-    private async Task FetchAsync(WTelegram.Client dc, int first, int count)
+    // Сколько раз повторять кусок при обрыве связи: около 5 минут (с паузами до 5 с). Попытками, а не временем: сон ноутбука их не тратит.
+    private const int NetworkAttempts = 60;
+
+    private async Task FetchAsync(int first, int count)
     {
         var offset = (long)first * Unit;
         var limit = count * Unit;
         for (var attempt = 1; ; attempt++)
         {
+            lock (_lock) if (_failed) return;
+            if (_cancelled()) return;
             try
             {
+                // Соединение — заново в каждой попытке: при переподключении старое закрывается, и песня обрывалась на «disposed».
+                var dc = await _client().GetClientForDC(-_dcId, true).ConfigureAwait(false);
                 // Кусок не пришёл за 20 с (связь замерла) — спрашиваем ещё раз, но прежний запрос не бросаем: какой ответит
                 // первым, тот и берём. Раньше каждый повтор добавлял запросы в уже замершее соединение, и после оживления
                 // оно ещё долго разгребало дубли.
@@ -298,17 +310,19 @@ internal sealed class StreamingDownload
                 }
                 foreach (var other in pending)
                     if (other != answered) _ = other.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
-                if (await answered is not Upload_File file) throw new IOException("файл отдаётся через CDN");
+                if (await answered is not Upload_File file) throw new NotSupportedException("файл отдаётся через CDN");
                 Answered?.Invoke();
                 lock (_lock)
                 {
                     _file!.Position = offset;
                     _file.Write(file.bytes);
                     _file.Flush();
+                    // Кусочек готов, только если пришёл целиком (или это конец файла): недополученный давал проигрывателю нули, и песня обрывалась.
+                    var end = offset + file.bytes.Length;
                     for (var i = first; i < first + count; i++)
                     {
                         _inflight[i] = false;
-                        if (!_have[i] && (long)i * Unit < offset + file.bytes.Length) { _have[i] = true; _left--; }
+                        if (!_have[i] && Math.Min((i + 1L) * Unit, _size) <= end) { _have[i] = true; _left--; }
                     }
                     Monitor.PulseAll(_lock); // читатель ждёт этот кусочек
                     if (!_gotData) { _gotData = true; Logging.Write($"stream {_location.id}: первые данные через {Environment.TickCount64 - _startedAt} мс"); }
@@ -320,9 +334,12 @@ internal sealed class StreamingDownload
                 // Ссылка устарела (песня из кэша истории или профиля) — свежая и повтор.
                 if (await _refresh() is { } fresh) { _location = Location(fresh); _dcId = fresh.dc_id; }
             }
-            catch (Exception ex) when (attempt < 3 && ex is not OperationCanceledException)
+            // Отказ сервера (400-е) сам не пройдёт — три попытки. Обрыв, переподключение, таймаут — ждём, пока связь вернётся.
+            catch (Exception ex) when (ex is not (OperationCanceledException or NotSupportedException)
+                                       && attempt < (ex is RpcException { Code: >= 400 and < 500 } ? 3 : NetworkAttempts))
             {
-                await Task.Delay(500 * attempt);
+                if (attempt == 3) Logging.Write($"stream part {first}: {ex.Message} — повторяем, пока связь не вернётся");
+                await Task.Delay(Math.Min(500 * attempt, 5000));
             }
             catch (Exception ex)
             {

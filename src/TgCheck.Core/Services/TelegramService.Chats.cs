@@ -38,7 +38,7 @@ public sealed partial class TelegramService
         foreach (var pr in recent)
         {
             if (!pr.flags.HasFlag(MessagePeerReaction.Flags.unread) || pr.flags.HasFlag(MessagePeerReaction.Flags.my)) continue;
-            if (DateTime.UtcNow - pr.date > TimeSpan.FromMinutes(5) || IsIgnored(pr.peer_id) || PeerOf(pr.peer_id) is not { } who) continue;
+            if (DateTime.UtcNow - pr.date > TimeSpan.FromMinutes(5) || PeerOf(pr.peer_id) is not { } who) continue;
             var emoji = pr.reaction switch
             {
                 ReactionEmoji e => e.emoticon,
@@ -66,19 +66,6 @@ public sealed partial class TelegramService
 
     public long SelfKey => _client.UserId;
 
-    // ===================================================================== Игнорирование
-
-    private bool IsIgnored(long userId) => _env.IgnoredUserIds.Contains(userId);
-    private bool IsIgnored(Peer peer) => peer is PeerUser u && IsIgnored(u.user_id);
-    public bool IsIgnored(PeerRef peer) => peer.IsUser && IsIgnored(peer.Id);
-
-    private void EnsureNotIgnored(PeerRef peer)
-    {
-        if (IsIgnored(peer)) throw new PeerNotFoundException();
-    }
-
-    private bool IsHiddenMessage(MessageBase m) =>
-        IsIgnored(m.Peer) || (m.From is { } f && IsIgnored(f));
 
     // ===================================================================== Пиры
 
@@ -102,7 +89,6 @@ public sealed partial class TelegramService
         if (idMatch.Success)
         {
             var id = long.Parse(idMatch.Groups[1].Value);
-            if (IsIgnored(id)) throw new PeerNotFoundException();
             if (_users.TryGetValue(id, out var known)) return PeerOf(known);
             if (_chats.TryGetValue(id, out var chat)) return PeerOf(chat);
             try
@@ -123,7 +109,6 @@ public sealed partial class TelegramService
             foreach (var (k, v) in resolved.chats) _chats[k] = v;
             var info = resolved.UserOrChat ?? throw new PeerNotFoundException();
             var peer = PeerOf(info);
-            EnsureNotIgnored(peer);
             return peer;
         }
         catch (RpcException ex) when (ex.Message is "USERNAME_NOT_OCCUPIED" or "USERNAME_INVALID")
@@ -316,7 +301,7 @@ public sealed partial class TelegramService
                 // В ответ архива сервер подмешивает закреплённые диалоги без отметки папки (и основные, и даже архивные) —
                 // их папку верно сообщает ответ основной папки; из архива берём только явно архивные.
                 if (folder == 1 && folderKnown && d.folder_id != 1) continue;
-                if (IsIgnored(d.peer) || PeerOf(d.peer) is not { } peer) continue;
+                if (PeerOf(d.peer) is not { } peer) continue;
                 if (peer.Info is Channel { flags: var cf } && cf.HasFlag(Channel.Flags.left)) continue;
                 // Старые группы, превращённые в супергруппы, и деактивированные — как в официальном клиенте, не показываем.
                 if (peer.Info is Chat basic && (basic.migrated_to is not null || basic.flags.HasFlag(Chat.Flags.deactivated))) continue;
@@ -326,7 +311,7 @@ public sealed partial class TelegramService
                 result.Add(new ChatSummary
                 {
                     Peer = peer,
-                    Last = last is not null and not MessageEmpty && !IsHiddenMessage(last) ? MapMessage(last) : null,
+                    Last = last is not null and not MessageEmpty ? MapMessage(last) : null,
                     UnreadCount = d.unread_count,
                     UnreadMentions = d.unread_mentions_count,
                     UnreadReactions = d.unread_reactions_count,
@@ -350,7 +335,6 @@ public sealed partial class TelegramService
         await Task.Yield(); // ответ получен — дальше в пуле потоков, а не в сетевом потоке библиотеки (иначе обновления ждут)
         found.CollectUsersChats(_users, _chats);
         return found.my_results.Concat(found.results)
-            .Where(p => !IsIgnored(p))
             .Select(PeerOf).OfType<PeerRef>()
             .DistinctBy(p => p.Key)
             .ToList();
@@ -361,7 +345,6 @@ public sealed partial class TelegramService
     /// <summary>История: сообщения старше offsetId (0 — самые новые), в хронологическом порядке.</summary>
     public async Task<IReadOnlyList<MessageItem>> GetHistoryAsync(PeerRef peer, int offsetId = 0, int limit = 50)
     {
-        EnsureNotIgnored(peer);
         var res = await _client.Messages_GetHistory(peer.Info.ToInputPeer(), offset_id: offsetId, limit: limit);
         return await Task.Run(() =>
         {
@@ -377,7 +360,7 @@ public sealed partial class TelegramService
     private List<MessageItem> MapHistory(Messages_MessagesBase res)
     {
         res.CollectUsersChats(_users, _chats);
-        return res.Messages.Where(m => m is not MessageEmpty && !IsHiddenMessage(m))
+        return res.Messages.Where(m => m is not MessageEmpty)
             .Select(MapMessage).Reverse().ToList();
     }
 
@@ -386,12 +369,11 @@ public sealed partial class TelegramService
     {
         var res = await _client.GetMessages(peer.Info.ToInputPeer(), ids.Select(i => (InputMessage)new InputMessageID { id = i }).ToArray());
         res.CollectUsersChats(_users, _chats);
-        return res.Messages.Where(m => m is not MessageEmpty && !IsHiddenMessage(m)).Select(MapMessage).ToList();
+        return res.Messages.Where(m => m is not MessageEmpty).Select(MapMessage).ToList();
     }
 
     public async Task<MessageItem> SendTextAsync(PeerRef peer, string text, int? replyToId = null)
     {
-        EnsureNotIgnored(peer);
         var (clean, entities) = MarkdownEntities.Parse(text);
         var msg = await _client.SendMessageAsync(peer.Info.ToInputPeer(), clean, reply_to_msg_id: replyToId ?? 0, entities: entities);
         return MapMessage(msg);
@@ -421,7 +403,6 @@ public sealed partial class TelegramService
     /// <summary>Закрепить или открепить сообщение; forBoth = false — только у себя (личный чат, как в Telegram).</summary>
     public async Task PinMessageAsync(PeerRef peer, int messageId, bool pin, bool forBoth)
     {
-        EnsureNotIgnored(peer);
         await _client.Messages_UpdatePinnedMessage(peer.Info.ToInputPeer(), messageId, silent: false, unpin: !pin, pm_oneside: pin && !forBoth);
     }
 
@@ -460,7 +441,7 @@ public sealed partial class TelegramService
     /// </summary>
     public async Task RefreshPresenceAsync(IEnumerable<PeerRef> peers)
     {
-        var users = peers.Select(p => p.Info).OfType<User>().Where(u => !u.IsBot && !IsIgnored(u.id)).DistinctBy(u => u.id).Take(100).ToArray();
+        var users = peers.Select(p => p.Info).OfType<User>().Where(u => !u.IsBot).DistinctBy(u => u.id).Take(100).ToArray();
         if (users.Length == 0) return;
         try
         {
@@ -515,13 +496,13 @@ public sealed partial class TelegramService
     {
         switch (update)
         {
-            case UpdateNewMessage { message: { } m } when m is not MessageEmpty && !IsHiddenMessage(m):
+            case UpdateNewMessage { message: { } m } when m is not MessageEmpty:
                 MessageReceived?.Invoke(MapMessage(m));
                 break;
-            case UpdateEditMessage { message: { } m } when m is not MessageEmpty && !IsHiddenMessage(m):
+            case UpdateEditMessage { message: { } m } when m is not MessageEmpty:
                 MessageEdited?.Invoke(MapMessage(m));
                 break;
-            case UpdateEditChannelMessage { message: { } m } when m is not MessageEmpty && !IsHiddenMessage(m):
+            case UpdateEditChannelMessage { message: { } m } when m is not MessageEmpty:
                 MessageEdited?.Invoke(MapMessage(m));
                 break;
             case UpdateDeleteChannelMessages d:
@@ -549,15 +530,15 @@ public sealed partial class TelegramService
             case UpdateReadChannelInbox r:
                 HistoryRead?.Invoke(-1_000_000_000_000 - r.channel_id, r.max_id, false, r.still_unread_count);
                 break;
-            case UpdateUserTyping t when !IsIgnored(t.user_id) && t.action is not SendMessageCancelAction
+            case UpdateUserTyping t when t.action is not SendMessageCancelAction
                                           && _users.TryGetValue(t.user_id, out var tu):
                 UserTyping?.Invoke(t.user_id, PeerOf(tu));
                 break;
-            case UpdateChatUserTyping t when !IsIgnored(t.from_id) && t.action is not SendMessageCancelAction
+            case UpdateChatUserTyping t when t.action is not SendMessageCancelAction
                                               && PeerOf(t.from_id) is { } who:
                 UserTyping?.Invoke(-t.chat_id, who);
                 break;
-            case UpdateChannelUserTyping t when !IsIgnored(t.from_id) && t.action is not SendMessageCancelAction
+            case UpdateChannelUserTyping t when t.action is not SendMessageCancelAction
                                                  && PeerOf(t.from_id) is { } who2:
                 UserTyping?.Invoke(-1_000_000_000_000 - t.channel_id, who2);
                 break;
@@ -571,7 +552,7 @@ public sealed partial class TelegramService
                 ReactionsUpdated?.Invoke(rp.Key, r.msg_id, MapReactions(r.reactions));
                 OnNewReactions(rp, r.msg_id, r.reactions);
                 break;
-            case UpdateUserStatus s when !IsIgnored(s.user_id):
+            case UpdateUserStatus s:
                 var (presence, seen) = MapStatus(s.status);
                 if (_users.TryGetValue(s.user_id, out var su)) su.status = s.status;
                 UserStatusChanged?.Invoke(s.user_id, presence, seen);

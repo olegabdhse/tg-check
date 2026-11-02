@@ -256,14 +256,98 @@
 
         <!-- Плитка плейлиста: нажатие открывает список песен -->
         <DataTemplate x:Key="PlaylistTile" DataType="{x:Type vm:MusicPlaylistViewModel}">
-            <Button Style="{StaticResource PlainButton}" Width="156" Margin="0,0,14,0"
+            <Button x:Name="TileButton" Style="{StaticResource PlainButton}" Width="156" Margin="0,0,14,0"
                     Command="{Binding DataContext.OpenPlaylistCommand, ElementName=Root}" CommandParameter="{Binding}">
                 <StackPanel>
-                    <ContentControl Width="156" Height="156" Content="{Binding}" ContentTemplate="{StaticResource CoverArt}" Tag="14" Focusable="False" />
+                    <Grid Width="156" Height="156">
+                        <ContentControl Content="{Binding}" ContentTemplate="{StaticResource CoverArt}" Tag="14" Focusable="False" />
+                        <Border x:Name="Shade" CornerRadius="14" Background="#59000000" Opacity="0" IsHitTestVisible="False" />
+                        <Button x:Name="PlayDot" Style="{StaticResource PlainButton}" Width="46" Height="46" Opacity="0" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Command="{Binding DataContext.PlayWholePlaylistCommand, ElementName=Root}" CommandParameter="{Binding}">
+                            <Border CornerRadius="23" Background="{DynamicResource AccentBrush}">
+                                <TextBlock Text="&#xE768;" Style="{StaticResource Icon}" FontSize="17" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="2,0,0,0" />
+                            </Border>
+                        </Button>
+                    </Grid>
                     <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" Margin="2,9,2,0" />
                     <TextBlock Text="{Binding CountText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="2,2,2,0" />
                 </StackPanel>
             </Button>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsMouseOver, ElementName=TileButton}" Value="True">
+                    <Setter TargetName="Shade" Property="Opacity" Value="1" />
+                    <Setter TargetName="PlayDot" Property="Opacity" Value="1" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- Чат или канал с музыкой: строка, как в списке чатов -->
+        <DataTemplate x:Key="ChatMixRow" DataType="{x:Type vm:MusicPlaylistViewModel}">
+            <Button x:Name="RowButton" Style="{StaticResource PlainButton}" Height="50"
+                    Command="{Binding DataContext.OpenPlaylistCommand, ElementName=Root}" CommandParameter="{Binding}">
+                <Border x:Name="Bd" CornerRadius="10" Padding="6,4,8,4" Background="Transparent">
+                    <DockPanel>
+                        <Grid DockPanel.Dock="Left" Width="42" Height="42" Margin="0,0,11,0" IsHitTestVisible="False">
+                            <Ellipse Fill="{Binding CoverBrush}" />
+                            <TextBlock Text="{Binding Initial}" FontSize="16" FontWeight="SemiBold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <Ellipse>
+                                <Ellipse.Fill>
+                                    <ImageBrush ImageSource="{Binding Cover}" Stretch="UniformToFill" />
+                                </Ellipse.Fill>
+                            </Ellipse>
+                        </Grid>
+                        <Button x:Name="RowPlay" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE768;" FontSize="12" Padding="8" VerticalAlignment="Center"
+                                Visibility="Hidden" Command="{Binding DataContext.PlayWholePlaylistCommand, ElementName=Root}" CommandParameter="{Binding}" />
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13.5" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding CountText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+            </Button>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsMouseOver, ElementName=RowButton}" Value="True">
+                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Hover3Brush}" />
+                    <Setter TargetName="RowPlay" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+
+        <!-- Песня на странице плейлиста: карточка; на обложке при наведении — «играть», у играющей — значок звука -->
+        <DataTemplate x:Key="PlaylistSongRow" DataType="{x:Type vm:MusicTrackViewModel}">
+            <Button x:Name="RowButton" Style="{StaticResource PlainButton}" Margin="0,0,10,10"
+                    Command="{Binding DataContext.PlayCommand, ElementName=Root}" CommandParameter="{Binding}">
+                <Border x:Name="Bd" CornerRadius="14" Padding="8,8,16,8" Background="{DynamicResource SurfaceBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                    <DockPanel>
+                        <Grid DockPanel.Dock="Left" Width="56" Height="56" Margin="0,0,14,0">
+                            <ContentControl Content="{Binding}" ContentTemplate="{StaticResource CoverArt}" Tag="10" Focusable="False" />
+                            <Border x:Name="Over" CornerRadius="10" Background="#8C000000" Visibility="Collapsed">
+                                <TextBlock x:Name="OverIcon" Text="&#xE768;" Style="{StaticResource Icon}" FontSize="17" Foreground="White"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                        </Grid>
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding DurationText}" FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0" />
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock x:Name="RowTitle" Text="{Binding Title}" FontWeight="SemiBold" FontSize="14.5" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding Artist}" FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+            </Button>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsMouseOver, ElementName=RowButton}" Value="True">
+                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Hover3Brush}" />
+                    <Setter TargetName="Over" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                    <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                    <Setter TargetName="Over" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="OverIcon" Property="Text" Value="&#xE995;" />
+                    <Setter TargetName="RowTitle" Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
         </DataTemplate>
 
         <!-- Карточка плейлиста рядом с «Для вас»: крупная обложка, название до двух строк -->
@@ -381,7 +465,15 @@
 
 
                 <!-- Поиск сразу везде -->
-                <Grid Margin="0,16,0,14" MaxWidth="560" HorizontalAlignment="Left" Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=StackPanel}}">
+                <DockPanel Margin="0,16,0,14">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Padding="18,0" Margin="14,0,0,0" FontSize="13.5" Cursor="Hand"
+                            Command="{Binding OpenImportCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE710;" Style="{StaticResource Icon}" FontSize="12" Margin="0,0,8,0" VerticalAlignment="Center" />
+                            <TextBlock Text="Добавить плейлист" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                <Grid MaxWidth="560" HorizontalAlignment="Left" Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=DockPanel}, Converter={StaticResource Mul}, ConverterParameter=0.66}">
                     <TextBox x:Name="SearchInput" Style="{StaticResource SearchBox}" Padding="40,11,40,11" FontSize="14"
                              Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}" />
                     <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" FontSize="15" Foreground="{DynamicResource TextSecondaryBrush}"
@@ -392,6 +484,7 @@
                     <Button Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="11" Padding="8" HorizontalAlignment="Right" Margin="0,0,6,0"
                             Command="{Binding ClearQueryCommand}" Visibility="{Binding IsSearch, Converter={StaticResource BoolToVis}}" />
                 </Grid>
+                </DockPanel>
             </StackPanel>
         <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True"
                       ScrollChanged="Page_ScrollChanged" IsVisibleChanged="Page_IsVisibleChanged">
@@ -466,6 +559,47 @@
                     </ItemsControl>
                 </StackPanel>
                 </Grid>
+                <!-- Два блока в ряд: чаты и каналы, правее миксы; в узком окне — один под другим -->
+                <Grid x:Name="MixRow" SizeChanged="MixRow_SizeChanged">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel x:Name="ChatsBlock" Width="340" Margin="0,0,30,26">
+                        <StackPanel.Visibility>
+                            <MultiBinding Converter="{x:Static views:MusicView.BothVisible}">
+                                <Binding Path="ChatPlaylists.HasItems" />
+                                <Binding Path="IsSearch" />
+                            </MultiBinding>
+                        </StackPanel.Visibility>
+                        <DockPanel Margin="0,0,0,12">
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center"
+                                        Visibility="{Binding HasChatPages, Converter={StaticResource BoolToVis}}">
+                                <Button Style="{StaticResource IconButton}" Content="&#xE76B;" FontSize="12" Padding="8" Command="{Binding PreviousChatsCommand}" />
+                                <TextBlock Text="{Binding ChatsPageText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="2,0" />
+                                <Button Style="{StaticResource IconButton}" Content="&#xE76C;" FontSize="12" Padding="8" Command="{Binding NextChatsCommand}" />
+                            </StackPanel>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="{Binding ChatPlaylists.Title}" FontSize="19" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding ChatPlaylists.Subtitle}" Style="{StaticResource Caption}" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </DockPanel>
+                        <!-- Четыре строки — вровень с плитками миксов; страница короче не сдвигает всё ниже -->
+                        <ItemsControl ItemsSource="{Binding ChatPlaylists.Items}" ItemTemplate="{StaticResource ChatMixRow}" MinHeight="200" Focusable="False" />
+                    </StackPanel>
+                    <ContentControl x:Name="MixesBlock" Grid.Column="1" Content="{Binding MyPlaylists}" ContentTemplate="{StaticResource PlaylistShelf}" Focusable="False">
+                        <ContentControl.Visibility>
+                            <MultiBinding Converter="{x:Static views:MusicView.BothVisible}">
+                                <Binding Path="MyPlaylists.HasItems" />
+                                <Binding Path="IsSearch" />
+                            </MultiBinding>
+                        </ContentControl.Visibility>
+                    </ContentControl>
+                </Grid>
                 <ItemsControl x:Name="ShelfList" ItemsSource="{Binding Shelves}" ItemTemplate="{StaticResource Shelf}"
                               Visibility="{Binding IsSearch, Converter={StaticResource InvBoolToVis}}" />
                 <ContentControl Content="{Binding FoundPlaylists}" ContentTemplate="{StaticResource PlaylistShelf}" Focusable="False"
@@ -489,7 +623,7 @@
                             <TextBlock Text="Поиск только по песням из ваших чатов и каналов" Style="{StaticResource Caption}" Margin="0,2,0,0" />
                         </StackPanel>
                     </DockPanel>
-                    <Grid Margin="0,16,0,14" MaxWidth="560" HorizontalAlignment="Left" Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=StackPanel}}">
+                    <Grid MaxWidth="560" HorizontalAlignment="Left" Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=DockPanel}, Converter={StaticResource Mul}, ConverterParameter=0.66}">
                         <TextBox Style="{StaticResource SearchBox}" Padding="40,11,40,11" FontSize="14"
                                  Text="{Binding ChatsQuery, UpdateSourceTrigger=PropertyChanged}" />
                         <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" FontSize="15" Foreground="{DynamicResource TextSecondaryBrush}"
@@ -530,43 +664,87 @@
         <!-- ================================================= Страница плейлиста: обложка, запуск и список песен -->
         <Grid Background="{DynamicResource BgBrush}" Visibility="{Binding IsPlaylistPage, Converter={StaticResource BoolToVis}}"
               helpers:Anim.FadeOnVisible="True">
-            <DockPanel Margin="30,10,26,0">
-                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,16" DataContext="{Binding OpenedPlaylist}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <!-- Шапка на размытой обложке: закреплена, список уходит под неё -->
+            <Grid DataContext="{Binding OpenedPlaylist}" ClipToBounds="True">
+                <Grid IsHitTestVisible="False" Opacity="0.75">
+                    <Grid.OpacityMask>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#FF000000" Offset="0" />
+                            <GradientStop Color="#00000000" Offset="1" />
+                        </LinearGradientBrush>
+                    </Grid.OpacityMask>
+                    <!-- Кистью, а не Image: картинка задавала бы высоту шапки своим размером -->
+                    <Border Margin="-90">
+                        <Border.Background>
+                            <ImageBrush ImageSource="{Binding Cover}" Stretch="UniformToFill" />
+                        </Border.Background>
+                        <Border.Effect>
+                            <BlurEffect Radius="80" RenderingBias="Performance" />
+                        </Border.Effect>
+                    </Border>
+                </Grid>
+                <DockPanel Margin="26,16,26,20">
                     <Button DockPanel.Dock="Left" Style="{StaticResource IconButton}" Content="&#xE72B;" VerticalAlignment="Top"
-                            Command="{Binding DataContext.ClosePlaylistCommand, ElementName=Root}" Margin="-8,0,8,0" />
-                    <ContentControl DockPanel.Dock="Left" Width="112" Height="112" Margin="0,0,18,0" Content="{Binding}"
-                                    ContentTemplate="{StaticResource CoverArt}" Tag="14" Focusable="False" />
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Title}" FontSize="26" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{Binding CountText}" Style="{StaticResource Caption}" Margin="0,2,0,12" />
+                            Command="{Binding DataContext.ClosePlaylistCommand, ElementName=Root}" Margin="-6,0,12,0" />
+                    <Border DockPanel.Dock="Left" Width="164" Height="164" Margin="0,4,24,0" CornerRadius="16" Background="Transparent">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="30" ShadowDepth="6" Direction="270" Opacity="0.45" Color="Black" RenderingBias="Performance" />
+                        </Border.Effect>
+                        <ContentControl Content="{Binding}" ContentTemplate="{StaticResource CoverArt}" Tag="16" Focusable="False" />
+                    </Border>
+                    <StackPanel VerticalAlignment="Bottom">
+                        <TextBlock Text="{Binding KindText}" FontSize="11.5" FontWeight="Bold" Foreground="{DynamicResource TextSoftBrush}" />
+                        <TextBlock Text="{Binding Title}" FontSize="34" FontWeight="Bold" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                        <TextBlock Text="{Binding CountText}" FontSize="13.5" Foreground="{DynamicResource TextSoftBrush}" TextTrimming="CharacterEllipsis" Margin="0,4,0,0" />
+                        <TextBlock Text="{Binding DataContext.PlaylistStats, ElementName=Root}" FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,14" />
                         <StackPanel Orientation="Horizontal">
-                            <Button Style="{StaticResource PrimaryButton}" Padding="16,7" Margin="0,0,8,0"
+                            <Button Style="{StaticResource PrimaryButton}" Padding="24,9" Margin="0,0,8,0" FontSize="14"
                                     Command="{Binding DataContext.PlayPlaylistCommand, ElementName=Root}">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE768;" Style="{StaticResource Icon}" FontSize="12" Margin="0,0,7,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="&#xE768;" Style="{StaticResource Icon}" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center" />
                                     <TextBlock Text="Слушать" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
-                            <Button Style="{StaticResource SecondaryButton}" Padding="16,7"
+                            <Button Style="{StaticResource SecondaryButton}" Padding="18,9" FontSize="14"
                                     Command="{Binding DataContext.ShufflePlaylistCommand, ElementName=Root}">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE8B1;" Style="{StaticResource Icon}" FontSize="12" Margin="0,0,7,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="&#xE8B1;" Style="{StaticResource Icon}" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center" />
                                     <TextBlock Text="Перемешать" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource SecondaryButton}" Padding="18,9" Margin="8,0,0,0" FontSize="14"
+                                    Command="{Binding DataContext.RemovePlaylistCommand, ElementName=Root}"
+                                    Visibility="{Binding CanRemove, Converter={StaticResource BoolToVis}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE74D;" Style="{StaticResource Icon}" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="Убрать" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
                         </StackPanel>
                     </StackPanel>
                 </DockPanel>
-                <ScrollViewer x:Name="PlaylistPageScroll" VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True"
-                              ScrollChanged="ChatsPage_ScrollChanged">
-                    <StackPanel DataContext="{Binding PlaylistPage}" Margin="0,0,0,24">
-                        <ItemsControl ItemsSource="{Binding Source={x:Static vm:MusicShelf.RowPlaceholders}}" ItemTemplate="{StaticResource RowSkeleton}"
-                                      Style="{StaticResource Pulse}" Visibility="{Binding ShowSkeleton, Converter={StaticResource BoolToVis}}" />
-                        <ItemsControl ItemsSource="{Binding Items}" ItemTemplate="{StaticResource Row}" helpers:Anim.FadeOnVisible="True"
-                                      Visibility="{Binding ShowSkeleton, Converter={StaticResource InvBoolToVis}}" />
-                    </StackPanel>
-                </ScrollViewer>
-            </DockPanel>
+            </Grid>
+            <!-- Песни: карточками, в широком окне в две колонки -->
+            <ScrollViewer x:Name="PlaylistPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True"
+                          ScrollChanged="ChatsPage_ScrollChanged" IsVisibleChanged="PlaylistPage_IsVisibleChanged">
+                <StackPanel DataContext="{Binding PlaylistPage}" Margin="26,6,16,24">
+                    <ItemsControl ItemsSource="{Binding Source={x:Static vm:MusicShelf.RowPlaceholders}}" ItemTemplate="{StaticResource RowSkeleton}"
+                                  Style="{StaticResource Pulse}" Visibility="{Binding ShowSkeleton, Converter={StaticResource BoolToVis}}" />
+                    <ItemsControl ItemsSource="{Binding Items}" ItemTemplate="{StaticResource PlaylistSongRow}" helpers:Anim.FadeOnVisible="True"
+                                  Visibility="{Binding ShowSkeleton, Converter={StaticResource InvBoolToVis}}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid VerticalAlignment="Top"
+                                             Columns="{Binding ActualWidth, ElementName=PlaylistPageScroll, Converter={x:Static views:MusicView.SongColumns}}" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
         </Grid>
 
         <!-- ================================================= Справа: альбомный плеер и «Вы слушали» -->
@@ -729,5 +907,30 @@
                 </Grid>
             </DockPanel>
         </Border>
+
+        <!-- ================================================= Добавить плейлист -->
+        <Grid Grid.ColumnSpan="2" Background="#99000000" Visibility="Collapsed" helpers:Anim.Show="{Binding IsImportOpen}">
+            <Border Width="540" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="16" Padding="26,22"
+                    Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Text="Добавить плейлист" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,6,0,14"
+                               Text="Вставьте ссылку на плейлист, альбом или песню из Spotify, Яндекс Музыки, Apple Music, Deezer или YouTube. Плейлист должен быть открытым. Из других площадок — список песен: «Исполнитель — Название», по одной в строке. Сами песни найдутся в Telegram." />
+                    <TextBox Style="{StaticResource InputBox}" Height="118" Padding="12,10" FontSize="13.5" AcceptsReturn="True" TextWrapping="Wrap"
+                             VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" Text="{Binding ImportText, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBlock Text="{Binding ImportError}" Foreground="{DynamicResource DangerBrush}" FontSize="12.5" TextWrapping="Wrap" Margin="0,10,0,0"
+                               Visibility="{Binding ImportError, Converter={StaticResource NullToVis}}" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                        <Button Style="{StaticResource SecondaryButton}" Content="Отмена" Padding="16,7" Margin="0,0,8,0" Command="{Binding CloseImportCommand}" />
+                        <Button Style="{StaticResource PrimaryButton}" Padding="18,7" Command="{Binding ImportPlaylistCommand}">
+                            <StackPanel Orientation="Horizontal">
+                                <views:Spinner Width="14" Height="14" Margin="0,0,8,0" Visibility="{Binding IsImporting, Converter={StaticResource BoolToVis}}" />
+                                <TextBlock Text="Добавить" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>

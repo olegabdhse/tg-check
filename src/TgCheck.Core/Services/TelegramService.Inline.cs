@@ -18,7 +18,7 @@ public sealed partial class TelegramService
         {
             var resolved = await _client.Contacts_ResolveUsername(username);
             foreach (var (id, user) in resolved.users) _users[id] = user;
-            if (resolved.User is { } u && u.IsBot && u.flags.HasFlag(User.Flags.has_bot_inline_placeholder) && !IsIgnored(u.id))
+            if (resolved.User is { } u && u.IsBot && u.flags.HasFlag(User.Flags.has_bot_inline_placeholder))
                 bot = new InlineBot(PeerOf(u), u.bot_inline_placeholder ?? "");
             else
                 Logging.Write($"inline bot @{username}: " + (resolved.User is not { } x ? "не пользователь" : !x.IsBot ? "не бот"
@@ -40,7 +40,7 @@ public sealed partial class TelegramService
     public Task<bool> UsernameExistsAsync(string username) => _mentions.GetOrAdd(username, name => Task.Run(async () =>
     {
         bool Known(string n) =>
-            _users.Values.Any(u => !IsIgnored(u.id) && (string.Equals(u.MainUsername, n, StringComparison.OrdinalIgnoreCase)
+            _users.Values.Any(u => (string.Equals(u.MainUsername, n, StringComparison.OrdinalIgnoreCase)
                                                         || u.usernames?.Any(x => string.Equals(x.username, n, StringComparison.OrdinalIgnoreCase)) == true))
             || _chats.Values.Any(c => c is Channel ch && (string.Equals(ch.MainUsername, n, StringComparison.OrdinalIgnoreCase)
                                                          || ch.usernames?.Any(x => string.Equals(x.username, n, StringComparison.OrdinalIgnoreCase)) == true));
@@ -53,7 +53,7 @@ public sealed partial class TelegramService
             var resolved = await _client.Contacts_ResolveUsername(name);
             foreach (var (k, v) in resolved.users) _users[k] = v;
             foreach (var (k, v) in resolved.chats) _chats[k] = v;
-            return resolved.UserOrChat is { } info && !IsIgnored(PeerOf(info).Id);
+            return resolved.UserOrChat is not null;
         }
         catch (RpcException ex)
         {
@@ -76,7 +76,7 @@ public sealed partial class TelegramService
             top.CollectUsersChats(_users, _chats);
             return top.categories.SelectMany(c => c.peers)
                 .Select(p => p.peer is PeerUser pu && top.users.TryGetValue(pu.user_id, out var u) ? u : null)
-                .OfType<User>().Where(u => u.IsBot && !IsIgnored(u.id))
+                .OfType<User>().Where(u => u.IsBot)
                 .Select(u => new InlineBot(PeerOf(u), u.bot_inline_placeholder ?? ""))
                 .Take(limit).ToList();
         }
@@ -112,7 +112,6 @@ public sealed partial class TelegramService
     /// <summary>Отправить выбранный результат инлайн-бота в чат.</summary>
     public async Task SendInlineResultAsync(PeerRef chat, long queryId, string resultId, int? replyToId = null)
     {
-        EnsureNotIgnored(chat);
         await _client.Messages_SendInlineBotResult(chat.Info.ToInputPeer(), WTelegram.Helpers.RandomLong(), queryId, resultId,
             reply_to: replyToId is { } r ? new InputReplyToMessage { reply_to_msg_id = r } : null);
     }

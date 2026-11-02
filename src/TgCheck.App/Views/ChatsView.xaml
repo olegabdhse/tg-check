@@ -241,6 +241,24 @@
                                                 </Style>
                                             </MenuItem.Style>
                                         </MenuItem>
+                                        <MenuItem Tag="&#xE7B8;"
+                                                  Command="{Binding PlacementTarget.Tag.ToggleChatArchiveCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                  CommandParameter="{Binding}">
+                                            <MenuItem.Style>
+                                                <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                                    <Setter Property="Header" Value="Архивировать" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsArchived}" Value="True">
+                                                            <Setter Property="Header" Value="Вернуть из архива" />
+                                                        </DataTrigger>
+                                                        <!-- «Избранное» Telegram в архив не кладёт -->
+                                                        <DataTrigger Binding="{Binding Peer.IsSelf}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </MenuItem.Style>
+                                        </MenuItem>
                                         <Separator />
                                         <MenuItem Header="Открыть профиль" Tag="&#xE77B;"
                                                   Command="{Binding PlacementTarget.Tag.OpenProfileCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"

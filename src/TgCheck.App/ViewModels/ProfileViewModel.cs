@@ -253,6 +253,8 @@ public sealed partial class ProfileViewModel : ObservableObject
     // Подарков бывают десятки тысяч: на экране — порция (дальше — по прокрутке), порядок считается одной сортировкой.
     // (Сортированное представление WPF вставляло каждый подарок поиском места по всему списку и вешало окно.)
     public ObservableCollection<GiftViewModel> ShownGifts { get; } = [];
+    /// <summary>Закреплённые подарки: вокруг аватарки.</summary>
+    public ObservableCollection<GiftViewModel> PinnedGifts { get; } = [];
     private List<GiftViewModel> _ordered = [];
     private const int GiftPortion = 96;
 
@@ -405,14 +407,21 @@ public sealed partial class ProfileViewModel : ObservableObject
     {
         if (_songsOf == owner.Id && Songs.Count > 0) return;
         _songsOf = owner.Id;
-        try
+        // При запуске связь ещё поднимается — пробуем несколько раз, иначе «Все песни» так и не появлялись.
+        for (var attempt = 0; attempt < 6; attempt++)
         {
-            var songs = await Task.Run(() => _tg.GetProfileMusicAsync(owner));
+            if (attempt > 0) await Task.Delay(5000);
             if (_songsOf != owner.Id) return;
-            Songs.Clear();
-            foreach (var s in songs) Songs.Add(new MusicTrackViewModel(Core.Music.MusicTrack.FromTelegram(s), Songs));
+            try
+            {
+                var songs = await Task.Run(() => _tg.GetProfileMusicAsync(owner));
+                if (_songsOf != owner.Id) return;
+                Songs.Clear();
+                foreach (var s in songs) Songs.Add(new MusicTrackViewModel(Core.Music.MusicTrack.FromTelegram(s), Songs));
+                break;
+            }
+            catch (Exception ex) { Logging.Write($"profile music: {ex.Message}"); }
         }
-        catch (Exception ex) { Logging.Write($"profile music: {ex.Message}"); }
         OnPropertyChanged(nameof(HasManySongs));
         OnPropertyChanged(nameof(SongsText));
     }
@@ -554,6 +563,7 @@ public sealed partial class ProfileViewModel : ObservableObject
             _ = LoadMembersAsync();
             _ = LoadStoriesAsync();
             if (ShowGifts) await LoadGiftsAsync();
+            else if (IsCompact && profile.Kind == PeerKind.User) _ = LoadPinnedGiftsAsync(); // боковая панель: всех подарков не грузим
         }
         catch (Exception ex)
         {
@@ -640,6 +650,28 @@ public sealed partial class ProfileViewModel : ObservableObject
         }
     }
 
+    private void SetPinnedGifts(IEnumerable<GiftViewModel> gifts)
+    {
+        var pinned = gifts.Take(6).ToList();
+        if (pinned.Select(g => g.Item.GiftId).SequenceEqual(PinnedGifts.Select(g => g.Item.GiftId))) return;
+        PinnedGifts.Clear();
+        foreach (var g in pinned)
+        {
+            PinnedGifts.Add(g);
+            _ = g.LoadModelAsync(_tg.Media);
+        }
+    }
+
+    private async Task LoadPinnedGiftsAsync()
+    {
+        try
+        {
+            var pinned = await _tg.GetPinnedGiftsAsync(_peer!);
+            SetPinnedGifts(pinned.Select(g => new GiftViewModel(g)));
+        }
+        catch (Exception ex) { Logging.Write("pinned gifts: " + ex.Message); }
+    }
+
     private async Task LoadGiftsAsync()
     {
         IsGiftsLoading = true;
@@ -715,6 +747,7 @@ public sealed partial class ProfileViewModel : ObservableObject
 
     private void OnCountsChanged()
     {
+        if (!IsCompact) SetPinnedGifts(Gifts.Where(g => g.Item.IsPinned));
         foreach (var name in new[] { nameof(CountAll), nameof(GiftsCaption), nameof(CountRegular), nameof(CountUnique), nameof(CountConvertible),
                      nameof(CountHidden), nameof(ConvertibleStars), nameof(ConvertibleSummary) })
             OnPropertyChanged(name);

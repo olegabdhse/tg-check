@@ -60,6 +60,8 @@ public sealed class MusicPlayer
     public event Action? Changed;
     /// <summary>Песня доиграла до конца (ключ). Из фонового потока.</summary>
     public event Action<string>? Ended;
+    /// <summary>Песня не доиграла: файл не скачался или VLC не смог её играть (ключ). Плеер уже остановлен. Из фонового потока.</summary>
+    public event Action<string>? Failed;
 
     /// <summary>Играть файл (path) или продолжить ту же песню (тот же ключ).</summary>
     public void Play(string key, string path)
@@ -110,6 +112,7 @@ public sealed class MusicPlayer
             _player.SetAudioFormat("S16N", Rate, Channels);
             _player.SetAudioCallbacks(OnAudio, OnPause, OnResume, OnFlush, OnDrain);
             _player.EndReached += OnEndReached;
+            _player.EncounteredError += OnVlcError;
             // VLC сам сменил состояние (догрузил, встал на паузу, остановился) — плеер на экране обновляется сразу.
             _player.Playing += OnVlcState;
             _player.Paused += OnVlcState;
@@ -123,25 +126,29 @@ public sealed class MusicPlayer
             _ended = false;
             _paused = false;
             _lengthMs = 0;
+            _heardMs = 0;
+            _earlyEnds = 0;
             Key = key;
             _player.Play(_media);
-            // Песня не скачалась (ошибка сети, устаревшая ссылка) — плеер закрывается, а не крутит загрузку вечно.
+            // Песня не скачалась (ошибка сети, устаревшая ссылка) — плеер не крутит загрузку вечно, очередь идёт дальше.
             if (source is IStreamingSource growing)
                 _ = growing.Done.ContinueWith(t =>
                 {
                     if (t.IsCompletedSuccessfully && t.Result is not null) return;
-                    Logging.Write("music: песня не скачалась");
-                    lock (_lock) { if (Key != key) return; StopInternal(); }
-                    Notify();
+                    Fail(key, "песня не скачалась");
                 });
-            _timer = new Timer(_ => { if (IsPlaying || IsBuffering) Notify(); }, null, 0, 250);
+            _timer = new Timer(_ =>
+            {
+                if (_player is { Time: > 0 and var time }) _heardMs = time;
+                if (IsPlaying || IsBuffering) Notify();
+            }, null, 0, 250);
         }
         Notify();
     }
 
     // ---- вывод звука
     // Устройство пропадает: после сна его какое-то время нет (NoDriver), наушники отключили. Вывод пересоздаётся, пока устройство не вернётся.
-    private const int OutputRetries = 40;
+    private const int FastOutputRetries = 40;
     private bool _recoveringOutput;
 
     private MusicPlayer()
@@ -201,9 +208,10 @@ public sealed class MusicPlayer
 
     private async Task RecoverOutputAsync()
     {
-        for (var attempt = 1; attempt <= OutputRetries; attempt++)
+        // Пока песня открыта: устройство может вернуться и через час, а песня без вывода так и шла бы молча.
+        for (var attempt = 1; ; attempt++)
         {
-            await Task.Delay(1500);
+            await Task.Delay(attempt <= FastOutputRetries ? 1500 : 5000);
             lock (_lock)
             {
                 if (_player is null) { _recoveringOutput = false; return; }
@@ -216,8 +224,6 @@ public sealed class MusicPlayer
                 return;
             }
         }
-        lock (_lock) _recoveringOutput = false;
-        Logging.Write("music: вывод звука не восстановился");
     }
 
     // ---- звук от VLC
@@ -262,6 +268,21 @@ public sealed class MusicPlayer
 
     private void OnVlcState(object? sender, EventArgs e) => ThreadPool.QueueUserWorkItem(_ => Notify());
 
+    private void OnVlcError(object? sender, EventArgs e)
+    {
+        var key = Key;
+        // Из обработчика событий VLC нельзя управлять плеером — в пуле потоков.
+        if (key is not null) ThreadPool.QueueUserWorkItem(_ => Fail(key, "VLC не смог играть песню"));
+    }
+
+    private void Fail(string key, string why)
+    {
+        lock (_lock) { if (Key != key) return; StopInternal(); }
+        Logging.Write($"music: {key}: {why}");
+        Notify();
+        Failed?.Invoke(key);
+    }
+
     private void OnEndReached(object? sender, EventArgs e)
     {
         var key = Key;
@@ -272,6 +293,15 @@ public sealed class MusicPlayer
             {
                 if (Key != key || _player is not { } p) return;
                 if (Loop) { Restart(p); return; }
+                // До конца ещё далеко: чтение оборвалось, а не песня кончилась. Продолжаем с того же места, а не переключаем на следующую.
+                if (_lengthMs - _heardMs > EarlyEndMs && _earlyEnds < MaxEarlyEnds && _media is { } media)
+                {
+                    _earlyEnds++;
+                    Logging.Write($"music: {key} оборвалась на {_heardMs / 1000} с из {_lengthMs / 1000} — продолжаем");
+                    media.AddOption($":start-time={_heardMs / 1000.0:0.0}".Replace(',', '.'));
+                    Restart(p);
+                    return;
+                }
                 _ended = true;
                 Level = Bass = 0;
             }
@@ -279,6 +309,11 @@ public sealed class MusicPlayer
             if (key is not null) Ended?.Invoke(key);
         });
     }
+
+    private const long EarlyEndMs = 5000;
+    private const int MaxEarlyEnds = 2;
+    private long _heardMs;
+    private int _earlyEnds;
 
     private void Restart(VlcPlayer p)
     {
@@ -343,6 +378,7 @@ public sealed class MusicPlayer
         _buffer = null;
         if (player is null) { source?.Dispose(); return; }
         player.EndReached -= OnEndReached;
+        player.EncounteredError -= OnVlcError;
         player.Playing -= OnVlcState;
         player.Paused -= OnVlcState;
         player.Stopped -= OnVlcState;

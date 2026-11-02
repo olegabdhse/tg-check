@@ -28,6 +28,8 @@ public sealed partial class GiftViewModel : ObservableObject
     public GiftItem Item { get; }
 
     [ObservableProperty] private ImageSource? _image;
+    /// <summary>Модель без фона: для подарков вокруг аватарки.</summary>
+    [ObservableProperty] private ImageSource? _modelImage;
     [ObservableProperty] private bool _isSelected;
     [ObservableProperty] private ImageSource? _senderAvatar;
 
@@ -111,6 +113,12 @@ public sealed partial class GiftViewModel : ObservableObject
         { Tier: { } t } => $"{a.Name} · {t}",
         _ => a.Name,
     };
+
+    public async Task LoadModelAsync(MediaService media)
+    {
+        if (ModelImage is not null) return;
+        ModelImage = Images.FromBytes(await media.GetGiftModelAsync(Item, ImageSize).ConfigureAwait(false));
+    }
 
     public async Task LoadImageAsync(MediaService media)
     {

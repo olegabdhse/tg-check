@@ -4,7 +4,7 @@ using TgCheck.Core.Models;
 namespace TgCheck.Core.Music;
 
 /// <summary>Откуда трек: песня из чатов Telegram, найденная музыкальным ботом Telegram, Deezer (только 30 с превью; Audius — старые записи истории).</summary>
-public enum MusicSource { Telegram, Audius, Deezer, Bot }
+public enum MusicSource { Telegram, Audius, Deezer, Bot, Imported }
 
 /// <summary>Трек раздела «Музыка» — из любого источника; сохраняется в историю прослушанного.</summary>
 public sealed class MusicTrack
@@ -72,6 +72,38 @@ public sealed class MusicTrack
         if (aa.Count == 0 || ab.Count == 0) return true;
         // Исполнители — по меньшему списку: «Slo» и «Slo, Twilight, Tazzy» — тот же исполнитель.
         return (double)aa.Intersect(ab).Count() / Math.Min(aa.Count, ab.Count) >= 0.5;
+    }
+
+    /// <summary>Название без версий и пометок: «Мама» и «Мама (Woodstock mix)» — одно и то же в подборке.</summary>
+    public static string TitleKey(MusicTrack t) => Normalize(CoreTitleText(t));
+
+    /// <summary>
+    /// Порядок, где от одного автора не больше <paramref name="max"/> песен подряд (считая то, что играло перед этим).
+    /// Песни, которым не нашлось места (остался один автор), отбрасываются.
+    /// </summary>
+    public static List<MusicTrack> LimitRuns(IEnumerable<MusicTrack> tracks, int max = 2, IEnumerable<MusicTrack>? before = null)
+    {
+        static string Author(MusicTrack t) => Normalize(MainArtist(t));
+        string? last = null;
+        var run = 0;
+        void Note(MusicTrack t)
+        {
+            var author = Author(t);
+            run = author.Length > 0 && author == last ? run + 1 : 1;
+            last = author;
+        }
+        foreach (var t in before ?? []) Note(t);
+        var pool = tracks.ToList();
+        var result = new List<MusicTrack>(pool.Count);
+        while (pool.Count > 0)
+        {
+            var i = pool.FindIndex(t => Author(t).Length == 0 || Author(t) != last || run < max);
+            if (i < 0) break;
+            result.Add(pool[i]);
+            Note(pool[i]);
+            pool.RemoveAt(i);
+        }
+        return result;
     }
 
     /// <summary>Без повторов одной и той же песни (первая встреченная остаётся).</summary>

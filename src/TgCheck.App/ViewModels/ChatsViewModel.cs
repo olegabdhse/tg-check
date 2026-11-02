@@ -766,6 +766,24 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         catch (Exception ex) { ShowToast(TgErrors.Describe(ex), true); }
     }
 
+    /// <summary>Убрать чат в архив или вернуть обратно.</summary>
+    [RelayCommand]
+    private async Task ToggleChatArchive(ChatItemViewModel? c)
+    {
+        if (c is null || c.Peer.IsSelf) return;
+        var archive = !c.IsArchived;
+        try
+        {
+            await _tg.SetArchivedAsync(c.Peer, archive);
+            c.IsArchived = archive;
+            if (ShowArchive && ArchiveCount == 0) ShowArchive = false; // вернули последний — архив пуст
+            RefreshView();
+            NotifyArchive();
+            ShowToast(archive ? "Чат в архиве" : "Чат возвращён из архива");
+        }
+        catch (Exception ex) { ShowToast(TgErrors.Describe(ex), true); }
+    }
+
     /// <summary>Выключить / включить уведомления чата.</summary>
     [RelayCommand]
     private async Task ToggleMute(ChatItemViewModel? c)

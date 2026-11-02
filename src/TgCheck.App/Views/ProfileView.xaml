@@ -141,6 +141,7 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="22" helpers:SmoothScroll.IsEnabled="True">
                     <StackPanel>
                         <!-- Аватар: клик — просмотр всех фото профиля -->
+                        <Grid HorizontalAlignment="Center" Margin="0,16,0,0" Panel.ZIndex="1">
                         <Button Command="{Binding OpenAvatarCommand}" HorizontalAlignment="Center" Cursor="Hand"
                                 FocusVisualStyle="{x:Null}">
                             <Button.Template>
@@ -187,6 +188,8 @@
                                 </ControlTemplate>
                             </Button.Template>
                         </Button>
+                        <controls:PinnedGiftsRing Gifts="{Binding PinnedGifts}" Radius="66" GiftSize="27" />
+                        </Grid>
 
                         <!-- Рейтинг: сразу под аватаркой (на месте «пустого» имени) -->
                         <Border HorizontalAlignment="Center" Margin="0,12,0,0" Padding="4,4,14,4" CornerRadius="16"
@@ -305,8 +308,8 @@
                         </Button>
 
                         <!-- Песен в профиле несколько — «Все песни · N» раскрывает список -->
-                        <StackPanel Margin="0,-4,0,10" Visibility="{Binding HasManySongs, Converter={StaticResource BoolToVis}}">
-                            <Button Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left" Padding="12,5" FontSize="12.5"
+                        <StackPanel Margin="0,0,0,12" Visibility="{Binding HasManySongs, Converter={StaticResource BoolToVis}}">
+                            <Button Style="{StaticResource SecondaryButton}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Padding="12,8" FontSize="13"
                                     Command="{Binding ToggleSongsCommand}">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#xE8D6;" Style="{StaticResource Icon}" FontSize="12" Margin="0,0,7,0" VerticalAlignment="Center" />

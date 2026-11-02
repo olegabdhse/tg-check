@@ -56,8 +56,6 @@ public sealed class AppEnv
     /// <summary>Подключаемся через встроенный прокси.</summary>
     public bool UsesBuiltInProxy => Proxy is not null && UserProxy is null;
 
-    /// <summary>ID пользователей, которых приложение полностью игнорирует (TG_IGNORE_IDS).</summary>
-    public IReadOnlySet<long> IgnoredUserIds { get; init; } = new HashSet<long>();
 
     /// <summary>GitHub-репозиторий для обновлений (owner/repo): TG_UPDATE_REPO или значение, заданное при сборке.</summary>
     public string? UpdateRepo { get; init; }
@@ -128,7 +126,6 @@ public sealed class AppEnv
             BuiltInProxyUrl = builtIn is not null && IsSupportedProxy(builtIn) ? builtIn : null,
             XrayLink = Get("TG_XRAY") is { } xray && xray.StartsWith("vless://", StringComparison.OrdinalIgnoreCase) ? xray : null,
             ReserveHost = Get("TG_RESERVE_HOST") is { Length: > 0 } reserve ? reserve.Trim() : null,
-            IgnoredUserIds = ParseIds(Get("TG_IGNORE_IDS")),
             UpdateRepo = Get("TG_UPDATE_REPO") ?? BuildInfo.UpdateRepo,
             ApiId = apiId,
             ApiHash = apiHash.ToLowerInvariant(),
@@ -138,14 +135,6 @@ public sealed class AppEnv
         };
     }
 
-    /// <summary>Список ID через запятую/пробел; можно вставлять ссылки вида tg://user?id=123.</summary>
-    internal static HashSet<long> ParseIds(string? raw)
-    {
-        var set = new HashSet<long>();
-        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(raw ?? "", @"\d{3,}"))
-            if (long.TryParse(m.Value, out var id)) set.Add(id);
-        return set;
-    }
 
     private const string UserProxyFileName = "proxy.txt";
 

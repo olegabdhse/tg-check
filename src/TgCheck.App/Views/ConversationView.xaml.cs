@@ -914,6 +914,27 @@ public partial class ConversationView : UserControl
     }
 
     // ⋮ в шапке: меню чата под кнопкой; перед показом — свежие «уведомления» и «заблокирован».
+    private void ChatSearch_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm is null) return;
+        if (_vm.IsChatSearchOpen) { _vm.CloseChatSearchCommand.Execute(null); return; }
+        _vm.OpenChatSearchCommand.Execute(null);
+        Dispatcher.BeginInvoke(() => ChatSearchInput.Focus(), System.Windows.Threading.DispatcherPriority.Input);
+    }
+
+    private void ChatSearchInput_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (_vm is null) return;
+        if (e.Key == System.Windows.Input.Key.Escape) _vm.CloseChatSearchCommand.Execute(null);
+        else if (e.Key == System.Windows.Input.Key.Enter)
+        {
+            if (System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift)) _vm.ChatSearchNewerCommand.Execute(null);
+            else _vm.ChatSearchOlderCommand.Execute(null);
+        }
+        else return;
+        e.Handled = true;
+    }
+
     private async void ChatMenu_Click(object sender, RoutedEventArgs e)
     {
         if (_vm is null || ChatMenuButton.ContextMenu is not { } menu) return;

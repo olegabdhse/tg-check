@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -120,6 +121,50 @@ public partial class MusicView : UserControl
 
     private bool _coversQueued;
 
+    /// <summary>Песен на странице плейлиста в ряд: две, пока карточкам хватает ширины.</summary>
+    public static readonly System.Windows.Data.IValueConverter SongColumns = new SongColumnsConverter();
+
+    private sealed class SongColumnsConverter : System.Windows.Data.IValueConverter
+    {
+        public object Convert(object value, Type targetType, object? parameter, System.Globalization.CultureInfo culture) =>
+            value is double width && width >= 820 ? 2 : 1;
+
+        public object ConvertBack(object value, Type targetType, object? parameter, System.Globalization.CultureInfo culture) => Binding.DoNothing;
+    }
+
+    private void PlaylistPage_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (PlaylistPageScroll.IsVisible) PlaylistPageScroll.ScrollToHome();
+        QueueCovers();
+    }
+
+    // Чаты и миксы в ряд, пока хватает места; иначе миксы — под чатами.
+    private void MixRow_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var side = e.NewSize.Width >= 1000;
+        Grid.SetColumn(MixesBlock, side ? 1 : 0);
+        Grid.SetRow(MixesBlock, side ? 0 : 1);
+        Grid.SetColumnSpan(MixesBlock, side ? 1 : 2);
+    }
+
+    // Посмотрели и ушли — при следующем показе чаты и миксы другие.
+    private readonly HashSet<MusicPlaylistShelf> _seenPlaylists = [];
+
+    private void RefreshHiddenPlaylists(MusicViewModel music, bool pageShown, Rect view)
+    {
+        foreach (var (el, shelf) in new (FrameworkElement, MusicPlaylistShelf)[] { (ChatsBlock, music.ChatPlaylists), (MixesBlock, music.MyPlaylists) })
+        {
+            var onScreen = false;
+            if (pageShown && el.IsVisible)
+            {
+                try { onScreen = el.TransformToAncestor(PageScroll).TransformBounds(new Rect(0, 0, el.ActualWidth, el.ActualHeight)).IntersectsWith(view); }
+                catch (InvalidOperationException) { }
+            }
+            if (onScreen) _seenPlaylists.Add(shelf);
+            else if (_seenPlaylists.Remove(shelf)) music.RefreshHiddenPlaylists(shelf);
+        }
+    }
+
     private void Page_ScrollChanged(object sender, ScrollChangedEventArgs e) => QueueCovers();
 
     private void Page_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) => QueueCovers();
@@ -150,6 +195,7 @@ public partial class MusicView : UserControl
         if (DataContext is not MusicViewModel music) return;
         var pageShown = PageScroll.IsVisible && !music.IsSearch && !music.IsChatsPage && !music.IsPlaylistPage;
         var view = new Rect(0, 0, PageScroll.ActualWidth, PageScroll.ActualHeight);
+        RefreshHiddenPlaylists(music, pageShown, view);
         foreach (var shelf in music.Shelves.Where(s => s.Shuffled))
         {
             var onScreen = false;

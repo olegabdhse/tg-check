@@ -95,7 +95,7 @@ public sealed partial class TelegramService
         if (channelId is { } id)
         {
             // Приватная ссылка на сообщение: открывается, только если канал/группа уже есть у нас.
-            if (!_chats.TryGetValue(id, out var chat) || IsIgnored(-1_000_000_000_000 - id)) return null;
+            if (!_chats.TryGetValue(id, out var chat)) return null;
             return new TgLink(TgLinkKind.Peer) { Peer = PeerOf(chat), MessageId = messageId };
         }
         if (username is { Length: > 0 })

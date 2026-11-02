@@ -6,7 +6,19 @@ using TgCheck.Core.Services;
 namespace TgCheck.Core.Music;
 
 /// <summary>Плейлист из каталога.</summary>
-public sealed record MusicPlaylist(long Id, string Title, int TrackCount, string? Cover, string? CoverBig);
+public sealed record MusicPlaylist(long Id, string Title, int TrackCount, string? Cover, string? CoverBig)
+{
+    public const string KindImported = "imported", KindMix = "mix", KindMood = "mood", KindChat = "chat";
+
+    /// <summary>Свой плейлист (добавленный или собранный программой); у плейлистов Deezer — null.</summary>
+    public string? Kind { get; init; }
+    /// <summary>Подпись вместо числа песен: откуда плейлист или из чего собран.</summary>
+    public string? Caption { get; init; }
+    /// <summary>Откуда добавлен (чтобы не добавить дважды).</summary>
+    public string? Link { get; init; }
+    /// <summary>Песни своего плейлиста; у плейлистов Deezer грузятся при открытии.</summary>
+    public IReadOnlyList<MusicTrack>? Tracks { get; init; }
+}
 
 /// <summary>
 /// Deezer без ключей: огромный каталог — обложки и «похожие исполнители» (без входа даёт только 30 с превью).

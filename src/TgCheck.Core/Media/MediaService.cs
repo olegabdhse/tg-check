@@ -54,6 +54,33 @@ public sealed class MediaService
     }
 
     /// <summary>PNG-картинка подарка размером size×size (null — если не удалось получить).</summary>
+    /// <summary>Только модель подарка, без фона (PNG с прозрачностью, кэш на диске): вокруг аватарки — на размытом пятне.</summary>
+    public Task<byte[]?> GetGiftModelAsync(GiftItem gift, int size)
+    {
+        if (gift.Sticker is not Document doc) return Task.FromResult<byte[]?>(null);
+        var key = $"giftmodel_{doc.id}_{size}";
+        return Shared(key, () => Task.Run(async () =>
+        {
+            var path = Path.Combine(_cacheDir, key + ".png");
+            try
+            {
+                if (File.Exists(path)) return await File.ReadAllBytesAsync(path);
+                using var image = await LoadStickerAsync(doc, size);
+                if (image is null) return null;
+                using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+                var png = data.ToArray();
+                await File.WriteAllBytesAsync(path, png);
+                return png;
+            }
+            catch (Exception ex)
+            {
+                Logging.Write($"gift model {gift.GiftId}: {ex.Message}");
+                _inflight.TryRemove(key, out _);
+                return null;
+            }
+        }));
+    }
+
     public Task<byte[]?> GetGiftImageAsync(GiftItem gift, int size)
     {
         var key = gift.ImageKey(size);

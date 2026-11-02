@@ -1351,6 +1351,9 @@
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>
+                    <!-- Поиск по сообщениям чата -->
+                    <Button x:Name="ChatSearchButton" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE721;" FontSize="15"
+                            Margin="0,0,2,0" Click="ChatSearch_Click" />
                     <Grid Cursor="Hand" Background="Transparent">
                         <Grid.InputBindings>
                             <MouseBinding MouseAction="LeftClick" Command="{Binding ToggleSideProfileCommand}" />
@@ -1423,6 +1426,60 @@
 
                 <!-- Верх ленты: панель плеера (голосовые, аудио, кружки) и закреплённые -->
                 <StackPanel x:Name="FeedTop" VerticalAlignment="Top">
+                    <!-- Поиск по сообщениям -->
+                    <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
+                            Visibility="Collapsed" helpers:Anim.Mode="SlideDown" helpers:Anim.Show="{Binding IsChatSearchOpen}">
+                        <StackPanel>
+                            <DockPanel Margin="12,7,8,7">
+                                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="11" Padding="8" Margin="2,0,0,0"
+                                        Command="{Binding CloseChatSearchCommand}" />
+                                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE70D;" FontSize="11" Padding="8"
+                                        Command="{Binding ChatSearchNewerCommand}" />
+                                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE70E;" FontSize="11" Padding="8"
+                                        Command="{Binding ChatSearchOlderCommand}" />
+                                <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Padding="8,3" Margin="6,0,4,0" Cursor="Hand"
+                                        Command="{Binding ToggleChatSearchResultsCommand}"
+                                        Visibility="{Binding ChatSearchStatus, Converter={StaticResource NullToVis}}">
+                                    <TextBlock Text="{Binding ChatSearchStatus}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                </Button>
+                                <views:Spinner DockPanel.Dock="Right" Width="16" Height="16" Margin="6,0,6,0"
+                                               Visibility="{Binding IsChatSearching, Converter={StaticResource BoolToVis}}" />
+                                <Grid>
+                                    <TextBox x:Name="ChatSearchInput" Style="{StaticResource SearchBox}" Padding="34,7,10,7" FontSize="13.5"
+                                             Text="{Binding ChatSearchQuery, UpdateSourceTrigger=PropertyChanged}" PreviewKeyDown="ChatSearchInput_PreviewKeyDown" />
+                                    <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}"
+                                               HorizontalAlignment="Left" VerticalAlignment="Center" Margin="11,0,0,0" IsHitTestVisible="False" />
+                                </Grid>
+                            </DockPanel>
+                            <ScrollViewer MaxHeight="280" VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True"
+                                          Visibility="{Binding ShowChatSearchResults, Converter={StaticResource BoolToVis}}">
+                                <ItemsControl x:Name="ChatSearchList" ItemsSource="{Binding ChatSearchResults}" Focusable="False">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border x:Name="Row" Padding="14,7" Cursor="Hand" Background="Transparent">
+                                                <Border.InputBindings>
+                                                    <MouseBinding MouseAction="LeftClick"
+                                                                  Command="{Binding DataContext.OpenChatSearchResultCommand, ElementName=ChatSearchList}" CommandParameter="{Binding}" />
+                                                </Border.InputBindings>
+                                                <StackPanel>
+                                                    <DockPanel>
+                                                        <TextBlock DockPanel.Dock="Right" Text="{Binding DateText}" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="10,0,0,0" />
+                                                        <TextBlock Text="{Binding Sender}" FontWeight="SemiBold" FontSize="12.5" TextTrimming="CharacterEllipsis" />
+                                                    </DockPanel>
+                                                    <TextBlock Text="{Binding Text}" FontSize="13" Foreground="{DynamicResource TextSoftBrush}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                                                </StackPanel>
+                                            </Border>
+                                            <DataTemplate.Triggers>
+                                                <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Row" Property="Background" Value="{DynamicResource HoverBrush}" />
+                                                </Trigger>
+                                            </DataTemplate.Triggers>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </StackPanel>
+                    </Border>
                     <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
                             DataContext="{x:Static vm:NowPlaying.Instance}" Visibility="Collapsed"
                             helpers:Anim.Mode="SlideDown" helpers:Anim.Show="{Binding ShowTopBar}">
@@ -2310,7 +2367,7 @@
                 </DockPanel>
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="16,6" helpers:SmoothScroll.IsEnabled="True">
                     <StackPanel>
-                        <Grid Width="104" Height="104" HorizontalAlignment="Center" Margin="0,6,0,0" Cursor="Hand">
+                        <Grid Width="104" Height="104" HorizontalAlignment="Center" Margin="0,16,0,0" Panel.ZIndex="1" Cursor="Hand">
                             <Grid.InputBindings>
                                 <MouseBinding MouseAction="LeftClick" Command="{Binding OpenAvatarCommand}" />
                             </Grid.InputBindings>
@@ -2322,6 +2379,7 @@
                                     </LinearGradientBrush>
                                 </controls:AvatarView.Ring>
                             </controls:AvatarView>
+                            <controls:PinnedGiftsRing Gifts="{Binding PinnedGifts}" Radius="52" GiftSize="21" />
                         </Grid>
                         <TextBlock helpers:RichText.Text="{Binding NameText}" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"
                                    TextAlignment="Center" TextWrapping="Wrap" Margin="0,12,0,0"

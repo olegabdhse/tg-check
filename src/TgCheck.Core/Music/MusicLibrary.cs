@@ -132,7 +132,7 @@ public sealed class MusicLibrary
 
     // ===================================================================== Плейлисты: выбор с прошлого раза
 
-    public sealed record PlaylistsCache(string Signature, List<MusicPlaylist> Playlists);
+    public sealed record PlaylistsCache(string Signature, List<MusicPlaylist> Playlists, DateTime PickedAt = default);
 
     private string PlaylistsFile => Path.Combine(Directory, "playlists.json");
 
@@ -144,13 +144,46 @@ public sealed class MusicLibrary
 
     public void SavePlaylists(string signature, IEnumerable<MusicPlaylist> playlists)
     {
-        var cache = new PlaylistsCache(signature, playlists.ToList());
+        var cache = new PlaylistsCache(signature, playlists.ToList(), DateTime.UtcNow);
         _ = Task.Run(() =>
         {
             try { File.WriteAllText(PlaylistsFile, JsonSerializer.Serialize(cache)); }
             catch (Exception ex) { Logging.Write($"music playlists save: {ex.Message}"); }
         });
     }
+
+    // ===================================================================== Свои плейлисты и подборки
+
+    private string MyPlaylistsFile => Path.Combine(Directory, "my_playlists.json");
+    private string MixesFile => Path.Combine(Directory, "mixes.json");
+
+    public List<MusicPlaylist> LoadMyPlaylists()
+    {
+        try { return File.Exists(MyPlaylistsFile) ? JsonSerializer.Deserialize<List<MusicPlaylist>>(File.ReadAllText(MyPlaylistsFile)) ?? [] : []; }
+        catch (Exception ex) { Logging.Write($"music my playlists load: {ex.Message}"); return []; }
+    }
+
+    public void SaveMyPlaylists(IEnumerable<MusicPlaylist> playlists)
+    {
+        var list = playlists.ToList();
+        _ = Task.Run(() =>
+        {
+            try { File.WriteAllText(MyPlaylistsFile, JsonSerializer.Serialize(list)); }
+            catch (Exception ex) { Logging.Write($"music my playlists save: {ex.Message}"); }
+        });
+    }
+
+    public MusicMixes.Mixes? LoadMixes()
+    {
+        try { return File.Exists(MixesFile) ? JsonSerializer.Deserialize<MusicMixes.Mixes>(File.ReadAllText(MixesFile)) : null; }
+        catch (Exception ex) { Logging.Write($"music mixes load: {ex.Message}"); return null; }
+    }
+
+    public void SaveMixes(MusicMixes.Mixes mixes) => _ = Task.Run(() =>
+    {
+        try { File.WriteAllText(MixesFile, JsonSerializer.Serialize(mixes)); }
+        catch (Exception ex) { Logging.Write($"music mixes save: {ex.Message}"); }
+    });
 
     /// <summary>Запомнить полку (в фоне) — при следующем открытии она видна сразу.</summary>
     public void SaveShelf(string name, string signature, IEnumerable<MusicTrack> tracks)
