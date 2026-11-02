@@ -207,7 +207,7 @@ public sealed class MediaService
         try
         {
             using var ms = new MemoryStream();
-            await Timed(_client().DownloadFileAsync(doc, ms, thumb), Small);
+            await Timed(_client().DownloadFileAsync(doc, ms, thumb), Small, doc.dc_id);
             await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
             return SKImage.FromEncodedData(ms.ToArray());
         }
@@ -301,7 +301,7 @@ public sealed class MediaService
     private async Task<(byte[]? Bytes, string? Mime)> DownloadToCacheAsync(Document doc, string path)
     {
         using var ms = new MemoryStream();
-        var mime = await Timed(_client().DownloadFileAsync(doc, ms), Small);
+        var mime = await Timed(_client().DownloadFileAsync(doc, ms), Small, doc.dc_id);
         await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
         var bytes = ms.ToArray();
         var tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -315,14 +315,61 @@ public sealed class MediaService
     // Мелкие файлы приходят за секунды: нет ответа 20 с — соединение с медиасервером оборвалось, быстрее повторить.
     private const int Small = 20;
 
-    private static async Task<T> Timed<T>(Task<T> download, int seconds = 60)
+    private async Task<T> Timed<T>(Task<T> download, int seconds = 60, int dc = 0)
     {
+        if (dc > 0) _usedDcs[dc] = 0;
         if (await Task.WhenAny(download, Task.Delay(TimeSpan.FromSeconds(seconds))) != download)
         {
             _ = download.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+            NoteStall(dc);
             throw new TimeoutException("загрузка не ответила за " + seconds + " с");
         }
-        return await download;
+        var result = await download;
+        NoteAnswer();
+        return result;
+    }
+
+    // Соединение с файловым сервером бывает мертво при живом основном: сторож связи проверяет только основное, а повторы шли в тот же
+    // мёртвый канал, и новые файлы минутами не грузились. 3 загрузки без ответа за минуту — пересоздаём соединения с файловыми серверами.
+    // Основное не трогаем: чаты и обновления работают дальше, а библиотека откроет сброшенное соединение при следующем запросе.
+    private const int StallsToHeal = 3;
+    private const long StallWindowMs = 60_000;
+    private readonly ConcurrentDictionary<int, byte> _usedDcs = new();
+    private readonly object _stallLock = new();
+    private int _stalls;
+    private long _firstStall, _lastHeal = -StallWindowMs, _lastAnswer;
+
+    internal void NoteAnswer() => Volatile.Write(ref _lastAnswer, Environment.TickCount64);
+
+    internal void NoteStall(int dc)
+    {
+        if (dc > 0) _usedDcs[dc] = 0;
+        lock (_stallLock)
+        {
+            var now = Environment.TickCount64;
+            if (now - Volatile.Read(ref _lastAnswer) < 20_000) return; // что-то только что пришло — соединение живое, просто медленное: сброс оборвал бы песни и загрузки
+            if (now - _firstStall > StallWindowMs) { _firstStall = now; _stalls = 0; }
+            if (++_stalls < StallsToHeal || now - _lastHeal < StallWindowMs) return;
+            _lastHeal = now;
+            _stalls = 0;
+        }
+        _ = Task.Run(HealFileConnectionsAsync);
+    }
+
+    private async Task HealFileConnectionsAsync()
+    {
+        var client = _client();
+        Logging.Write($"media: загрузки не отвечают — пересоздаём соединения с файловыми серверами (DC {string.Join(", ", _usedDcs.Keys)})");
+        foreach (var dc in _usedDcs.Keys)
+        {
+            try
+            {
+                var target = await client.GetClientForDC(-dc, connect: false).ConfigureAwait(false);
+                if (!ReferenceEquals(target, client)) await target.ResetAsync(resetUser: false, resetSessions: false).ConfigureAwait(false);
+            }
+            catch (Exception ex) { Logging.Write($"media: сброс соединения DC {dc}: {ex.Message}"); }
+        }
+        ForgetPending();
     }
 
     /// <summary>Связь переподключена: незавершённые загрузки старого соединения не ждём — следующий показ скачает заново.</summary>
@@ -738,6 +785,8 @@ public sealed class MediaService
             // Видео истории сам никому не уступает; песни и прочее уступают ему.
             media is StoryInfo ? () => false : () => StoryIsLoading() || PreviewsLoading(),
             () => _cancelledFiles.ContainsKey(doc.id));
+        download.Stalled = NoteStall;
+        download.Answered = NoteAnswer;
         try { download.Start(); }
         catch (Exception ex)
         {
@@ -859,7 +908,7 @@ public sealed class MediaService
         try
         {
             using var ms = new MemoryStream();
-            await Timed(_client().DownloadFileAsync(photo, ms, size, progress), 30);
+            await Timed(_client().DownloadFileAsync(photo, ms, size, progress), 30, photo.dc_id);
             await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
             return ms.ToArray();
         }
@@ -885,7 +934,7 @@ public sealed class MediaService
         try
         {
             using var ms = new MemoryStream();
-            await Timed(_client().DownloadFileAsync(doc, ms, thumb, progress), Small);
+            await Timed(_client().DownloadFileAsync(doc, ms, thumb, progress), Small, doc.dc_id);
             await Task.Yield();
             return ms.ToArray();
         }
@@ -1112,7 +1161,7 @@ public sealed class MediaService
             try
             {
                 using var ms = new MemoryStream();
-                await Timed(_client().DownloadFileAsync(photo.Photo, ms, photo.Photo.LargestPhotoSize));
+                await Timed(_client().DownloadFileAsync(photo.Photo, ms, photo.Photo.LargestPhotoSize), dc: photo.Photo.dc_id);
                 await Task.Yield(); // дальше — в пуле потоков, не в сетевом потоке (иначе ждут обновления)
                 var bytes = ms.ToArray();
                 await File.WriteAllBytesAsync(path, bytes);

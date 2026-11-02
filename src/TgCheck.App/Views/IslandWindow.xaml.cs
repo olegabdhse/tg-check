@@ -322,6 +322,9 @@ public partial class IslandWindow : Window
     /// Подготовить окно заранее (невидимо, за экраном): первое создание окна долгое, и без этого
     /// первое появление островка запаздывало и мелькало не того размера и не на своём месте.
     /// </summary>
+    /// <summary>Программа давно в фоне — освободить скрытое мини-окно.</summary>
+    public void TrimHiddenMini() => _mini?.TrimHidden();
+
     public void Prewarm()
     {
         if (IsVisible) return;

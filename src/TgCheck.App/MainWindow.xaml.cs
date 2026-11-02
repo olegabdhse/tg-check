@@ -26,7 +26,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         // Иконку окна берём из exe (см. ApplyExeIcon): PNG-иконку WPF панель задач не показывает.
         StateChanged += OnStateChanged;
-        IsVisibleChanged += (_, e) => { UpdateOnScreen(); if (e.NewValue is false) TrimMemorySoon(); };
+        IsVisibleChanged += (_, e) => { UpdateOnScreen(); if (e.NewValue is false) TrimMemorySoon(); else OnBackOnScreen(); };
         Activated += (_, _) => { UpdateOnScreen(); if (WindowState != WindowState.Minimized) _island?.HideIsland(); };
         Deactivated += (_, _) => { UpdateOnScreen(); ShowIslandIfAway(); };
         // Кнопка на панели задач появляется при показе окна и берёт иконку exe через оболочку (у нас — пустой значок);
@@ -161,7 +161,7 @@ public partial class MainWindow : Window
         UpdateOnScreen();
         Controls.StickerView.WindowStateChanged();
         if (WindowState == WindowState.Minimized) { ShowIsland(); TrimMemorySoon(); }
-        else _island?.HideIsland();
+        else { _island?.HideIsland(); OnBackOnScreen(); }
     }
 
     // Свернули или убрали в трей — освобождаем память, как Telegram Desktop: сборка мусора и сброс рабочего набора
@@ -173,13 +173,50 @@ public partial class MainWindow : Window
         _trimCts?.Cancel();
         var cts = _trimCts = new CancellationTokenSource();
         try { await Task.Delay(3000, cts.Token); } catch (TaskCanceledException) { return; }
-        if (IsVisible && WindowState != WindowState.Minimized) return; // окно снова на экране — не трогаем
-        await Task.Run(() =>
+        if (IsOnScreen) return; // окно снова на экране — не трогаем
+        await TrimProcessAsync();
+        _awayTicks = 0;
+        _awayTimer ??= CreateAwayTimer();
+        _awayTimer.Start();
+    }
+
+    private bool IsOnScreen => IsVisible && WindowState != WindowState.Minimized;
+
+    // Сборка с уплотнением останавливает программу, в том числе звук: пока играет песня, только отдаём страницы системе.
+    private static Task TrimProcessAsync() => Task.Run(() =>
+    {
+        if (!MusicPlayer.Instance.IsPlaying)
         {
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
             GC.WaitForPendingFinalizers();
-            try { SetProcessWorkingSetSize(System.Diagnostics.Process.GetCurrentProcess().Handle, -1, -1); } catch { }
-        });
+        }
+        try { SetProcessWorkingSetSize(System.Diagnostics.Process.GetCurrentProcess().Handle, -1, -1); } catch { }
+    });
+
+    // Окно не на экране: через 2 минуты убираем и экран открытого чата, дальше раз в 10 минут снова отдаём память — фоновая работа её набирает.
+    private DispatcherTimer? _awayTimer;
+    private int _awayTicks;
+
+    private DispatcherTimer CreateAwayTimer()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(2) };
+        timer.Tick += async (_, _) =>
+        {
+            if (IsOnScreen) { timer.Stop(); return; }
+            if (++_awayTicks % 5 != 1) return;
+            ShellView.Current?.TrimHiddenChats();
+            _island?.TrimHiddenMini();
+            await TrimProcessAsync();
+        };
+        return timer;
+    }
+
+    private void OnBackOnScreen()
+    {
+        if (!IsOnScreen) return;
+        _trimCts?.Cancel();
+        _awayTimer?.Stop();
+        ShellView.Current?.RestoreChat();
     }
 
     [System.Runtime.InteropServices.DllImport("kernel32.dll")]

@@ -18,7 +18,7 @@
                 <TextBlock x:Name="TitleText" FontWeight="SemiBold" FontSize="15" VerticalAlignment="Center" Margin="8,0" TextTrimming="CharacterEllipsis" />
             </DockPanel>
         </Border>
-        <wv2:WebView2 x:Name="Web" Grid.Row="1" DefaultBackgroundColor="{StaticResource SurfaceColor}" />
+        <wv2:WebView2 x:Name="Web" Grid.Row="1" />
         <views:Spinner x:Name="Loading" Grid.Row="1" />
     </Grid>
 </Window>

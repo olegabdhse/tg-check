@@ -100,11 +100,48 @@ public sealed partial class TelegramService : IAsyncDisposable
         if (_xrayStarts.Count == 0) return;
         var all = Task.WhenAll(_xrayStarts);
         if (await Task.WhenAny(all, Task.Delay(8000)) != all) return;
-        if (XrayUrl is null || _clientProxy == XrayUrl) return;
-        _route = 0;
-        Logging.Write("connection: через свой туннель");
+        if (XrayUrl is null) return;
+        await PickWorkingRouteAsync();
+        if (_clientProxy == CurrentProxy) return;
+        Logging.Write($"connection: через {RouteName}");
         await ResetClientAsync(deleteSession: false);
     }
+
+    // Запрос через каждый туннель сразу, ответивший первым — в работу. Туннель принимает соединение и когда сервер недоступен,
+    // поэтому раньше о мёртвом адресе узнавали только по таймауту подключения к Telegram: две попытки по 20 с на каждый способ.
+    // Никто не ответил — сразу следующий способ. Это лишь выбор порядка: ошибка проверки подключиться не мешает.
+    private async Task PickWorkingRouteAsync()
+    {
+        var tunnels = XrayUrls;
+        if (tunnels.Count == 0) return;
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var probes = tunnels.Select(url => ProbeTunnelAsync(url, stop.Token)).ToList();
+        while (probes.Count > 0)
+        {
+            var done = await Task.WhenAny(probes);
+            probes.Remove(done);
+            if (await done is not { } alive) continue;
+            stop.Cancel();
+            _route = Math.Max(0, Routes.ToList().IndexOf(alive));
+            Logging.Write($"connection: туннель {tunnels.ToList().IndexOf(alive) + 1} из {tunnels.Count} ответил за {timer.ElapsedMilliseconds} мс");
+            return;
+        }
+        _route = tunnels.Count % Routes.Count;
+        Logging.Write($"connection: туннели не ответили за {timer.ElapsedMilliseconds} мс, пробуем {RouteName}");
+    }
+
+    private static async Task<string?> ProbeTunnelAsync(string url, CancellationToken stop)
+    {
+        try
+        {
+            using var http = new HttpClient(new SocketsHttpHandler { Proxy = new System.Net.WebProxy(url), UseProxy = true });
+            using var answer = await http.GetAsync("https://api.telegram.org", HttpCompletionOption.ResponseHeadersRead, stop);
+            return url;
+        }
+        catch { return null; }
+    }
+
     private string? CurrentProxy => Routes[_route % Routes.Count];
 
     /// <summary>Как подключены сейчас: «встроенный прокси», «свой прокси», «напрямую».</summary>
@@ -159,8 +196,10 @@ public sealed partial class TelegramService : IAsyncDisposable
                 // Подключаемся из фонового потока: сетевой цикл библиотеки (чтение и разбор всех ответов сервера)
                 // продолжается там, где его запустили, — из потока интерфейса он тормозил окно на каждом крупном ответе.
                 var connect = Task.Run(() => _client.ConnectAsync());
-                if (await Task.WhenAny(connect, Task.Delay(TimeSpan.FromSeconds(20))) != connect)
-                    throw new TimeoutException("Telegram не ответил за 20 секунд.");
+                // Первые попытки — коротко: на рабочем способе подключение занимает секунды; дальше больше времени — вдруг связь просто медленная.
+                var limit = attempt <= 3 ? 12 : 20;
+                if (await Task.WhenAny(connect, Task.Delay(TimeSpan.FromSeconds(limit))) != connect)
+                    throw new TimeoutException($"Telegram не ответил за {limit} секунд.");
                 await connect;
                 break;
             }
@@ -168,9 +207,9 @@ public sealed partial class TelegramService : IAsyncDisposable
             {
                 Logging.Write($"connect attempt {attempt} failed: {ex.GetType().Name}: {ex.Message}");
                 onRetry?.Invoke(attempt + 1);
-                if (attempt % 2 == 0) NextRoute(); // две неудачи подряд — другим способом (прокси / напрямую)
+                NextRoute(); // не вышло — сразу другим способом (туннель, прокси, напрямую)
                 await ResetClientAsync(deleteSession: false);
-                await Task.Delay(TimeSpan.FromSeconds(attempt * 2));
+                await Task.Delay(TimeSpan.FromSeconds(1));
             }
         }
 

@@ -16,7 +16,7 @@ public partial class ChatsView : UserControl
     private object? _lastConversation;
     private readonly Dictionary<ConversationViewModel, ConversationView> _views = [];
     private readonly List<ConversationViewModel> _recent = [];
-    private const int KeepViews = 6;
+    private const int KeepViews = 3; // каждая лента со стикерами и картинками — десятки мегабайт
 
     public ChatsView()
     {
@@ -38,6 +38,36 @@ public partial class ChatsView : UserControl
         if (!SearchBox.IsKeyboardFocusWithin) return;
         ChatList.Focus();
         Keyboard.ClearFocus();
+    }
+
+    /// <summary>
+    /// Окно давно не на экране: готовые экраны чатов, заготовка и модели не нужны — при возврате чат откроется заново (см. <see cref="RestoreChat"/>).
+    /// Экран открытого чата остаётся, если в нём что-то идёт. WPF держит копию всего дерева элементов ещё и вне .NET, для отрисовки,
+    /// поэтому важны сами экраны, а не только данные. При коротком сворачивании не вызывается: чаты грузились бы заново.
+    /// </summary>
+    public void TrimHiddenChats()
+    {
+        var open = _vm?.Conversation;
+        var keepOpen = NowPlaying.Instance.IsActive || open is { IsViewerOpen: true } or { IsRecording: true };
+        foreach (var old in _recent.Where(c => c != open || !keepOpen).ToList())
+        {
+            ConversationsHost.Children.Remove(_views[old]);
+            _views.Remove(old);
+            _recent.Remove(old);
+        }
+        if (_spare is not null)
+        {
+            ConversationsHost.Children.Remove(_spare);
+            _spare = null;
+        }
+        _vm?.TrimHiddenConversations();
+    }
+
+    /// <summary>Окно снова на экране: вернуть экран открытого чата и заготовку следующего.</summary>
+    public void RestoreChat()
+    {
+        if (_vm?.Conversation is { } open && !_views.ContainsKey(open)) ShowConversation();
+        PrepareSpare();
     }
 
     private ConversationView? _spare;

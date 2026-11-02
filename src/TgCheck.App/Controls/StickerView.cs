@@ -91,11 +91,19 @@ public sealed class StickerView : Image
         Unloaded += (_, _) =>
         {
             Active.Remove(this);
-            // Декодер видео-стикера держит память вне .NET — освобождаем, при возвращении на экран запустится заново.
-            if (_video is null) return;
-            _video.Dispose();
-            _video = null;
-            _videoReleased = true;
+            // Декодер видео-стикера и анимация Lottie держат память вне .NET — освобождаем, при возвращении на экран запустятся заново.
+            if (_video is not null)
+            {
+                _video.Dispose();
+                _video = null;
+                _videoReleased = true;
+            }
+            if (_animation is not null && !PlayOnce)
+            {
+                _animation.Dispose();
+                _animation = null;
+                _videoReleased = true;
+            }
         };
         IsVisibleChanged += (_, _) => UpdateActive();
     }
@@ -207,7 +215,7 @@ public sealed class StickerView : Image
     /// <summary>Готовые статичные кадры стикеров/эмодзи (общие для всех контролов), не больше Capacity.</summary>
     private static class FrameCache
     {
-        private const int Capacity = 400;
+        private const int Capacity = 200;
         private static readonly Dictionary<(long, int), ImageSource> Items = [];
         private static readonly Queue<(long, int)> Order = new();
 
@@ -236,7 +244,7 @@ public sealed class StickerView : Image
         });
         lock (JsonCache)
         {
-            if (JsonCache.Count > 150) JsonCache.Clear();
+            if (JsonCache.Count > 30) JsonCache.Clear(); // разобранный Lottie бывает больше мегабайта, а файл и так лежит в кэше на диске
             JsonCache[media.MediaId] = json;
         }
         return json;

@@ -86,6 +86,7 @@ public sealed partial class TelegramService
             {
                 try
                 {
+                    if (attempt == 1) await PickWorkingRouteAsync(); // связь пропала — сразу на тот туннель, что отвечает
                     await ResetClientAsync(deleteSession: false);
                     var client = _client;
                     var connect = Task.Run(() => client.ConnectAsync());
@@ -101,7 +102,7 @@ public sealed partial class TelegramService
                 catch (Exception ex) when (!TgErrors.IsSessionDead(ex))
                 {
                     Logging.Write($"connection: попытка {attempt} не удалась ({ex.Message})");
-                    if (attempt % 3 == 0) NextRoute(); // три неудачи подряд — пробуем другой способ (встроенный прокси / напрямую)
+                    if (attempt % 2 == 0) NextRoute(); // две неудачи подряд — пробуем другой способ (встроенный прокси / напрямую)
                     await Task.Delay(TimeSpan.FromSeconds(Math.Min(30, 2 + attempt * 3)));
                 }
             }

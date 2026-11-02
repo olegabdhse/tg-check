@@ -200,6 +200,12 @@ public partial class ShellView : UserControl
     /// <summary>Открытый экран приложения — окну нужно, чтобы передать ему печать вне полей ввода.</summary>
     public static ShellView? Current { get; private set; }
 
+    /// <summary>Окно давно не на экране — освобождаем готовые экраны чатов.</summary>
+    public void TrimHiddenChats() => ChatsPage.TrimHiddenChats();
+
+    /// <summary>Окно вернулось — возвращаем экран открытого чата.</summary>
+    public void RestoreChat() => ChatsPage.RestoreChat();
+
     /// <summary>Печать вне полей ввода: в чатах — в поле сообщения или в поиск (истории и настройки — не трогаем).</summary>
     public bool RouteTyping(string text)
     {

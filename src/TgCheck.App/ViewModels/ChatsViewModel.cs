@@ -221,6 +221,15 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         return conv;
     }
 
+    /// <summary>Окно убрали: отпускаем модели чатов (в них декодированные картинки), кроме открытых и тех, где что-то не закончено.</summary>
+    public void TrimHiddenConversations()
+    {
+        if (NowPlaying.Instance.IsActive || Conversation is { IsThread: true }) return; // голосовые идут очередью, а ветка ссылается на свой чат
+        foreach (var (key, conv) in _conversations.ToList())
+            if (conv != Conversation && conv != Shell.MiniChat && string.IsNullOrEmpty(conv.Draft) && !conv.HasAttachments && !conv.IsSending && !conv.IsRecording)
+                _conversations.Remove(key);
+    }
+
     public ConversationViewModel? FindConversation(long key) => _conversations.GetValueOrDefault(key);
     public ChatItemViewModel? FindChat(long key) => _byKey.GetValueOrDefault(key);
 

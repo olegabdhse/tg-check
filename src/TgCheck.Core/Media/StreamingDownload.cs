@@ -47,6 +47,12 @@ internal sealed class StreamingDownload
     private long _startedAt;
     private bool _gotData;
 
+    /// <summary>Кусок файла не ответил вовремя (номер дата-центра) — вдруг соединение с файловым сервером мертво.</summary>
+    public Action<int>? Stalled { get; set; }
+
+    /// <summary>Кусок файла пришёл — соединение живое.</summary>
+    public Action? Answered { get; set; }
+
     public StreamingDownload(Func<WTelegram.Client> client, Document doc, string part, string final,
         Func<Task<Document?>> refresh, Func<bool> shouldYield, Func<bool> cancelled)
     {
@@ -268,11 +274,13 @@ internal sealed class StreamingDownload
                     if (first2 != delay) { answered = (Task<Upload_FileBase>)first2; break; }
                     if (wait >= 2) throw new TimeoutException("кусок файла не ответил за минуту");
                     Logging.Write($"stream {_location.id}: кусок {first} не ответил за 20 с — повтор");
+                    Stalled?.Invoke(_dcId);
                     pending.Add(dc.Upload_GetFile(_location, offset, limit));
                 }
                 foreach (var other in pending)
                     if (other != answered) _ = other.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
                 if (await answered is not Upload_File file) throw new IOException("файл отдаётся через CDN");
+                Answered?.Invoke();
                 lock (_lock)
                 {
                     _file!.Position = offset;

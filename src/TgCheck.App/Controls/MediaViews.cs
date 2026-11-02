@@ -371,7 +371,10 @@ internal static class Viewport
 
     private static DispatcherTimer? _collect;
 
-    /// <summary>Плеер убран: его движок вне .NET освобождается только при сборке мусора — запускаем её, когда освобождения затихли.</summary>
+    /// <summary>
+    /// Плеер убран: его движок вне .NET освобождается только при сборке мусора — запускаем её, когда освобождения затихли.
+    /// Только младшие поколения: полная сборка заодно очищает слабый кэш картинок, и аватарки с превью декодировались бы заново.
+    /// </summary>
     public static void PlayerReleased()
     {
         if (_collect is null)
@@ -380,7 +383,7 @@ internal static class Viewport
             _collect.Tick += (_, _) =>
             {
                 _collect.Stop();
-                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false);
+                GC.Collect(1, GCCollectionMode.Forced, blocking: false);
             };
         }
         _collect.Stop();

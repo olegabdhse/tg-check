@@ -16,7 +16,7 @@ public partial class MiniChatWindow : Window
     private bool _closing;
 
     // Готовые ленты последних чатов (как в главном окне): переключение — просто показать другую, без перестройки.
-    private const int KeepViews = 4;
+    private const int KeepViews = 2;
     private readonly Dictionary<ConversationViewModel, ConversationView> _views = [];
     private readonly List<ConversationViewModel> _recent = [];
     private ConversationView? _current;
@@ -89,6 +89,17 @@ public partial class MiniChatWindow : Window
     {
         if (_closing || !IsVisible) return;
         HideNow();
+    }
+
+    /// <summary>Мини-окно скрыто и программа давно в фоне: его готовые ленты и заготовка не нужны, при открытии построятся заново.</summary>
+    public void TrimHidden()
+    {
+        if (IsVisible) return;
+        ChatHost.Children.Clear();
+        _views.Clear();
+        _recent.Clear();
+        _spare = null;
+        _current = null;
     }
 
     /// <summary>Скрыть сразу, без анимации (переход в приложение).</summary>

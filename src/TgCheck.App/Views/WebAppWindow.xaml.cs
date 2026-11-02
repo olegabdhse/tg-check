@@ -36,6 +36,8 @@ public partial class WebAppWindow : Window
         _url = url;
         _openTgLink = openTgLink;
         InitializeComponent();
+        // Цвет темы здесь, а не в разметке: у WebView2 это System.Drawing.Color, а ресурс темы — Media.Color, и в XAML окно падало при открытии.
+        if (TryFindResource("SurfaceColor") is Color surface) Web.DefaultBackgroundColor = System.Drawing.Color.FromArgb(surface.R, surface.G, surface.B);
         Helpers.RichText.SetText(TitleText, title);
         // Размер телефона: мини-приложения рассчитаны на мобильный экран — на ПК не растягиваем на весь монитор.
         var area = SystemParameters.WorkArea;
