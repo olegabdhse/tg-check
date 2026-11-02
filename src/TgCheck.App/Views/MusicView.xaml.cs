@@ -17,10 +17,11 @@ public partial class MusicView : UserControl
             if (e.NewValue is MusicViewModel music)
                 music.PropertyChanged += (_, a) =>
                 {
-                    if (a.PropertyName is nameof(MusicViewModel.IsSearch) or nameof(MusicViewModel.IsChatsPage)) QueueCovers();
+                    if (a.PropertyName is nameof(MusicViewModel.IsSearch) or nameof(MusicViewModel.IsChatsPage) or nameof(MusicViewModel.IsPlaylistPage)) QueueCovers();
                 };
         };
         ChatsPageScroll.IsVisibleChanged += (_, _) => QueueCovers();
+        PlaylistPageScroll.IsVisibleChanged += (_, _) => QueueCovers();
     }
 
     /// <summary>Видно, когда полка не пуста и не идёт поиск (на время поиска — только результаты).</summary>
@@ -33,6 +34,20 @@ public partial class MusicView : UserControl
 
         public object[] ConvertBack(object value, Type[] targetTypes, object? parameter, System.Globalization.CultureInfo culture) =>
             throw new NotSupportedException();
+    }
+
+    // ---- «Для вас» и плейлисты: рядом, пока плиткам хватает места; в узком окне плейлисты уходят вниз
+
+    private const double SideBySideWidth = 1120;
+
+    private void ForYouGrid_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var side = e.NewSize.Width >= SideBySideWidth;
+        Grid.SetColumn(PlaylistsPanel, side ? 1 : 0);
+        Grid.SetRow(PlaylistsPanel, side ? 0 : 1);
+        PlaylistsPanel.Margin = side ? new Thickness(30, 0, 0, 28) : new Thickness(0, 0, 0, 28);
+        PlaylistsColumn.MinWidth = side ? 490 : 0;
+        PlaylistsColumn.Width = side ? new GridLength(2, GridUnitType.Star) : new GridLength(0);
     }
 
     // ---- перемотка, как в плеере под списком чатов
@@ -121,6 +136,7 @@ public partial class MusicView : UserControl
             _coversQueued = false;
             RequestVisibleCovers(PageScroll);
             RequestVisibleCovers(ChatsPageScroll);
+            RequestVisibleCovers(PlaylistPageScroll);
             ReshuffleHiddenShelves();
         });
     }
@@ -132,7 +148,7 @@ public partial class MusicView : UserControl
     private void ReshuffleHiddenShelves()
     {
         if (DataContext is not MusicViewModel music) return;
-        var pageShown = PageScroll.IsVisible && !music.IsSearch && !music.IsChatsPage;
+        var pageShown = PageScroll.IsVisible && !music.IsSearch && !music.IsChatsPage && !music.IsPlaylistPage;
         var view = new Rect(0, 0, PageScroll.ActualWidth, PageScroll.ActualHeight);
         foreach (var shelf in music.Shelves.Where(s => s.Shuffled))
         {

@@ -121,11 +121,14 @@ public partial class IslandWindow : Window
     private void SetMusicOpen(bool open)
     {
         _musicOpen = open;
-        var anim = new DoubleAnimation(open ? 308 : 0, TimeSpan.FromMilliseconds(open ? 240 : 180))
+        DoubleAnimation To(double value) => new(value, TimeSpan.FromMilliseconds(open ? 240 : 180))
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
         };
-        MusicPanel.BeginAnimation(WidthProperty, anim);
+        // У верха и низа экрана плеер разворачивается вширь, у боковой стороны — вниз; другой при этом закрыт (островок могли перетащить).
+        MusicPanel.BeginAnimation(WidthProperty, To(open && !IsSide ? 308 : 0));
+        SidePlayer.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        SideMusicPanel.BeginAnimation(HeightProperty, To(open && IsSide ? SidePlayer.DesiredSize.Height : 0));
         // Развёрнуто — сердечко в панели сразу после круга, значок на круге не нужен.
         HeartBadge.BeginAnimation(OpacityProperty, new DoubleAnimation(open ? 0 : 1, TimeSpan.FromMilliseconds(150)));
         HeartBadge.IsHitTestVisible = !open;
@@ -140,6 +143,9 @@ public partial class IslandWindow : Window
         MusicDivider.Width = IsSide ? 26 : 1;
         MusicDivider.Height = IsSide ? 1 : 26;
         MusicDivider.Margin = IsSide ? new Thickness(0, 6, 0, 4) : new Thickness(6, 0, 4, 0);
+        // Свёрнутая горизонтальная панель имеет нулевую ширину, но высоту 50: у боковой стороны это пустое место внизу капсулы.
+        MusicPanel.Visibility = IsSide ? Visibility.Collapsed : Visibility.Visible;
+        SideMusicPanel.Visibility = IsSide ? Visibility.Visible : Visibility.Collapsed;
         // Капсула «растёт» от своей стороны экрана.
         Pill.RenderTransformOrigin = _edge switch
         {
@@ -148,6 +154,33 @@ public partial class IslandWindow : Window
             "Right" => new Point(1, 0.5),
             _ => new Point(0.5, 0),
         };
+        if (_musicOpen) SetMusicOpen(true); // перетащили открытый плеер к другой стороне
+    }
+
+    private void SideClose_Click(object sender, RoutedEventArgs e) => SetMusicOpen(false);
+
+    // ---- перемотка в вертикальном плеере: сверху вниз, как и название
+
+    private void SideSeekTo(MouseEventArgs e) =>
+        MusicNow.Instance.Seek(Math.Clamp(e.GetPosition(SideSeek).Y / Math.Max(1, SideSeek.ActualHeight), 0, 1));
+
+    private void SideSeek_Down(object sender, MouseButtonEventArgs e)
+    {
+        SideSeek.CaptureMouse();
+        SideSeekTo(e);
+        e.Handled = true;
+    }
+
+    private void SideSeek_Move(object sender, MouseEventArgs e)
+    {
+        if (SideSeek.IsMouseCaptured) SideSeekTo(e);
+    }
+
+    private void SideSeek_Up(object sender, MouseButtonEventArgs e)
+    {
+        if (!SideSeek.IsMouseCaptured) return;
+        SideSeek.ReleaseMouseCapture();
+        e.Handled = true;
     }
 
     /// <summary>Поставить островок к своей стороне экрана, в запомненное место вдоль неё.</summary>
@@ -221,7 +254,7 @@ public partial class IslandWindow : Window
     private void Island_MouseDown(object sender, MouseButtonEventArgs e)
     {
         // В развёрнутом плеере (перемотка и кнопки) удержание не тащит островок.
-        if (e.OriginalSource is DependencyObject d && IslandPlayer.IsAncestorOf(d)) { _dragged = false; return; }
+        if (e.OriginalSource is DependencyObject d && (IslandPlayer.IsAncestorOf(d) || SidePlayer.IsAncestorOf(d))) { _dragged = false; return; }
         _dragged = false;
         _press.Start();
     }

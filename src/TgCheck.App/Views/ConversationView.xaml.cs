@@ -47,7 +47,9 @@ public partial class ConversationView : UserControl
             _compactPanel = value;
             Grid.SetColumn(SidePanel, value ? 0 : 1);
             Grid.SetColumnSpan(SidePanel, value ? 2 : 1);
-            SidePanel.Width = value ? double.NaN : 320;
+            SidePanel.Width = value ? double.NaN : UiSettings.SidePanelWidth;
+            SideResize.Visibility = value ? Visibility.Collapsed : Visibility.Visible;
+            UpdateSidePanelLimit();
             SidePanel.BorderThickness = value ? new Thickness(0) : new Thickness(1, 0, 0, 0);
             Panel.SetZIndex(SidePanel, value ? 10 : 0);
             SideCompactBack.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
@@ -62,9 +64,42 @@ public partial class ConversationView : UserControl
 
     private bool _compactPanel;
 
+    // ---- ширина бокового профиля: нынешние 320 — минимум, чату всегда остаётся место
+    private const double MinSidePanel = 320, MinChatBesidePanel = 400, MinMediaTile = 96, MediaTileGap = 3;
+
+    public static readonly DependencyProperty SideMediaColumnsProperty = DependencyProperty.Register(nameof(SideMediaColumns), typeof(int), typeof(ConversationView), new PropertyMetadata(3));
+    public static readonly DependencyProperty SideMediaTileProperty = DependencyProperty.Register(nameof(SideMediaTile), typeof(double), typeof(ConversationView), new PropertyMetadata(92d));
+
+    /// <summary>Столбцов в сетке медиа бокового профиля: 3 на минимальной ширине, больше — по мере расширения.</summary>
+    public int SideMediaColumns { get => (int)GetValue(SideMediaColumnsProperty); set => SetValue(SideMediaColumnsProperty, value); }
+
+    /// <summary>Высота ячейки: ячейки квадратные при любой ширине.</summary>
+    public double SideMediaTile { get => (double)GetValue(SideMediaTileProperty); set => SetValue(SideMediaTileProperty, value); }
+
+    private void SideMediaGrid_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (e.NewSize.Width <= 0) return;
+        var columns = Math.Max(3, (int)(e.NewSize.Width / MinMediaTile));
+        SideMediaColumns = columns;
+        SideMediaTile = e.NewSize.Width / columns - MediaTileGap;
+    }
+
+    private void SideResize_DragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e) =>
+        SidePanel.Width = Math.Clamp(SidePanel.ActualWidth - e.HorizontalChange, MinSidePanel, SidePanel.MaxWidth);
+
+    private void SideResize_DragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e) =>
+        UiSettings.SidePanelWidth = SidePanel.Width;
+
+    private void UpdateSidePanelLimit() =>
+        SidePanel.MaxWidth = _compactPanel ? double.PositiveInfinity : Math.Max(MinSidePanel, ActualWidth - MinChatBesidePanel);
+
     public ConversationView()
     {
         InitializeComponent();
+        SidePanel.Width = UiSettings.SidePanelWidth;
+        SizeChanged += (_, _) => UpdateSidePanelLimit();
+        // Ширина общая для всех чатов: другой чат могли открыть и растянуть, пока этот был скрыт.
+        IsVisibleChanged += (_, e) => { if (e.NewValue is true && !_compactPanel) SidePanel.Width = UiSettings.SidePanelWidth; };
         DataContextChanged += OnDataContextChanged;
         Unloaded += (_, _) => { Detach(); VideoPlayer.Stop(); _videoTimer.Stop(); MusicNow.Instance.Resume(MusicNow.Video); };
         Loaded += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.Input, () => Composer.Focus());

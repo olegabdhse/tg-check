@@ -20,6 +20,7 @@ public static class UiSettings
         public bool SoundOff { get; set; }
         public bool ArchiveNotificationsOff { get; set; }
         public bool HideStories { get; set; }
+        public double? SidePanelWidth { get; set; }
         public string? Theme { get; set; }
         public string? IslandEdge { get; set; }
         public List<long>? RecentSearch { get; set; }
@@ -103,6 +104,9 @@ public static class UiSettings
 
     /// <summary>Полоса историй над списком чатов.</summary>
     public static bool ShowStories { get => !_data.HideStories; set { _data.HideStories = !value; Save(); } }
+
+    /// <summary>Ширина бокового профиля в чате (растягивается мышью).</summary>
+    public static double SidePanelWidth { get => _data.SidePanelWidth ?? 320; set { _data.SidePanelWidth = value; Save(); } }
 
     /// <summary>Тема оформления (см. AppTheme); null — по умолчанию.</summary>
     public static string? Theme { get => _data.Theme; set { _data.Theme = value; Save(); } }

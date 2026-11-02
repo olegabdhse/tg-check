@@ -5,6 +5,9 @@ using TgCheck.Core.Services;
 
 namespace TgCheck.Core.Music;
 
+/// <summary>Плейлист из каталога.</summary>
+public sealed record MusicPlaylist(long Id, string Title, int TrackCount, string? Cover, string? CoverBig);
+
 /// <summary>
 /// Deezer без ключей: огромный каталог — обложки и «похожие исполнители» (без входа даёт только 30 с превью).
 /// Все запросы — в фоне, с ограничением по времени; ответ разбирается вне потока интерфейса.
@@ -105,10 +108,6 @@ public static class MusicCatalog
         Data(await GetJsonAsync($"{Deezer}/artist/{artistId}/related?limit={limit}", ct))
             .Select(a => ((long)Num(a, "id"), Str(a, "name") ?? "")).Where(a => a.Item1 > 0).ToList();
 
-    /// <summary>Трек заново — ссылка на превью у Deezer живёт ограниченное время.</summary>
-    public static async Task<string?> DeezerPreviewAsync(string id, CancellationToken ct = default) =>
-        await GetJsonAsync($"{Deezer}/track/{id}", ct) is { } t ? Str(t, "preview") : null;
-
     /// <summary>Обложка альбома для песни без своей обложки (песни Telegram): (маленькая, крупная).</summary>
     public static async Task<(string Small, string Big)?> FindCoverAsync(string artist, string title, CancellationToken ct = default)
     {
@@ -124,14 +123,52 @@ public static class MusicCatalog
         return best is { CoverUrl: { } s, CoverBigUrl: { } b } ? (s, b) : null;
     }
 
-    private static List<MusicTrack> DeezerTracks(JsonElement? root)
+    // ---- плейлисты
+
+    /// <summary>Популярные плейлисты Deezer.</summary>
+    public static async Task<IReadOnlyList<MusicPlaylist>> DeezerChartPlaylistsAsync(int limit = 4, CancellationToken ct = default) =>
+        DeezerPlaylists(await GetJsonAsync($"{Deezer}/chart/0/playlists?limit={limit}", ct));
+
+    public static async Task<IReadOnlyList<MusicPlaylist>> DeezerSearchPlaylistsAsync(string query, int limit = 4, CancellationToken ct = default) =>
+        DeezerPlaylists(await GetJsonAsync($"{Deezer}/search/playlist?q={Uri.EscapeDataString(query)}&limit={limit}", ct));
+
+    /// <summary>Плейлисты, в которых есть этот исполнитель (без страновых чартов вроде «Top Estonia»).</summary>
+    public static async Task<IReadOnlyList<MusicPlaylist>> DeezerArtistPlaylistsAsync(string artist, int limit = 25, CancellationToken ct = default)
+    {
+        if (await DeezerFindArtistAsync(artist, ct).ConfigureAwait(false) is not { } found) return [];
+        return DeezerPlaylists(await GetJsonAsync($"{Deezer}/artist/{found.Id}/playlists?limit={limit}", ct))
+            .Where(p => !p.Title.StartsWith("Top ", StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+
+    private static Dictionary<string, long>? _genreIds;
+
+    /// <summary>Популярные плейлисты жанра (имя — как в альбомах Deezer: «Rap/Hip Hop»).</summary>
+    public static async Task<IReadOnlyList<MusicPlaylist>> DeezerGenrePlaylistsAsync(string genre, int limit = 8, CancellationToken ct = default)
+    {
+        _genreIds ??= Data(await GetJsonAsync($"{Deezer}/genre", ct)).GroupBy(g => Str(g, "name") ?? "").ToDictionary(g => g.Key, g => (long)Num(g.First(), "id"), StringComparer.OrdinalIgnoreCase);
+        return _genreIds.TryGetValue(genre, out var id) ? DeezerPlaylists(await GetJsonAsync($"{Deezer}/chart/{id}/playlists?limit={limit}", ct)) : [];
+    }
+
+    /// <summary>Тот же плейлист с числом песен (в списке плейлистов исполнителя его нет).</summary>
+    public static async Task<MusicPlaylist> DeezerPlaylistWithCountAsync(MusicPlaylist playlist, CancellationToken ct = default) =>
+        await GetJsonAsync($"{Deezer}/playlist/{playlist.Id}?limit=1", ct) is { } full ? playlist with { TrackCount = (int)Num(full, "nb_tracks") } : playlist;
+
+    /// <summary>Песни плейлиста. Берём и недоступные у Deezer: сами файлы ищутся в Telegram, от Deezer нужны только название и обложка.</summary>
+    public static async Task<IReadOnlyList<MusicTrack>> DeezerPlaylistTracksAsync(long id, int limit = 100, CancellationToken ct = default) =>
+        DeezerTracks(await GetJsonAsync($"{Deezer}/playlist/{id}/tracks?limit={limit}", ct), onlyPlayable: false);
+
+    private static List<MusicPlaylist> DeezerPlaylists(JsonElement? root) =>
+        Data(root).Select(p => new MusicPlaylist((long)Num(p, "id"), Str(p, "title") ?? "", (int)Num(p, "nb_tracks"), Str(p, "picture_medium"), Str(p, "picture_big")))
+            .Where(p => p.Id > 0 && p.Title.Length > 0).ToList();
+
+    private static List<MusicTrack> DeezerTracks(JsonElement? root, bool onlyPlayable = true)
     {
         var list = new List<MusicTrack>();
         foreach (var t in Data(root))
         {
-            if (t.TryGetProperty("readable", out var r) && r.ValueKind == JsonValueKind.False) continue;
+            if (onlyPlayable && t.TryGetProperty("readable", out var r) && r.ValueKind == JsonValueKind.False) continue;
             var id = Num(t, "id");
-            if (id <= 0 || Str(t, "preview") is not { Length: > 0 }) continue;
+            if (id <= 0 || (onlyPlayable && Str(t, "preview") is not { Length: > 0 })) continue;
             string? artist = null, small = null, big = null, album = null;
             long artistId = 0;
             if (t.TryGetProperty("artist", out var a)) { artist = Str(a, "name"); artistId = (long)Num(a, "id"); }

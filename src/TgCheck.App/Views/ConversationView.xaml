@@ -2386,16 +2386,16 @@
                         <views:Spinner Width="20" Height="20" Margin="0,8"
                                        Visibility="{Binding DataContext.IsSharedLoading, ElementName=Root, Converter={StaticResource BoolToVis}}" />
                         <!-- Сетка фото/видео -->
-                        <ItemsControl ItemsSource="{Binding DataContext.SharedItems, ElementName=Root}"
+                        <ItemsControl x:Name="SideMediaGrid" ItemsSource="{Binding DataContext.SharedItems, ElementName=Root}" SizeChanged="SideMediaGrid_SizeChanged"
                                       Visibility="{Binding DataContext.SharedIsGrid, ElementName=Root, Converter={StaticResource BoolToVis}}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <UniformGrid Columns="3" VerticalAlignment="Top" />
+                                    <UniformGrid Columns="{Binding SideMediaColumns, ElementName=Root}" VerticalAlignment="Top" />
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="{x:Type vm:MessageViewModel}">
-                                    <Button Style="{StaticResource BareButton}" Height="92" Margin="1.5"
+                                    <Button Style="{StaticResource BareButton}" Height="{Binding SideMediaTile, ElementName=Root}" Margin="1.5"
                                             Command="{Binding DataContext.OpenMediaCommand, ElementName=Root}" CommandParameter="{Binding}"
                                             Tag="{Binding DataContext, ElementName=Root}" ContextMenu="{StaticResource SharedItemMenu}">
                                         <Grid helpers:RoundClip.Radius="6">
@@ -2470,6 +2470,14 @@
                     <Button Style="{StaticResource PrimaryButton}" Command="{Binding DataContext.SideWriteCommand, ElementName=Root}"
                             Content="Написать сообщение" />
                 </Border>
+                <!-- За левый край панель можно растянуть -->
+                <Thumb x:Name="SideResize" Grid.RowSpan="3" HorizontalAlignment="Left" Width="6" Cursor="SizeWE" DragDelta="SideResize_DragDelta" DragCompleted="SideResize_DragCompleted">
+                    <Thumb.Template>
+                        <ControlTemplate TargetType="Thumb">
+                            <Border Background="Transparent" />
+                        </ControlTemplate>
+                    </Thumb.Template>
+                </Thumb>
             </Grid>
         </Border>
 

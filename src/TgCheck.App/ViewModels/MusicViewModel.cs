@@ -19,7 +19,7 @@ public sealed partial class MusicTrackViewModel(MusicTrack track, IList<MusicTra
 
     public string Title => Track.Title;
     public string Artist => Track.Artist.Length > 0 ? Track.Artist : "Неизвестный исполнитель";
-    public string DurationText => Track.Duration > 0 && !Track.IsPreview ? Fmt.Duration(Track.Duration) : "";
+    public string DurationText => Track.Duration > 0 ? Fmt.Duration(Track.Duration) : "";
     public string SourceText => Track.Source switch
     {
         MusicSource.Telegram => "Telegram",
@@ -28,8 +28,8 @@ public sealed partial class MusicTrackViewModel(MusicTrack track, IList<MusicTra
         _ => "Deezer",
     };
     public Brush CoverBrush { get; } = MessageViewModel.GradientFor(track.Title, track.Artist);
-    /// <summary>Плашка источника — только не у песен Telegram (их теперь большинство).</summary>
-    public bool ShowSource => Track.Source != MusicSource.Telegram;
+    /// <summary>Плашка источника — только у ботов: песни Telegram (их большинство) и каталога (файл всё равно из Telegram) без неё.</summary>
+    public bool ShowSource => Track.Source is not (MusicSource.Telegram or MusicSource.Deezer);
     public string Initial => Track.Title.Length > 0 ? char.ToUpper(Track.Title[0]).ToString() : "♪";
 
     [ObservableProperty] private bool _isCurrent;
@@ -82,6 +82,53 @@ public sealed partial class MusicTrackViewModel(MusicTrack track, IList<MusicTra
     {
         _coverRequested = false;
         RequestCover();
+    }
+}
+
+/// <summary>Плейлист на полке: обложка грузится, когда плитка появилась на экране.</summary>
+public sealed class MusicPlaylistViewModel(MusicPlaylist playlist) : ObservableObject
+{
+    public MusicPlaylist Playlist { get; } = playlist;
+    public string Title => Playlist.Title;
+    public string CountText => Playlist.TrackCount > 0 ? $"{Playlist.TrackCount} {Fmt.Plural(Playlist.TrackCount, "песня", "песни", "песен")}" : "";
+    public Brush CoverBrush { get; } = MessageViewModel.GradientFor(playlist.Title, "");
+
+    private ImageSource? _cover;
+    private bool _coverRequested;
+
+    public ImageSource? Cover
+    {
+        get
+        {
+            if (!_coverRequested)
+            {
+                _coverRequested = true;
+                _ = LoadCoverAsync();
+            }
+            return _cover;
+        }
+    }
+
+    private async Task LoadCoverAsync()
+    {
+        _cover = await MusicCovers.LoadAsync(Playlist.Cover ?? Playlist.CoverBig, 220);
+        if (_cover is not null) Anim.Ui(() => OnPropertyChanged(nameof(Cover)));
+    }
+}
+
+/// <summary>Полка плейлистов: популярные на главной, найденные в поиске.</summary>
+public sealed partial class MusicPlaylistShelf(string title, string subtitle) : ObservableObject
+{
+    public string Title { get; } = title;
+    public string Subtitle { get; } = subtitle;
+    public ObservableCollection<MusicPlaylistViewModel> Items { get; } = [];
+    public bool HasItems => Items.Count > 0;
+
+    public void Fill(IEnumerable<MusicPlaylist> playlists)
+    {
+        Items.Clear();
+        foreach (var p in playlists) Items.Add(new MusicPlaylistViewModel(p));
+        OnPropertyChanged(nameof(HasItems));
     }
 }
 
@@ -221,7 +268,7 @@ public sealed partial class MusicViewModel : ObservableObject
         MusicNow.SetLiked = SetLikedAsync;
         _ = LoadFavoritesAsync();
         // Послушали что-то (и в чатах тоже) — история и «Для вас» обновляются.
-        _library.Changed += () => Anim.Ui(() => { RefreshHistory(); if (_loaded) RequestNext(); });
+        _library.Changed += () => Anim.Ui(() => { RefreshHistory(); if (_loaded) { RequestNext(); _ = RefreshPlaylistsAsync(); } });
         MusicPlayer.Instance.Ended += key => Anim.Ui(() => { if (key == _current?.Track.Key) _ = NextAsync(auto: true); });
         MusicNow.Instance.PropertyChanged += (_, e) =>
         {
@@ -243,7 +290,126 @@ public sealed partial class MusicViewModel : ObservableObject
     /// <summary>«Для вас»: 4 песни сеткой по семи последним прослушанным — перестраивается после каждой песни.</summary>
     public MusicShelf NextForYou { get; } = new("Для вас", "По последним песням");
 
-    private IEnumerable<MusicShelf> AllShelves => [NextForYou, .. Shelves, .. SearchShelves, ChatsPage];
+    private IEnumerable<MusicShelf> AllShelves => [NextForYou, .. Shelves, .. SearchShelves, ChatsPage, PlaylistPage];
+
+    // ===================================================================== Плейлисты
+
+    private const int PlaylistsShown = 4;
+    public MusicPlaylistShelf Playlists { get; } = new("Плейлисты", "");
+    public MusicPlaylistShelf FoundPlaylists { get; } = new("Плейлисты", "Подборки по вашему запросу");
+    public bool ShowFoundPlaylists => IsSearch && FoundPlaylists.HasItems;
+
+    /// <summary>Открытый плейлист: страница со списком песен.</summary>
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsPlaylistPage))] private MusicPlaylistViewModel? _openedPlaylist;
+    public bool IsPlaylistPage => OpenedPlaylist is not null;
+    public MusicShelf PlaylistPage { get; } = new("Плейлист");
+    private CancellationTokenSource? _playlistCts;
+
+
+    private string? _playlistSeeds;
+    private CancellationTokenSource? _playlistPickCts;
+
+    // Плейлисты, в которых реально есть исполнители последних песен (и любимые): поиск по слову в названии находил «Pop México» вместо своего.
+    // По одному от каждого исполнителя, чтобы подборка была разной; не хватило — чарт основного жанра, потом общий. Выбор с прошлого раза виден
+    // сразу, а подходящие плейлисты остаются на месте: от каждой новой песни полка не мигает. Песни плейлиста грузятся только при открытии.
+    private async Task RefreshPlaylistsAsync()
+    {
+        if (!Playlists.HasItems && _library.LoadPlaylists() is { } saved)
+        {
+            Playlists.Fill(saved.Playlists);
+            _playlistSeeds = saved.Signature;
+        }
+        _playlistPickCts?.Cancel();
+        var cts = _playlistPickCts = new CancellationTokenSource();
+        var ct = cts.Token;
+        try
+        {
+            var recent = _library.History.Take(7).Select(e => MusicTrack.MainArtist(e.Track)).Where(a => a.Length > 0).ToList();
+            var artists = recent.Concat(_library.TopArtists(4)).DistinctBy(MusicTrack.Normalize).Take(8).ToList();
+            var seeds = string.Join("|", artists.Select(MusicTrack.Normalize));
+            if (seeds == _playlistSeeds) return;
+            var perArtist = await Task.WhenAll(artists.Select(a => MusicCatalog.DeezerArtistPlaylistsAsync(a, 25, ct)));
+            // Чем больше ваших исполнителей в плейлисте, тем он выше у каждого из них.
+            var hits = perArtist.SelectMany(l => l).GroupBy(p => p.Id).ToDictionary(g => g.Key, g => g.Count());
+            var candidates = perArtist.Select(l => l.OrderByDescending(p => hits[p.Id]).ToList()).ToList();
+            // Что уже показано и всё ещё подходит, остаётся.
+            var picked = Playlists.Items.Select(v => v.Playlist).Where(p => hits.ContainsKey(p.Id)).Take(PlaylistsShown).ToList();
+            bool Add(MusicPlaylist p)
+            {
+                if (picked.Count >= PlaylistsShown || picked.Any(x => x.Id == p.Id)) return false;
+                picked.Add(p);
+                return true;
+            }
+            for (var progress = true; progress && picked.Count < PlaylistsShown;)
+            {
+                progress = false;
+                foreach (var list in candidates)
+                    if (list.FirstOrDefault(p => picked.All(x => x.Id != p.Id)) is { } next) progress |= Add(next);
+            }
+            if (picked.Count < PlaylistsShown)
+            {
+                var genres = await Task.WhenAll(recent.DistinctBy(MusicTrack.Normalize).Select(a => _library.ArtistGenreAsync(a, ct)));
+                var main = genres.Where(g => g.Length > 0).GroupBy(g => g).OrderByDescending(g => g.Count()).Select(g => g.Key).FirstOrDefault();
+                if (main is not null)
+                    foreach (var p in await MusicCatalog.DeezerGenrePlaylistsAsync(main, PlaylistsShown * 2, ct)) Add(p);
+            }
+            if (picked.Count < PlaylistsShown)
+                foreach (var p in await MusicCatalog.DeezerChartPlaylistsAsync(PlaylistsShown * 2, ct)) Add(p);
+            // В списке плейлистов исполнителя числа песен нет — спрашиваем только у выбранных.
+            var complete = await Task.WhenAll(picked.Select(p => p.TrackCount > 0 ? Task.FromResult(p) : MusicCatalog.DeezerPlaylistWithCountAsync(p, ct)));
+            if (ct.IsCancellationRequested || complete.Length == 0) return;
+            _playlistSeeds = seeds;
+            _library.SavePlaylists(seeds, complete);
+            if (!complete.Select(p => p.Id).SequenceEqual(Playlists.Items.Select(v => v.Playlist.Id))) Playlists.Fill(complete);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { Logging.Write($"music playlists: {ex.Message}"); }
+    }
+
+    private async Task SearchPlaylistsAsync(string q, CancellationToken ct)
+    {
+        var found = await MusicCatalog.DeezerSearchPlaylistsAsync(q, ct: ct);
+        if (ct.IsCancellationRequested) return;
+        FoundPlaylists.Fill(found);
+        OnPropertyChanged(nameof(ShowFoundPlaylists));
+    }
+
+    [RelayCommand]
+    private async Task OpenPlaylist(MusicPlaylistViewModel? playlist)
+    {
+        if (playlist is null) return;
+        _playlistCts?.Cancel();
+        var cts = _playlistCts = new CancellationTokenSource();
+        OpenedPlaylist = playlist;
+        PlaylistPage.Begin();
+        IReadOnlyList<MusicTrack> tracks;
+        try { tracks = await MusicCatalog.DeezerPlaylistTracksAsync(playlist.Playlist.Id, ct: cts.Token); }
+        catch (OperationCanceledException) { return; } // закрыли или открыли другой
+        if (cts.IsCancellationRequested) return;
+        PlaylistPage.Fill(tracks);
+        SetCurrentMarks();
+    }
+
+    [RelayCommand]
+    private void ClosePlaylist()
+    {
+        _playlistCts?.Cancel();
+        OpenedPlaylist = null;
+    }
+
+    [RelayCommand]
+    private Task PlayPlaylist() => PlaylistPage.Items.Count > 0 ? Play(PlaylistPage.Items[0]) : Task.CompletedTask;
+
+    [RelayCommand]
+    private Task ShufflePlaylist()
+    {
+        if (PlaylistPage.Items.Count == 0) return Task.CompletedTask;
+        StopSearch();
+        _queue = [.. PlaylistPage.Items.OrderBy(_ => Random.Shared.Next())];
+        _index = 0;
+        QueueTitle = OpenedPlaylist?.Title;
+        return PlayCurrentAsync();
+    }
 
     private CancellationTokenSource? _nextCts;
     private string? _nextSeeds;
@@ -437,6 +603,7 @@ public sealed partial class MusicViewModel : ObservableObject
         }
         else RequestNext();
         _ = LoadHomeAsync();
+        _ = RefreshPlaylistsAsync();
     }
 
     private void ShowCachedShelves()
@@ -550,7 +717,7 @@ public sealed partial class MusicViewModel : ObservableObject
 
     // ===================================================================== Поиск
 
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsSearch))] private string _query = "";
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsSearch), nameof(ShowFoundPlaylists))] private string _query = "";
     [ObservableProperty] private bool _isSearchLoading;
     public bool IsSearch => Query.Trim().Length > 0;
 
@@ -583,6 +750,7 @@ public sealed partial class MusicViewModel : ObservableObject
         try { await Task.Delay(900, ct); } // допечатали — тогда ищем: каждый лишний запрос к ботам приближает FLOOD_WAIT
         catch (TaskCanceledException) { return; }
         IsSearchLoading = true;
+        _ = SearchPlaylistsAsync(q, ct);
         FoundHistory.Fill(_library.History.Select(e => e.Track).Where(t => Matches(t, q)));
         FoundBots.Begin();
         FoundTelegram.Begin();
@@ -835,12 +1003,10 @@ public sealed partial class MusicViewModel : ObservableObject
     // Что уже звучало за этот запуск — подбор его не повторяет (та же песня из другого канала — тоже).
     private readonly List<MusicTrack> _played = [];
     private int _failures;
-    // Трек Deezer → его полная версия в Telegram (null — не нашлась).
-    private readonly Dictionary<string, MessageItem?> _fullVersions = [];
 
     /// <summary>Откуда играет: «Подбор для вас», «Музыка из ваших чатов»…</summary>
     [ObservableProperty] private string? _queueTitle;
-    /// <summary>Пояснение к треку: «Полная версия из Telegram» / «Фрагмент 30 с».</summary>
+    /// <summary>Пояснение к треку: «Из Telegram», «Через @бот».</summary>
     [ObservableProperty] private string? _playingNote;
     [ObservableProperty] private string? _nextUpText;
 
@@ -865,6 +1031,7 @@ public sealed partial class MusicViewModel : ObservableObject
         _index = Math.Max(0, list.IndexOf(vm));
         QueueTitle = AllShelves.FirstOrDefault(s => ReferenceEquals(s.Items, vm.List))?.Title
             ?? (ReferenceEquals(vm.List, History) ? "Вы слушали" : null);
+        if (ReferenceEquals(vm.List, PlaylistPage.Items)) QueueTitle = OpenedPlaylist?.Title;
         return PlayCurrentAsync();
     }
 
@@ -1039,21 +1206,13 @@ public sealed partial class MusicViewModel : ObservableObject
                     PlayingNote = $"Через @{t.BotName}";
                     break;
                 default:
-                    // Из истории (Deezer, Audius): полная версия в Telegram, если есть в чатах и каналах; иначе у Deezer — фрагмент.
-                    if (await FullVersionAsync(t) is { } full)
-                    {
-                        if (_requested != vm) return;
-                        await PlayTelegramAsync(t, full);
-                        PlayingNote = "Полная версия из Telegram";
-                    }
-                    else
-                    {
-                        if (t.Source != MusicSource.Deezer) throw new IOException("Песня не нашлась в Telegram.");
-                        var preview = await MusicCatalog.DeezerPreviewAsync(t.Id) ?? throw new IOException("Трек недоступен.");
-                        if (_requested != vm) return;
-                        await Task.Run(() => MusicPlayer.Instance.Play(t.Key, preview));
-                        PlayingNote = "Фрагмент 30 с · полной версии в Telegram не нашлось";
-                    }
+                    // Трек каталога (плейлист, история): сам файл только из Telegram — чаты и каналы, потом боты. Фрагментов не играем.
+                    var full = await FindFullAsync(t) ?? throw new IOException("Песня не нашлась в Telegram.");
+                    if (_requested != vm) return;
+                    t.Song ??= full.Song;
+                    if (full.Song is { } fullFile) await PlayTelegramAsync(t, fullFile);
+                    else await Task.Run(() => MusicPlayer.Instance.Play(t.Key, full.StreamUrl ?? throw new IOException("У песни нет файла.")));
+                    PlayingNote = full.Source == MusicSource.Bot ? $"Через @{full.BotName}" : "Из Telegram";
                     break;
             }
             if (_requested != vm) return;
@@ -1073,7 +1232,7 @@ public sealed partial class MusicViewModel : ObservableObject
             Logging.Write($"music play {t.Key}: {ex.Message}");
             // Не играет — убрать из списка и дальше (но не крутимся бесконечно на сломанном списке).
             DropFailed(vm);
-            if (++_failures <= 3 && _index < _queue.Count)
+            if (++_failures <= 8 && _index < _queue.Count)
             {
                 await PlayCurrentAsync();
                 return;
@@ -1209,20 +1368,37 @@ public sealed partial class MusicViewModel : ObservableObject
         await Task.Run(() => MusicPlayer.Instance.PlayStream(t.Key, stream));
     }
 
-    private async Task<MessageItem?> FullVersionAsync(MusicTrack t)
+    // Полная версия трека каталога: чаты и каналы (не дольше 5 с), потом все боты разом — первый ответ с той же песней (не дольше 15 с).
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, MusicTrack> _fullOf = new();
+
+    private async Task<MusicTrack?> FindFullAsync(MusicTrack t)
     {
-        if (_fullVersions.TryGetValue(t.Id, out var known)) return known;
-        MessageItem? found = null;
+        if (_fullOf.TryGetValue(t.Key, out var known)) return known;
+        var query = $"{MusicTrack.MainArtist(t)} {t.Title}".Trim();
+        MusicTrack? found = null;
         try
         {
-            var search = _tg.FindFullSongAsync(t.Artist, t.Title);
-            // Поиск не дольше 5 секунд — иначе сразу фрагмент.
-            if (await Task.WhenAny(search, Task.Delay(5000)) == search) found = await search;
+            var chats = _tg.SearchMusicAsync(query, 10);
+            if (await Task.WhenAny(chats, Task.Delay(5000)) == chats)
+                found = (await chats).Select(MusicTrack.FromTelegram).Where(MusicTrack.IsSong).FirstOrDefault(c => c.Duration >= 60 && MusicTrack.SameSong(c, t));
+            if (found is null)
+            {
+                using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                var answer = new TaskCompletionSource<MusicTrack?>(TaskCreationOptions.RunContinuationsAsynchronously);
+                var bots = _tg.SearchAllBotsAsync(query, maxBots: 12, ct: stop.Token, onBot: (_, songs) =>
+                {
+                    if (songs.FirstOrDefault(s => s.Duration is 0 or >= 60 && MusicTrack.SameSong(s, t)) is { } song) answer.TrySetResult(song);
+                });
+                await Task.WhenAny(answer.Task, bots, Task.Delay(15_000));
+                stop.Cancel();
+                if (answer.Task.IsCompletedSuccessfully) found = answer.Task.Result;
+            }
         }
-        catch (Exception ex) { Logging.Write($"music full: {ex.Message}"); }
-        _fullVersions[t.Id] = found;
+        catch (Exception ex) { Logging.Write($"music full song: {ex.Message}"); }
+        if (found is not null) _fullOf[t.Key] = found;
         return found;
     }
+
 
     private void SetCurrent(MusicTrackViewModel vm)
     {

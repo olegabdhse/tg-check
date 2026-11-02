@@ -22,6 +22,7 @@ public sealed class MusicPlayer
     private VlcPlayer? _player;
     private Media? _media;
     private Stream? _source;
+    private StreamMediaInput? _input;
     private WaveOutEvent? _output;
     private BufferedWaveProvider? _buffer;
     private Timer? _timer;
@@ -101,9 +102,8 @@ public sealed class MusicPlayer
                 BufferDuration = TimeSpan.FromSeconds(3),
                 DiscardOnBufferOverflow = true,
             };
-            _output = new WaveOutEvent { DesiredLatency = 150 };
-            _output.Init(new LevelMeter(_buffer.ToSampleProvider(), (level, bass) => { Level = level; Bass = bass; }));
-            _output.Play();
+            _paused = false;
+            StartOutput();
 
             _player = new VlcPlayer(vlc);
             // Звук — нам: PCM 16 бит стерео, дальше сами выводим и меряем громкость.
@@ -115,7 +115,8 @@ public sealed class MusicPlayer
             _player.Paused += OnVlcState;
             _player.Stopped += OnVlcState;
             _player.LengthChanged += (_, e) => _lengthMs = e.Length;
-            _media = source is not null ? new Media(vlc, new StreamMediaInput(source)) : new Media(vlc, path!, path!.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? FromType.FromLocation : FromType.FromPath);
+            _input = source is not null ? new StreamMediaInput(source) : null;
+            _media = _input is not null ? new Media(vlc, _input) : new Media(vlc, path!, path!.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? FromType.FromLocation : FromType.FromPath);
             _media.AddOption(":no-video"); // только звук: вшитую в песню обложку VLC иначе показывал в своём окне (Direct3D11 output)
             if (source is null && path!.StartsWith("http", StringComparison.OrdinalIgnoreCase)) _media.AddOption(":network-caching=500"); // по сети — начинать играть быстрее
             _source = source;
@@ -138,7 +139,89 @@ public sealed class MusicPlayer
         Notify();
     }
 
+    // ---- вывод звука
+    // Устройство пропадает: после сна его какое-то время нет (NoDriver), наушники отключили. Вывод пересоздаётся, пока устройство не вернётся.
+    private const int OutputRetries = 40;
+    private bool _recoveringOutput;
+
+    private MusicPlayer()
+    {
+        AudioDeviceWatcher.DefaultOutputChanged += OnDefaultOutputChanged;
+        AudioDeviceWatcher.Start();
+    }
+
+    // Сменилось устройство по умолчанию — переводим звук на него, песня продолжается с того же места.
+    private void OnDefaultOutputChanged()
+    {
+        lock (_lock)
+        {
+            if (_player is null || _recoveringOutput) return;
+            DisposeOutput(_output);
+            _output = null;
+            StartOutput();
+        }
+        Logging.Write("music: звук переведён на устройство по умолчанию");
+    }
+
+    // Под _lock. Не вышло — песня продолжает идти, а вывод восстанавливается в фоне.
+    private void StartOutput()
+    {
+        if (_buffer is not { } buffer) return;
+        var output = new WaveOutEvent { DesiredLatency = 150 };
+        try
+        {
+            output.PlaybackStopped += (_, e) => { if (e.Exception is { } ex) OnOutputFailed(output, ex); };
+            output.Init(new LevelMeter(buffer.ToSampleProvider(), (level, bass) => { Level = level; Bass = bass; }));
+            if (!_paused) output.Play();
+            _output = output;
+        }
+        catch (Exception ex)
+        {
+            DisposeOutput(output);
+            OnOutputFailed(null, ex);
+        }
+    }
+
+    private static void DisposeOutput(WaveOutEvent? output)
+    {
+        try { output?.Dispose(); }
+        catch (Exception ex) { Logging.Write("music: закрытие вывода звука: " + ex.Message); }
+    }
+
+    private void OnOutputFailed(WaveOutEvent? failed, Exception ex)
+    {
+        lock (_lock)
+        {
+            if (_recoveringOutput || (failed is not null && !ReferenceEquals(failed, _output))) return;
+            _recoveringOutput = true;
+        }
+        Logging.Write("music: вывод звука недоступен: " + ex.Message);
+        _ = Task.Run(RecoverOutputAsync);
+    }
+
+    private async Task RecoverOutputAsync()
+    {
+        for (var attempt = 1; attempt <= OutputRetries; attempt++)
+        {
+            await Task.Delay(1500);
+            lock (_lock)
+            {
+                if (_player is null) { _recoveringOutput = false; return; }
+                DisposeOutput(_output);
+                _output = null;
+                StartOutput();
+                if (_output is null) continue;
+                _recoveringOutput = false;
+                Logging.Write($"music: вывод звука восстановлен (попытка {attempt})");
+                return;
+            }
+        }
+        lock (_lock) _recoveringOutput = false;
+        Logging.Write("music: вывод звука не восстановился");
+    }
+
     // ---- звук от VLC
+    // Вызовы идут из VLC: исключение отсюда нельзя поймать выше, оно завершает всю программу.
     private void OnAudio(IntPtr data, IntPtr samples, uint count, long pts)
     {
         var buffer = _buffer;
@@ -150,12 +233,31 @@ public sealed class MusicPlayer
             Marshal.Copy(samples, chunk, 0, bytes);
             buffer.AddSamples(chunk, 0, bytes);
         }
+        catch (Exception ex) { Logging.Write("music: " + ex.Message); }
         finally { System.Buffers.ArrayPool<byte>.Shared.Return(chunk); }
     }
 
-    private void OnPause(IntPtr data, long pts) { _output?.Pause(); Level = Bass = 0; }
-    private void OnResume(IntPtr data, long pts) => _output?.Play();
-    private void OnFlush(IntPtr data, long pts) => _buffer?.ClearBuffer();
+    private void OnPause(IntPtr data, long pts)
+    {
+        var output = _output;
+        try { output?.Pause(); }
+        catch (Exception ex) { OnOutputFailed(output, ex); }
+        Level = Bass = 0;
+    }
+
+    private void OnResume(IntPtr data, long pts)
+    {
+        var output = _output;
+        try { output?.Play(); }
+        catch (Exception ex) { OnOutputFailed(output, ex); }
+    }
+
+    private void OnFlush(IntPtr data, long pts)
+    {
+        try { _buffer?.ClearBuffer(); }
+        catch (Exception ex) { Logging.Write("music: " + ex.Message); }
+    }
+
     private void OnDrain(IntPtr data) { }
 
     private void OnVlcState(object? sender, EventArgs e) => ThreadPool.QueueUserWorkItem(_ => Notify());
@@ -229,12 +331,14 @@ public sealed class MusicPlayer
         var player = _player;
         var media = _media;
         var source = _source;
+        var input = _input;
         _player = null;
         _media = null;
         _source = null;
+        _input = null;
         Key = null;
         Level = Bass = 0;
-        _output?.Dispose();
+        DisposeOutput(_output);
         _output = null;
         _buffer = null;
         if (player is null) { source?.Dispose(); return; }
@@ -249,6 +353,7 @@ public sealed class MusicPlayer
             try { player.Stop(); } catch { }
             player.Dispose();
             media?.Dispose();
+            input?.Dispose(); // иначе вход VLC держит себя в памяти вместе с потоком и загрузкой — все прослушанные песни оставались
         });
     }
 

@@ -130,6 +130,28 @@ public sealed class MusicLibrary
         }
     }
 
+    // ===================================================================== Плейлисты: выбор с прошлого раза
+
+    public sealed record PlaylistsCache(string Signature, List<MusicPlaylist> Playlists);
+
+    private string PlaylistsFile => Path.Combine(Directory, "playlists.json");
+
+    public PlaylistsCache? LoadPlaylists()
+    {
+        try { return File.Exists(PlaylistsFile) ? JsonSerializer.Deserialize<PlaylistsCache>(File.ReadAllText(PlaylistsFile)) : null; }
+        catch (Exception ex) { Logging.Write($"music playlists load: {ex.Message}"); return null; }
+    }
+
+    public void SavePlaylists(string signature, IEnumerable<MusicPlaylist> playlists)
+    {
+        var cache = new PlaylistsCache(signature, playlists.ToList());
+        _ = Task.Run(() =>
+        {
+            try { File.WriteAllText(PlaylistsFile, JsonSerializer.Serialize(cache)); }
+            catch (Exception ex) { Logging.Write($"music playlists save: {ex.Message}"); }
+        });
+    }
+
     /// <summary>Запомнить полку (в фоне) — при следующем открытии она видна сразу.</summary>
     public void SaveShelf(string name, string signature, IEnumerable<MusicTrack> tracks)
     {

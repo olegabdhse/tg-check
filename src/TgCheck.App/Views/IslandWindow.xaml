@@ -186,6 +186,79 @@
                     <Border x:Name="MusicPanel" Width="0" Height="50" ClipToBounds="True" VerticalAlignment="Center">
                         <views:MusicPlayerBar x:Name="IslandPlayer" Width="300" Margin="6,0,0,0" HorizontalAlignment="Left" HideOnly="True" />
                     </Border>
+                    <!-- Островок у боковой стороны: плеер раскрывается вниз и не раздувает узкую капсулу -->
+                    <Border x:Name="SideMusicPanel" Height="0" Width="50" ClipToBounds="True" HorizontalAlignment="Center">
+                        <StackPanel x:Name="SidePlayer" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,8,0,4">
+                            <Button Style="{StaticResource HeartButton}" Tag="{Binding IsLiked}" Command="{Binding ToggleLikeCommand}" HorizontalAlignment="Center"
+                                    Visibility="{Binding CanLike, Converter={StaticResource BoolToVis}}" />
+                            <!-- Название вдоль капсулы и полоска перемотки рядом с ним -->
+                            <Grid Height="124" Margin="0,4,0,6" HorizontalAlignment="Center">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="14" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Top" Width="124" IsHitTestVisible="False">
+                                    <StackPanel.LayoutTransform>
+                                        <RotateTransform Angle="90" />
+                                    </StackPanel.LayoutTransform>
+                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="12.5" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Subtitle}" FontSize="11" Foreground="#99F5F7FA" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <Grid x:Name="SideSeek" Grid.Column="1" Background="Transparent" Cursor="Hand"
+                                      MouseLeftButtonDown="SideSeek_Down" MouseMove="SideSeek_Move" MouseLeftButtonUp="SideSeek_Up">
+                                    <Border Width="3" CornerRadius="1.5" Background="#33FFFFFF" HorizontalAlignment="Center" />
+                                    <Border Width="3" CornerRadius="1.5" Background="{StaticResource AccentBrush}" HorizontalAlignment="Center" RenderTransformOrigin="0.5,0">
+                                        <Border.RenderTransform>
+                                            <ScaleTransform ScaleY="{Binding Progress}" />
+                                        </Border.RenderTransform>
+                                    </Border>
+                                </Grid>
+                            </Grid>
+                            <Button Content="&#xE8EE;" FontSize="14" Padding="7" HorizontalAlignment="Center" Command="{Binding ToggleLoopCommand}">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
+                                        <Setter Property="Foreground" Value="#99F5F7FA" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Loop}" Value="True">
+                                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Style="{StaticResource IconButton}" Content="&#xE892;" FontSize="13" Padding="7" HorizontalAlignment="Center" Command="{Binding SeekStartCommand}" />
+                            <Button Style="{StaticResource RoundButton}" Width="38" Height="38" Margin="0,3" HorizontalAlignment="Center" Command="{Binding ToggleCommand}">
+                                <Grid>
+                                    <Path Width="18" Height="18" Stretch="None" Stroke="White" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                          Data="M9,1.5 A7.5,7.5 0 1 1 1.5,9" RenderTransformOrigin="0.5,0.5"
+                                          Visibility="{Binding IsBuffering, Converter={StaticResource BoolToVis}}">
+                                        <Path.RenderTransform>
+                                            <RotateTransform />
+                                        </Path.RenderTransform>
+                                        <helpers:Anim.LoopWhileVisible>
+                                            <Storyboard RepeatBehavior="Forever">
+                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)" From="0" To="360" Duration="0:0:0.9" />
+                                            </Storyboard>
+                                        </helpers:Anim.LoopWhileVisible>
+                                    </Path>
+                                    <TextBlock FontSize="14" Foreground="White" Visibility="{Binding IsBuffering, Converter={StaticResource InvBoolToVis}}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource Icon}">
+                                                <Setter Property="Text" Value="&#xE768;" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsPlaying}" Value="True">
+                                                        <Setter Property="Text" Value="&#xE769;" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+                            </Button>
+                            <Button Style="{StaticResource IconButton}" Content="&#xE893;" FontSize="13" Padding="7" HorizontalAlignment="Center" Command="{Binding SeekEndCommand}" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="12" Padding="8" HorizontalAlignment="Center" Click="SideClose_Click" />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </StackPanel>
         </Border>

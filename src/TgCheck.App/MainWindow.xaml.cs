@@ -182,7 +182,7 @@ public partial class MainWindow : Window
 
     private bool IsOnScreen => IsVisible && WindowState != WindowState.Minimized;
 
-    // Сборка с уплотнением останавливает программу, в том числе звук: пока играет песня, только отдаём страницы системе.
+    // Сборка с уплотнением останавливает программу, в том числе звук: пока играет песня, она только фоновая.
     private static Task TrimProcessAsync() => Task.Run(() =>
     {
         if (!MusicPlayer.Instance.IsPlaying)
@@ -190,6 +190,7 @@ public partial class MainWindow : Window
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
             GC.WaitForPendingFinalizers();
         }
+        else GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false); // фоновая сборка без остановки звука
         try { SetProcessWorkingSetSize(System.Diagnostics.Process.GetCurrentProcess().Handle, -1, -1); } catch { }
     });
 

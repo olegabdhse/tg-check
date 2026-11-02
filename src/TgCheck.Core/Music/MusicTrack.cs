@@ -38,7 +38,6 @@ public sealed class MusicTrack
     /// <summary>Найден в этот запуск (ссылки ботов на файлы временные — трек из истории ищется у бота заново).</summary>
     [JsonIgnore] public bool Live { get; set; }
     /// <summary>Только 30-секундный фрагмент (Deezer, если полной версии не нашлось).</summary>
-    [JsonIgnore] public bool IsPreview => Source == MusicSource.Deezer;
 
     /// <summary>Ключ проигрывателя.</summary>
     [JsonIgnore] public string Key => $"music:{Source}:{Id}";

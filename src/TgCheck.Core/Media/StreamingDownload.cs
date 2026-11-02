@@ -89,14 +89,26 @@ internal sealed class StreamingDownload
 
     // Читатели (проигрыватели). Никто не читает — загрузка на паузе: при листании историй брошенные загрузки
     // иначе продолжали качаться и забирали скорость у текущей. Вернулись — продолжается с того же места.
-    public void AddReader() { Interlocked.Increment(ref _readers); _wake.Release(); }
-    public void RemoveReader() => Interlocked.Decrement(ref _readers);
+    public void AddReader() { Interlocked.Increment(ref _readers); Touch(); _wake.Release(); }
+    public void RemoveReader() { Interlocked.Decrement(ref _readers); Touch(); }
+
+    // Брошенная загрузка (песню переключили, следующая в очереди сменилась) держит открытый файл и занимает на диске весь размер песни.
+    // 10 минут никому не нужна — закрываем и удаляем; понадобится снова — начнётся заново. Очередь обновляет предзагрузку при каждой песне.
+    private const long AbandonAfterMs = 10 * 60_000;
+    private long _lastUsed = Environment.TickCount64;
+    private void Touch() => Volatile.Write(ref _lastUsed, Environment.TickCount64);
+
+    private bool Abandoned()
+    {
+        if (Environment.TickCount64 - Volatile.Read(ref _lastUsed) < AbandonAfterMs) return false;
+        lock (_lock) return !_inflight.Any(busy => busy);
+    }
 
     /// <summary>Сейчас кто-то читает и файл ещё не докачан.</summary>
     public bool IsReading => Volatile.Read(ref _readers) > 0 && !_done.Task.IsCompleted;
 
     /// <summary>Файл нужен целиком (сохранить, открыть) — качать до конца, даже если его никто не слушает.</summary>
-    public void Keep() { _keep = true; _wake.Release(); }
+    public void Keep() { _keep = true; Touch(); _wake.Release(); }
 
     // Предзагрузка следующей песни: сколько кусочков с начала (и последний — служебный блок m4a) качать, пока никто не слушает.
     private int _prefetchUnits;
@@ -105,6 +117,7 @@ internal sealed class StreamingDownload
     public void Prefetch(long bytes)
     {
         var units = (int)Math.Min(_have.Length, (bytes + Unit - 1) / Unit);
+        Touch();
         lock (_lock) if (units > _prefetchUnits) _prefetchUnits = units;
         _wake.Release();
     }
@@ -182,12 +195,18 @@ internal sealed class StreamingDownload
                 // Видео истории в просмотрщике — ему вся скорость; срочное (проигрыватель ждёт) не откладываем.
                 if (Idle)
                 {
+                    if (Abandoned())
+                    {
+                        Logging.Write($"stream {_location.id}: не нужна 10 минут — закрыта");
+                        Fail();
+                        return;
+                    }
                     // Никто не слушает: только предзагрузка начала (если просили), иначе пауза.
                     if (_shouldYield()) { await _wake.WaitAsync(250); continue; } // предзагрузка — после превью и истории
                     int? unit;
                     lock (_lock) { unit = PrefetchUnit(); if (unit is { } u) _inflight[u] = true; }
                     if (unit is { } p) { _ = FetchAsync(dc, p, 1).ContinueWith(_ => _wake.Release(), TaskScheduler.Default); continue; }
-                    await _wake.WaitAsync(250);
+                    await _wake.WaitAsync(2000); // нужна снова — разбудят сразу; опрос 4 раза в секунду у каждой брошенной загрузки зря будил процессор
                     continue;
                 }
                 bool urgentWaiting;
