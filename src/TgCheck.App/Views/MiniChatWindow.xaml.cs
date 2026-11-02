@@ -32,7 +32,7 @@ public partial class MiniChatWindow : Window
             Helpers.AppTheme.Changed += () => Helpers.WindowEffects.ApplyRoundedCorners(this, Helpers.AppTheme.WindowBorder);
             System.Windows.Interop.HwndSource.FromHwnd(new System.Windows.Interop.WindowInteropHelper(this).Handle)?.AddHook(WndProc);
         };
-        StateChanged += (_, _) => OnStateChanged();
+        StateChanged += (_, _) => { OnStateChanged(); Controls.StickerView.WindowStateChanged(); };
         SizeChanged += (_, _) => { if (IsVisible && WindowState == WindowState.Normal) _userHeight = Height; };
         PrepareSpare();
         PreviewKeyDown += (_, e) =>

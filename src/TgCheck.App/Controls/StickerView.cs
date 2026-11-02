@@ -246,11 +246,18 @@ public sealed class StickerView : Image
     {
         if ((_animation is not null || _video is not null) && IsLoaded && IsVisible) Active.Add(this);
         else Active.Remove(this);
-        if (!_hooked && Active.Count > 0)
-        {
-            _hooked = true;
-            CompositionTarget.Rendering += OnRendering;
-        }
+        WindowStateChanged();
+    }
+
+    // У свёрнутого окна IsVisible остаётся true, а рисовать незачем.
+    private static bool OnShownWindow(StickerView view) => Window.GetWindow(view) is not { WindowState: WindowState.Minimized };
+
+    /// <summary>Окно свернули или развернули: стикеры развёрнутого окна снова идут, свёрнутого — стоят.</summary>
+    public static void WindowStateChanged()
+    {
+        if (_hooked || !Active.Any(OnShownWindow)) return;
+        _hooked = true;
+        CompositionTarget.Rendering += OnRendering;
     }
 
     private static TimeSpan _lastTick;
@@ -260,8 +267,8 @@ public sealed class StickerView : Image
         var now = (e as RenderingEventArgs)?.RenderingTime ?? TimeSpan.Zero;
         if ((now - _lastTick).TotalMilliseconds < 1000.0 / 30) return; // ~30 кадров/с достаточно
         _lastTick = now;
-        foreach (var view in Active.ToArray()) view.RenderFrame(now);
-        if (Active.Count == 0)
+        foreach (var view in Active.Where(OnShownWindow).ToArray()) view.RenderFrame(now);
+        if (!Active.Any(OnShownWindow))
         {
             // Нечего анимировать — отписываемся, иначе WPF перерисовывает окно каждый кадр.
             CompositionTarget.Rendering -= OnRendering;

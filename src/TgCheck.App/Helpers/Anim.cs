@@ -48,6 +48,34 @@ public static class Anim
         if (e.NewValue is not null) FadeIn((FrameworkElement)sender, 200, 10);
     }
 
+    /// <summary>
+    /// Бесконечная анимация, которая идёт только пока элемент виден. Запуск по Loaded не годится: скрытый элемент тоже
+    /// «загружен», а пока жива хоть одна такая анимация, WPF рисует кадры без остановки — даже когда окно убрано в трей.
+    /// </summary>
+    public static readonly DependencyProperty LoopWhileVisibleProperty = DependencyProperty.RegisterAttached(
+        "LoopWhileVisible", typeof(Storyboard), typeof(Anim), new PropertyMetadata(null, OnLoopWhileVisibleChanged));
+
+    public static Storyboard? GetLoopWhileVisible(DependencyObject d) => (Storyboard?)d.GetValue(LoopWhileVisibleProperty);
+    public static void SetLoopWhileVisible(DependencyObject d, Storyboard? v) => d.SetValue(LoopWhileVisibleProperty, v);
+
+    private static void OnLoopWhileVisibleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not FrameworkElement fe) return;
+        fe.IsVisibleChanged -= OnLoopVisibleChanged;
+        if (e.NewValue is null) return;
+        fe.IsVisibleChanged += OnLoopVisibleChanged;
+        UpdateLoop(fe);
+    }
+
+    private static void OnLoopVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) => UpdateLoop((FrameworkElement)sender);
+
+    private static void UpdateLoop(FrameworkElement fe)
+    {
+        if (GetLoopWhileVisible(fe) is not { } loop) return;
+        if (fe.IsVisible) loop.Begin(fe, isControllable: true);
+        else loop.Remove(fe);
+    }
+
     // ===================================================================== Show: анимированное появление и скрытие
 
     public enum ShowMode { Fade, Scale, SlideRight, SlideUp, SlideDown }

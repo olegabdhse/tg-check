@@ -55,7 +55,7 @@ public sealed class MusicPlayer
 
     private long _lastTime = -1, _lastAdvance;
 
-    /// <summary>Состояние изменилось (~20 раз в секунду, пока играет). Из фонового потока.</summary>
+    /// <summary>Состояние изменилось (~4 раза в секунду, пока играет). Из фонового потока.</summary>
     public event Action? Changed;
     /// <summary>Песня доиграла до конца (ключ). Из фонового потока.</summary>
     public event Action<string>? Ended;
@@ -133,7 +133,7 @@ public sealed class MusicPlayer
                     lock (_lock) { if (Key != key) return; StopInternal(); }
                     Notify();
                 });
-            _timer = new Timer(_ => { if (IsPlaying || IsBuffering) Notify(); }, null, 0, 50);
+            _timer = new Timer(_ => { if (IsPlaying || IsBuffering) Notify(); }, null, 0, 250);
         }
         Notify();
     }

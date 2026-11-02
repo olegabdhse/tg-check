@@ -159,6 +159,7 @@ public partial class MainWindow : Window
     private void OnStateChanged(object? sender, EventArgs e)
     {
         UpdateOnScreen();
+        Controls.StickerView.WindowStateChanged();
         if (WindowState == WindowState.Minimized) { ShowIsland(); TrimMemorySoon(); }
         else _island?.HideIsland();
     }

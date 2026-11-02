@@ -1,6 +1,7 @@
 using TgCheck.App.Helpers;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace TgCheck.App.Controls;
 
@@ -37,33 +38,29 @@ public sealed class MusicWaves : FrameworkElement
 
     private const int Rays = 40;
     private double _amp;
-    private bool _hooked;
-    private TimeSpan _last;
     private static readonly Pen Ring = Freeze(new Pen(Brushes.White, 2) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round });
     private static readonly Pen RingTrack = Freeze(new Pen(new SolidColorBrush(Color.FromArgb(0x44, 0xFF, 0xFF, 0xFF)), 2));
     private static readonly Brush RayBrush = Freeze(new SolidColorBrush(Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF)));
 
     private static T Freeze<T>(T f) where T : Freezable { f.Freeze(); return f; }
 
+    // Свой таймер, а не CompositionTarget.Rendering: подписка на него заставляет WPF работать на каждом обновлении экрана,
+    // а здесь хватает 25 кадров в секунду.
+    private readonly DispatcherTimer _frames = new(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(40) };
+
     public MusicWaves()
     {
+        _frames.Tick += (_, _) => OnFrame();
         Loaded += (_, _) => UpdateHook();
-        Unloaded += (_, _) => Unhook();
+        Unloaded += (_, _) => _frames.Stop();
         IsVisibleChanged += (_, _) => UpdateHook();
     }
 
     private void UpdateHook()
     {
-        if (IsPlaying && IsLoaded && IsVisible) { if (!_hooked) { _hooked = true; CompositionTarget.Rendering += OnFrame; } }
-        else Unhook();
+        if (IsPlaying && IsLoaded && IsVisible) _frames.Start();
+        else _frames.Stop();
         InvalidateVisual();
-    }
-
-    private void Unhook()
-    {
-        if (!_hooked) return;
-        _hooked = false;
-        CompositionTarget.Rendering -= OnFrame;
     }
 
     // История громкости: каждый кадр — новый замер; лучи показывают последние замеры, и волна «бежит» вокруг обложки в такт музыке.
@@ -74,17 +71,16 @@ public sealed class MusicWaves : FrameworkElement
     private long _nextShape;
     private double _peak = 0.3;
 
-    private void OnFrame(object? sender, EventArgs e)
+    private void OnFrame()
     {
-        var now = (e as RenderingEventArgs)?.RenderingTime ?? TimeSpan.Zero;
-        if ((now - _last).TotalMilliseconds < 1000.0 / 40) return; // ~40 кадров/с
-        _last = now;
+        // У свёрнутого окна IsVisible остаётся true, а волны видны только в островке.
+        if (Window.GetWindow(this) is { WindowState: WindowState.Minimized }) return;
         // Громкость прямо из плеера (не через привязку — без задержки), нормированная по недавнему пику: тихие песни тоже «качают».
         var level = IsPlaying ? MusicPlayer.Instance.Level : 0; // громкость играющей песни
-        _peak = Math.Max(level, _peak * 0.995);
+        _peak = Math.Max(level, _peak * 0.992);
         var norm = _peak > 0.02 ? Math.Min(1, level / _peak) : 0;
         // Быстро растут, плавно спадают — как у эквалайзера.
-        _amp += (norm - _amp) * (norm > _amp ? 0.65 : 0.18);
+        _amp += (norm - _amp) * (norm > _amp ? 0.81 : 0.27);
         _head = (_head + 1) % _history.Length;
         _history[_head] = _amp;
         // Форма раз в несколько секунд меняется: круг ↔ звезда (5, 6 или 8 лучей), плавно и с медленным поворотом.
@@ -96,15 +92,15 @@ public sealed class MusicWaves : FrameworkElement
             _shapeTarget = star ? 1 : 0;
             if (star) _points = new[] { 5, 6, 8 }[Random.Shared.Next(3)];
         }
-        _shape += (_shapeTarget - _shape) * 0.04;
-        _turn += 0.004;
+        _shape += (_shapeTarget - _shape) * 0.063;
+        _turn += 0.0064;
         if (BassPulse)
         {
             var bass = IsPlaying ? MusicPlayer.Instance.Bass : 0;
-            _bassPeak = Math.Max(bass, _bassPeak * 0.995);
+            _bassPeak = Math.Max(bass, _bassPeak * 0.992);
             var b = _bassPeak > 0.02 ? Math.Min(1, bass / _bassPeak) : 0;
             b = b > 0.55 ? (b - 0.55) / 0.45 : 0; // только удары, а не фон
-            _bass += (b - _bass) * (b > _bass ? 0.7 : 0.15);
+            _bass += (b - _bass) * (b > _bass ? 0.85 : 0.23);
         }
         InvalidateVisual();
     }

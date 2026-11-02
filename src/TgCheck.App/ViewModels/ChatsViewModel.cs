@@ -38,14 +38,15 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         _tg.MessagesDeleted += OnMessagesDeleted;
         _tg.MediaListened += OnMediaListened;
         _tg.HistoryRead += OnHistoryRead;
-        _syncTimer.Tick += async (_, _) => await SyncRecentAsync();
+        // Окно не на экране — сверяемся раз в минуту: новые сообщения приходят обновлениями, а точность счётчиков сейчас никто не видит.
+        _syncTimer.Tick += async (_, _) => { if (Shell.MainOnScreen || ++_awayTicks % 3 == 0) await SyncRecentAsync(); };
         _resyncSoon.Tick += async (_, _) => { _resyncSoon.Stop(); await SyncRecentAsync(); };
         _tg.ResyncNeeded += () => Anim.Ui(() => { _resyncSoon.Stop(); _resyncSoon.Start(); });
         _tg.UserTyping += OnUserTyping;
         _tg.UserStatusChanged += OnUserStatus;
         _tg.PollUpdated += OnPollUpdated;
 
-        _presenceTimer.Tick += (_, _) => _ = RefreshPresenceAsync();
+        _presenceTimer.Tick += (_, _) => { if (Shell.MainOnScreen) _ = RefreshPresenceAsync(); };
         _presenceTimer.Start();
     }
 
@@ -452,6 +453,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
 
     private bool _syncing;
     private int _syncTicks;
+    private int _awayTicks;
 
     // Одна сверка за раз и не дольше 20 с: при плохой связи запросы раньше копились и висели минутами —
     // значки непрочитанных у уже прочитанных чатов не пропадали. Архив сверяется раз в минуту.

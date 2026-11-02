@@ -24,14 +24,21 @@
 
     <!-- Отступ под тень -->
     <Grid Margin="22,8,22,22">
-        <Border x:Name="Pill" CornerRadius="28" Background="#F20B1016" Padding="8,7" BorderBrush="#26FFFFFF" BorderThickness="1"
+        <!-- Фон с тенью — отдельно от содержимого и в кэше: иначе каждый кадр волн заново размывает весь островок -->
+        <Border x:Name="PillBack" CornerRadius="28" Background="#F20B1016" IsHitTestVisible="False"
+                RenderTransformOrigin="{Binding RenderTransformOrigin, ElementName=Pill}" RenderTransform="{Binding RenderTransform, ElementName=Pill}">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="22" ShadowDepth="4" Opacity="0.55" />
+            </Border.Effect>
+            <Border.CacheMode>
+                <BitmapCache />
+            </Border.CacheMode>
+        </Border>
+        <Border x:Name="Pill" CornerRadius="28" Background="Transparent" Padding="8,7" BorderBrush="#26FFFFFF" BorderThickness="1"
                 RenderTransformOrigin="0.5,0">
             <Border.RenderTransform>
                 <ScaleTransform x:Name="PillScale" />
             </Border.RenderTransform>
-            <Border.Effect>
-                <DropShadowEffect BlurRadius="22" ShadowDepth="4" Opacity="0.55" />
-            </Border.Effect>
             <StackPanel x:Name="PillStack" Orientation="{Binding IslandOrientation, RelativeSource={RelativeSource AncestorType=Window}}">
                 <!-- Значок приложения: клик — развернуть окно -->
                 <Button x:Name="AppButton" Width="42" Height="42" Cursor="Hand" ToolTip="Открыть TG Check" Click="AppButton_Click"
@@ -166,15 +173,11 @@
                                     <Path.RenderTransform>
                                         <RotateTransform />
                                     </Path.RenderTransform>
-                                    <Path.Triggers>
-                                        <EventTrigger RoutedEvent="Loaded">
-                                            <BeginStoryboard>
-                                                <Storyboard RepeatBehavior="Forever">
-                                                    <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)" From="0" To="360" Duration="0:0:0.9" />
-                                                </Storyboard>
-                                            </BeginStoryboard>
-                                        </EventTrigger>
-                                    </Path.Triggers>
+                                    <helpers:Anim.LoopWhileVisible>
+                                        <Storyboard RepeatBehavior="Forever">
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)" From="0" To="360" Duration="0:0:0.9" />
+                                        </Storyboard>
+                                    </helpers:Anim.LoopWhileVisible>
                                 </Path>
                             </Grid>
                         </Grid>
