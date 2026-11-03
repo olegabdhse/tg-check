@@ -112,7 +112,7 @@ public sealed partial class TelegramService
     /// <summary>Отправить выбранный результат инлайн-бота в чат.</summary>
     public async Task SendInlineResultAsync(PeerRef chat, long queryId, string resultId, int? replyToId = null)
     {
-        await _client.Messages_SendInlineBotResult(chat.Info.ToInputPeer(), WTelegram.Helpers.RandomLong(), queryId, resultId,
-            reply_to: replyToId is { } r ? new InputReplyToMessage { reply_to_msg_id = r } : null);
+        await SendMaybeDelayedAsync(chat, at => _client.Messages_SendInlineBotResult(chat.Info.ToInputPeer(), WTelegram.Helpers.RandomLong(), queryId, resultId,
+            reply_to: replyToId is { } r ? new InputReplyToMessage { reply_to_msg_id = r } : null, schedule_date: at == default ? null : at));
     }
 }

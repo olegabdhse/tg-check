@@ -551,6 +551,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
 
     public void OnMessageReceived(MessageItem m)
     {
+        if (m.IsOut) ReplaceDelivered(m);
         if (IsForum)
         {
             OnForumMessage(m);
@@ -726,7 +727,9 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         var previous = _lastMarkedRead;
         _lastMarkedRead = max;
         UpdatePendingNew();
-        _owner.OnChatRead(Peer.Key, IsThread ? 0 : PendingNewCount);
+        var stillUnread = IsThread ? 0 : PendingNewCount;
+        _tg.NoteLocalRead(Peer.Key, max, (_owner.FindChat(Peer.Key)?.Unread ?? 0) - stillUnread);
+        _owner.OnChatRead(Peer.Key, stillUnread);
         _ = SendReadAsync(max, previous);
     }
 
@@ -794,12 +797,17 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
                     Items.Add(pending);
                     ScrollToBottomRequested?.Invoke(true);
                 }
-                MessageItem sent;
+                MessageItem? sent;
                 try { sent = await _tg.SendTextAsync(Peer, text, reply, quote); }
                 catch
                 {
                     if (pending is not null) Items.Remove(pending);
                     throw;
+                }
+                if (sent is null)
+                {
+                    if (pending is not null) KeepUntilDelivered(pending); // отложенная отправка: часики, пока сообщение не вышло
+                    return;
                 }
                 _quiet = true;
                 try
@@ -1269,9 +1277,11 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         {
             var reply = LiveReplyId ?? SendTopId;
             ReplyTo = null;
-            var sent = await _tg.SendDocumentAsync(Peer, media, reply);
-            OnMessageReceived(sent);
-            _owner.OnMessageReceived(sent, fromConversation: true);
+            if (await _tg.SendDocumentAsync(Peer, media, reply) is { } sent) // при отложенной отправке придёт обновлением
+            {
+                OnMessageReceived(sent);
+                _owner.OnMessageReceived(sent, fromConversation: true);
+            }
             if (media is StickerItem sticker)
             {
                 _owner.Shell.Picker.AddRecentSticker(sticker);

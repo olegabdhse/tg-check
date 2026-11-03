@@ -15,7 +15,14 @@ public static class GhostMode
         public bool ShowTyping { get; set; }
         public bool ShowListened { get; set; }
         public bool ShowStoryViews { get; set; }
+        public bool SendNow { get; set; }
+        public bool HideDelayNotice { get; set; }
+        public bool KeepOnlineAfterActions { get; set; }
     }
+
+    /// <summary>Через сколько сервер публикует отложенное: файлы и видео обрабатываются дольше.</summary>
+    public static readonly TimeSpan MessageDelay = TimeSpan.FromSeconds(12);
+    public static readonly TimeSpan FileDelay = TimeSpan.FromSeconds(30);
 
     private static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TgCheck", "ghost.json");
@@ -42,6 +49,17 @@ public static class GhostMode
     public static bool HideListened { get => !Current.ShowListened; set { Current.ShowListened = !value; Save(); } }
     public static bool HideStoryViews { get => !Current.ShowStoryViews; set { Current.ShowStoryViews = !value; Save(); } }
 
+    /// <summary>Отправлять отложенно: сообщение публикует сам сервер, а обычная отправка включила бы «в сети».</summary>
+    public static bool DelaySends { get => !Current.SendNow; set { Current.SendNow = !value; Save(); } }
+
+    /// <summary>Показывать при включении окно об отложенной отправке.</summary>
+    public static bool ShowDelayNotice { get => !Current.HideDelayNotice; set { Current.HideDelayNotice = !value; Save(); } }
+
+    /// <summary>Снимать «в сети», которое сервер включает после своих действий (отправка, реакция).</summary>
+    public static bool CoverOnline { get => !Current.KeepOnlineAfterActions; set { Current.KeepOnlineAfterActions = !value; Save(); } }
+
+    public static bool CoversOnlineNow => Enabled && CoverOnline;
+    internal static bool DelaysNow => Enabled && DelaySends;
     internal static bool BlocksRead => Enabled && HideRead;
     internal static bool BlocksTyping => Enabled && HideTyping;
     internal static bool BlocksListened => Enabled && HideListened;

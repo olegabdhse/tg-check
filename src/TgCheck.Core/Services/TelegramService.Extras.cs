@@ -236,12 +236,12 @@ public sealed partial class TelegramService
     }
 
     /// <summary>Отправить стикер или GIF (готовый документ Telegram).</summary>
-    public async Task<MessageItem> SendDocumentAsync(PeerRef peer, MediaHolder media, int? replyToId = null)
+    public async Task<MessageItem?> SendDocumentAsync(PeerRef peer, MediaHolder media, int? replyToId = null)
     {
         if (media.Document is not { } doc) throw new InvalidOperationException("Нет документа для отправки.");
         var input = new InputMediaDocument { id = new InputDocument { id = doc.id, access_hash = doc.access_hash, file_reference = doc.file_reference } };
-        var msg = await _client.SendMessageAsync(peer.Info.ToInputPeer(), "", input, replyToId ?? 0);
-        return MapMessage(msg);
+        var (msg, delayed) = await SendMaybeDelayedAsync(peer, at => _client.SendMessageAsync(peer.Info.ToInputPeer(), "", input, replyToId ?? 0, schedule_date: at));
+        return delayed ? null : MapMessage(msg);
     }
 
     // ===================================================================== Темы в группах-форумах (как в Telegram)
@@ -274,6 +274,7 @@ public sealed partial class TelegramService
     /// <summary>Отметить тему форума прочитанной до сообщения maxId.</summary>
     public async Task ReadTopicAsync(PeerRef forum, int topicId, int maxId)
     {
+        if (GhostMode.BlocksRead) return;
         try { await _client.Messages_ReadDiscussion(forum.Info.ToInputPeer(), topicId, maxId); }
         catch (Exception ex) { Logging.Write("read topic: " + ex.Message); }
     }
@@ -320,7 +321,7 @@ public sealed partial class TelegramService
     /// <summary>Очистить историю (чат остаётся). forEveryone — и у собеседника (личка, бот, обычная группа).</summary>
     public async Task ClearHistoryAsync(PeerRef peer, bool forEveryone)
     {
-        Vault.ForgetLive(peer.Key);
+        TryVault(v => v.ForgetLive(peer.Key));
         if (peer.Info is Channel ch) { await _client.Channels_DeleteHistory(ch, 0, for_everyone: true); return; }
         await DeleteHistoryAllAsync(peer, justClear: true, revoke: forEveryone);
     }
@@ -490,14 +491,15 @@ public sealed partial class TelegramService
     public async Task ForwardAsync(PeerRef from, IReadOnlyList<int> ids, PeerRef to)
     {
         var random = ids.Select(_ => WTelegram.Helpers.RandomLong()).ToArray();
-        await _client.Messages_ForwardMessages(from.Info.ToInputPeer(), [.. ids], random, to.Info.ToInputPeer());
+        await SendMaybeDelayedAsync(to, at => _client.Messages_ForwardMessages(from.Info.ToInputPeer(), [.. ids], random, to.Info.ToInputPeer(),
+            schedule_date: at == default ? null : at));
     }
 
     /// <summary>Фото в полном размере (для копирования в буфер обмена).</summary>
     public async Task<byte[]?> GetPhotoBytesAsync(MediaHolder media) => await Media.GetFullPhotoAsync(media);
 
     /// <summary>Отправить записанное голосовое (Ogg/Opus с волной).</summary>
-    public async Task<MessageItem> SendVoiceAsync(PeerRef peer, Media.VoiceRecording voice, int? replyToId = null,
+    public async Task<MessageItem?> SendVoiceAsync(PeerRef peer, Media.VoiceRecording voice, int? replyToId = null,
         IProgress<double>? progress = null, CancellationToken ct = default)
     {
         // Отмена — исключением из обратного вызова загрузки (своей отмены у библиотеки нет).
@@ -521,9 +523,9 @@ public sealed partial class TelegramService
                 },
             ],
         };
-        var msg = await _client.SendMessageAsync(peer.Info.ToInputPeer(), "", media, replyToId ?? 0);
+        var (msg, delayed) = await SendMaybeDelayedAsync(peer, at => _client.SendMessageAsync(peer.Info.ToInputPeer(), "", media, replyToId ?? 0, schedule_date: at));
         try { File.Delete(voice.Path); } catch { }
-        return MapMessage(msg);
+        return delayed ? null : MapMessage(msg);
     }
 
     // ===================================================================== Файлы
@@ -535,7 +537,7 @@ public sealed partial class TelegramService
     /// Отправляет файлы. Фото/видео (если не asFiles) уходят альбомом до 10 штук, остальное — документами;
     /// подпись прикрепляется к первому сообщению.
     /// </summary>
-    /// <returns>Отправленные сообщения (лента ставит их на место заготовки сразу, не дожидаясь обновления).</returns>
+    /// <returns>Отправленные сообщения (лента ставит их на место заготовки сразу, не дожидаясь обновления); при отложенной отправке — пусто, они придут обновлением.</returns>
     public async Task<IReadOnlyList<MessageItem>> SendFilesAsync(PeerRef peer, IReadOnlyList<string> paths, string? caption, int? replyToId,
         bool asFiles, IProgress<(int Index, double Fraction)>? progress = null, CancellationToken ct = default,
         IReadOnlyDictionary<string, VideoInfo>? videos = null)
@@ -591,9 +593,18 @@ public sealed partial class TelegramService
         foreach (var chunk in medias.Chunk(10))
         {
             var (text, entities) = first ? MarkdownEntities.Parse(caption ?? "") : ("", null);
-            if (chunk.Length == 1) sent.Add(MapMessage(await _client.SendMessageAsync(input, text, chunk[0], first ? replyToId ?? 0 : 0, entities)));
-            else sent.AddRange((await _client.SendAlbumAsync(input, chunk, text, first ? replyToId ?? 0 : 0, entities)).Select(MapMessage));
+            var replyTo = first ? replyToId ?? 0 : 0;
             first = false;
+            if (chunk.Length == 1)
+            {
+                var (msg, delayed) = await SendMaybeDelayedAsync(peer, at => _client.SendMessageAsync(input, text, chunk[0], replyTo, entities, schedule_date: at), isFile: true);
+                if (!delayed) sent.Add(MapMessage(msg));
+            }
+            else
+            {
+                var (album, delayed) = await SendMaybeDelayedAsync(peer, at => _client.SendAlbumAsync(input, chunk, text, replyTo, entities, schedule_date: at), isFile: true);
+                if (!delayed) sent.AddRange(album.Select(MapMessage));
+            }
         }
         // Свой файл уже на диске: смотреть отправленное видео можно сразу, без скачивания.
         if (sent.Count == paths.Count)

@@ -53,7 +53,8 @@ public sealed class OnlinePresence : IDisposable
         if (windowActive && !_wasWindowActive) _lastInput = DateTime.UtcNow;
         _wasWindowActive = windowActive;
         var active = !GhostMode.Enabled && windowOpen && DateTime.UtcNow - _lastInput < IdleAfter;
-        if (active == _online && (!active || DateTime.UtcNow - _lastSent < Refresh)) return;
+        // В режиме призрака «не в сети» тоже подтверждается: что бы ни включило статус на сервере, он долго не продержится.
+        if (active == _online && (!(active || GhostMode.CoversOnlineNow) || DateTime.UtcNow - _lastSent < Refresh)) return;
         if (active != _online)
         {
             Logging.Write($"presence: {(active ? "в сети" : "не в сети")} (окно открыто: {windowOpen}, призрак: {GhostMode.Enabled})");

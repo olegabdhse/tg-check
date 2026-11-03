@@ -28,6 +28,7 @@ internal sealed class MessageVault : IDisposable
     private readonly BlockingCollection<Action<SqliteConnection>> _queue = [];
     private readonly Thread _writer;
     private readonly SqliteConnection _read;
+    private readonly SqliteConnection _write; // только в потоке записи
     private readonly object _readLock = new();
     private readonly List<Action> _afterCommit = []; // только в потоке записи
 
@@ -35,6 +36,7 @@ internal sealed class MessageVault : IDisposable
     {
         _path = path;
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var broken = SetAsideIfBroken();
         using (var setup = Open())
         {
             Run(setup, """
@@ -48,18 +50,93 @@ internal sealed class MessageVault : IDisposable
                 CREATE TABLE IF NOT EXISTS edits(peer INTEGER NOT NULL, id INTEGER NOT NULL, at INTEGER NOT NULL, blob BLOB NOT NULL);
                 CREATE INDEX IF NOT EXISTS edits_message ON edits(peer, id);
                 """);
+            if (broken is not null) Salvage(broken, setup);
             Prune(setup);
         }
         _read = Open();
+        _write = Open();
+        Run(_write, "PRAGMA synchronous=FULL");
         _writer = new Thread(WriteLoop) { IsBackground = true, Name = "TgCheck.Vault" };
         _writer.Start();
     }
 
-    private SqliteConnection Open()
+    private SqliteConnection Open(bool readOnly = false, string? path = null)
     {
-        var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = _path, Pooling = false }.ToString());
+        var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = path ?? _path,
+            Pooling = false,
+            Mode = readOnly ? SqliteOpenMode.ReadOnly : SqliteOpenMode.ReadWriteCreate,
+        }.ToString());
         connection.Open();
         return connection;
+    }
+
+    // База могла пострадать (сбой диска, внезапное выключение): программа не должна из-за этого остаться без удалённых навсегда.
+    // Повреждённый файл откладывается в сторону, а новая база создаётся заново.
+    private string? SetAsideIfBroken()
+    {
+        if (!File.Exists(_path)) return null;
+        try
+        {
+            using var check = Open();
+            using var command = check.CreateCommand();
+            command.CommandText = "PRAGMA quick_check(1)";
+            if (command.ExecuteScalar() as string == "ok") return null;
+        }
+        catch (SqliteException ex) { Logging.Write("vault: проверка базы: " + ex.Message); }
+        var broken = _path + ".broken";
+        foreach (var suffix in new[] { "", "-wal", "-shm" })
+        {
+            File.Delete(broken + suffix);
+            if (File.Exists(_path + suffix)) File.Move(_path + suffix, broken + suffix);
+        }
+        Logging.Write("vault: база повреждена, отложена в сторону; переносим то, что читается");
+        return broken;
+    }
+
+    // Переносим всё, что ещё читается, до первой испорченной страницы. Обычные сообщения не нужны: они придут снова.
+    private static void Salvage(string broken, SqliteConnection target)
+    {
+        int messages = 0, edits = 0;
+        try
+        {
+            using var source = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = broken, Pooling = false, Mode = SqliteOpenMode.ReadOnly }.ToString());
+            source.Open();
+            Run(target, "BEGIN");
+            try
+            {
+                using (var read = source.CreateCommand())
+                {
+                    read.CommandText = "SELECT peer, id, seen_at, deleted_at, view_once, doc_id, photo_id, edit_date, text_hash, blob FROM messages WHERE deleted_at IS NOT NULL OR view_once=1";
+                    using var row = read.ExecuteReader();
+                    while (row.Read())
+                    {
+                        using var save = Command(target, "INSERT OR IGNORE INTO messages VALUES($a,$b,$c,$d,$e,$f,$g,$h,$i,$j)",
+                            ("$a", row[0]), ("$b", row[1]), ("$c", row[2]), ("$d", row[3]), ("$e", row[4]), ("$f", row[5]), ("$g", row[6]), ("$h", row[7]), ("$i", row[8]), ("$j", row[9]));
+                        save.ExecuteNonQuery();
+                        messages++;
+                    }
+                }
+            }
+            catch (SqliteException ex) { Logging.Write("vault: удалённые перенесены не все: " + ex.Message); }
+            try
+            {
+                using var read = source.CreateCommand();
+                read.CommandText = "SELECT peer, id, at, blob FROM edits";
+                using var row = read.ExecuteReader();
+                while (row.Read())
+                {
+                    using var save = Command(target, "INSERT INTO edits(peer, id, at, blob) VALUES($a,$b,$c,$d)", ("$a", row[0]), ("$b", row[1]), ("$c", row[2]), ("$d", row[3]));
+                    save.ExecuteNonQuery();
+                    edits++;
+                }
+            }
+            catch (SqliteException ex) { Logging.Write("vault: правки перенесены не все: " + ex.Message); }
+            Run(target, "COMMIT");
+        }
+        catch (SqliteException ex) { Logging.Write("vault: повреждённая база не читается: " + ex.Message); }
+        Logging.Write($"vault: восстановлено удалённых и одноразовых {messages}, правок {edits}");
     }
 
     private static void Run(SqliteConnection c, string sql)
@@ -83,13 +160,16 @@ internal sealed class MessageVault : IDisposable
         {
             try
             {
-                using var connection = Open();
-                Run(connection, "BEGIN");
-                RunOne(first, connection);
-                for (var i = 1; i < MaxBatch && _queue.TryTake(out var next); i++) RunOne(next, connection);
-                Run(connection, "COMMIT");
+                Run(_write, "BEGIN");
+                RunOne(first, _write);
+                for (var i = 1; i < MaxBatch && _queue.TryTake(out var next); i++) RunOne(next, _write);
+                Run(_write, "COMMIT");
             }
-            catch (Exception ex) { Logging.Write("vault: " + ex.Message); }
+            catch (Exception ex)
+            {
+                Logging.Write("vault: " + ex.Message);
+                try { Run(_write, "ROLLBACK"); } catch (SqliteException) { /* транзакции уже нет */ }
+            }
             // Ждущие продолжают только после фиксации: иначе чтение следом за записью её бы ещё не увидело.
             foreach (var done in _afterCommit) done();
             _afterCommit.Clear();
@@ -318,7 +398,7 @@ internal sealed class MessageVault : IDisposable
     public void Dispose()
     {
         _queue.CompleteAdding();
-        _writer.Join(TimeSpan.FromSeconds(3));
+        if (_writer.Join(TimeSpan.FromSeconds(3))) _write.Dispose();
         lock (_readLock) _read.Dispose();
     }
 }

@@ -235,6 +235,37 @@
             </Border>
         </Grid>
 
+        <!-- ================================================= Режим призрака включили: что будет с отправкой -->
+        <Grid Grid.ColumnSpan="2" Panel.ZIndex="20" Visibility="Collapsed" helpers:Anim.Mode="Scale" helpers:Anim.Show="{Binding IsNoticeOpen}"
+              DataContext="{x:Static vm:GhostViewModel.Instance}">
+            <Border Background="{DynamicResource OverlayBrush}">
+                <Border.InputBindings>
+                    <MouseBinding MouseAction="LeftClick" Command="{Binding CloseNoticeCommand}" />
+                </Border.InputBindings>
+            </Border>
+            <Border Width="400" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="18" Padding="26,22,26,20"
+                    Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="40" ShadowDepth="0" Opacity="0.5" />
+                </Border.Effect>
+                <StackPanel>
+                    <Path Width="44" Height="44" Stretch="Uniform" HorizontalAlignment="Center" Fill="{DynamicResource AccentBrush}"
+                          Data="F0 M12,2 C7.6,2 4,5.6 4,10 V22 L6.7,20 L9.3,22 L12,20 L14.7,22 L17.3,20 L20,22 V10 C20,5.6 16.4,2 12,2 Z M9,8 A1.6,1.6 0 1 1 9,11.2 A1.6,1.6 0 1 1 9,8 Z M15,8 A1.6,1.6 0 1 1 15,11.2 A1.6,1.6 0 1 1 15,8 Z" />
+                    <TextBlock Text="Режим призрака включён" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,12,0,0" />
+                    <TextBlock Text="{Binding NoticeText}" TextWrapping="Wrap" TextAlignment="Center" FontSize="13.5" Margin="0,10,0,0" />
+                    <Border CornerRadius="10" Padding="12,8" Margin="0,12,0,0" Background="{DynamicResource Surface2Brush}">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Left" Text="&#xE7BA;" Style="{StaticResource Icon}" FontSize="15" Foreground="#F2A93B" Margin="0,1,10,0" VerticalAlignment="Top" />
+                            <TextBlock Text="Используйте при стабильном подключении." TextWrapping="Wrap" FontSize="13" />
+                        </DockPanel>
+                    </Border>
+                    <TextBlock Text="Чтобы отключить эту функцию, перейдите в Настройки → Режим призрака." Style="{StaticResource Caption}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,10,0,0" />
+                    <CheckBox Style="{StaticResource AppCheck}" Content="Больше не показывать" IsChecked="{Binding HideNoticeNextTime}" HorizontalAlignment="Center" Margin="0,14,0,0" />
+                    <Button Content="Понятно" Style="{StaticResource PrimaryButton}" MinWidth="140" HorizontalAlignment="Center" Margin="0,14,0,0" Command="{Binding CloseNoticeCommand}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
         <!-- ================================================= Очистка удалённых и правок: личные чаты, группы, каналы по галочкам -->
         <Grid Grid.ColumnSpan="2" Panel.ZIndex="20" Visibility="Collapsed" helpers:Anim.Mode="Scale" helpers:Anim.Show="{Binding IsVaultDialogOpen}"
               DataContext="{Binding Settings}">
@@ -414,6 +445,49 @@
                     <Setter Property="FontSize" Value="14" />
                     <Setter Property="Margin" Value="22,14,0,4" />
                 </Style>
+                <!-- Заголовок раздела: вся строка раскрывает его, стрелка поворачивается -->
+                <Style x:Key="TgSectionToggle" TargetType="ToggleButton">
+                    <Setter Property="Cursor" Value="Hand" />
+                    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ToggleButton">
+                                <Border x:Name="Row" Background="Transparent" Padding="22,12,18,12">
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Right" Text="&#xE70D;" Style="{StaticResource Icon}" FontSize="11" RenderTransformOrigin="0.5,0.5"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center">
+                                            <TextBlock.RenderTransform>
+                                                <RotateTransform x:Name="Arrow" />
+                                            </TextBlock.RenderTransform>
+                                        </TextBlock>
+                                        <TextBlock Text="{TemplateBinding Content}" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
+                                    </DockPanel>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Row" Property="Background" Value="{DynamicResource Hover2Brush}" />
+                                    </Trigger>
+                                    <Trigger Property="IsChecked" Value="True">
+                                        <Trigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetName="Arrow" Storyboard.TargetProperty="Angle" To="180" Duration="0:0:0.18" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </Trigger.EnterActions>
+                                        <Trigger.ExitActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetName="Arrow" Storyboard.TargetProperty="Angle" To="0" Duration="0:0:0.18" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </Trigger.ExitActions>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
                 <!-- Разделитель разделов — тонкая светлая линия -->
                 <Style x:Key="TgDivider" TargetType="Border">
                     <Setter Property="Height" Value="1" />
@@ -459,7 +533,8 @@
                     </Button>
 
                     <Border Style="{StaticResource TgDivider}" Margin="22,0,0,0" />
-                    <TextBlock Text="Уведомления" Style="{StaticResource TgSection}" />
+                    <ToggleButton Style="{StaticResource TgSectionToggle}" Content="Уведомления" IsChecked="{Binding NotificationsOpen}" />
+                    <StackPanel Visibility="Collapsed" helpers:Anim.Mode="SlideDown" helpers:Anim.Show="{Binding NotificationsOpen}">
                     <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xEA8F;" IsChecked="{Binding Notifications}">
                         <StackPanel>
                             <TextBlock Text="Всплывающие уведомления" />
@@ -476,8 +551,10 @@
                         </CheckBox>
                     </StackPanel>
 
+                    </StackPanel>
                     <Border Style="{StaticResource TgDivider}" />
-                    <TextBlock Text="Интерфейс" Style="{StaticResource TgSection}" />
+                    <ToggleButton Style="{StaticResource TgSectionToggle}" Content="Интерфейс" IsChecked="{Binding InterfaceOpen}" />
+                    <StackPanel Visibility="Collapsed" helpers:Anim.Mode="SlideDown" helpers:Anim.Show="{Binding InterfaceOpen}">
                     <!-- Тема: карточки с образцом; выбор перезапускает программу (вход сохраняется) -->
                     <ItemsControl ItemsSource="{Binding Themes}" Margin="18,2,16,2" Focusable="False">
                         <ItemsControl.ItemsPanel>
@@ -520,8 +597,10 @@
                         <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE8D6;" IsChecked="{Binding ShowIslandMusic}" Content="Плеер музыки в островке" />
                     </StackPanel>
 
+                    </StackPanel>
                     <Border Style="{StaticResource TgDivider}" />
-                    <TextBlock Text="Данные и память" Style="{StaticResource TgSection}" />
+                    <ToggleButton Style="{StaticResource TgSectionToggle}" Content="Данные и память" IsChecked="{Binding DataOpen}" />
+                    <StackPanel Visibility="Collapsed" helpers:Anim.Mode="SlideDown" helpers:Anim.Show="{Binding DataOpen}">
                     <Button Style="{StaticResource TgRow}" Tag="&#xE74D;" Command="{Binding AskClearCacheCommand}">
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Right" Text="{Binding CacheSizeText}" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
@@ -533,8 +612,10 @@
                         <TextBlock Text="Удалённые и правки" VerticalAlignment="Center" />
                     </Button>
 
+                    </StackPanel>
                     <Border Style="{StaticResource TgDivider}" />
-                    <TextBlock Text="Режим призрака" Style="{StaticResource TgSection}" />
+                    <ToggleButton Style="{StaticResource TgSectionToggle}" Content="Режим призрака" IsChecked="{Binding GhostOpen}" />
+                    <StackPanel Visibility="Collapsed" helpers:Anim.Mode="SlideDown" helpers:Anim.Show="{Binding GhostOpen}">
                     <StackPanel DataContext="{Binding Ghost}">
                         <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xED1A;" IsChecked="{Binding IsEnabled}">
                             <StackPanel>
@@ -543,6 +624,19 @@
                             </StackPanel>
                         </CheckBox>
                         <StackPanel Visibility="Collapsed" helpers:Anim.Mode="SlideDown" helpers:Anim.Show="{Binding IsEnabled}">
+                            <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE724;" IsChecked="{Binding DelaySends}">
+                                <StackPanel>
+                                    <TextBlock Text="Отправлять отложенно" />
+                                    <TextBlock Text="{Binding DelayCaption}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,2,0,0" />
+                                </StackPanel>
+                            </CheckBox>
+                            <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE946;" IsChecked="{Binding ShowDelayNotice}" Content="Окно об отложенной отправке" />
+                            <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE7BA;" IsChecked="{Binding CoverOnline}">
+                                <StackPanel>
+                                    <TextBlock Text="Снимать «в сети» после действий" />
+                                    <TextBlock Text="Сразу после отправки и реакций" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,2,0,0" />
+                                </StackPanel>
+                            </CheckBox>
                             <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE8B9;" IsChecked="{Binding HideStoryViews}" Content="Скрывать просмотр историй" />
                             <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE73E;" IsChecked="{Binding HideRead}">
                                 <StackPanel>
@@ -555,14 +649,17 @@
                         </StackPanel>
                     </StackPanel>
 
+                    </StackPanel>
                     <Border Style="{StaticResource TgDivider}" />
-                    <TextBlock Text="Конфиденциальность" Style="{StaticResource TgSection}" />
+                    <ToggleButton Style="{StaticResource TgSectionToggle}" Content="Конфиденциальность" IsChecked="{Binding PrivacyOpen}" />
+                    <StackPanel Visibility="Collapsed" helpers:Anim.Mode="SlideDown" helpers:Anim.Show="{Binding PrivacyOpen}">
                     <Button Style="{StaticResource TgRow}" Tag="&#xE977;" Command="{Binding OpenSessionsCommand}">
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Right" Text="{Binding SessionsCountText}" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
                             <TextBlock Text="Активные сеансы" VerticalAlignment="Center" />
                         </DockPanel>
                     </Button>
+                    </StackPanel>
                 </StackPanel>
                 </ScrollViewer>
 

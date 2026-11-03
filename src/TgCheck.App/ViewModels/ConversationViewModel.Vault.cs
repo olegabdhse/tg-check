@@ -20,6 +20,29 @@ public sealed partial class ConversationViewModel
     public ObservableCollection<ChatSearchResult> DeletedMessages { get; } = [];
     public ObservableCollection<EditVersion> EditVersions { get; } = [];
 
+    // Отложенная отправка (режим призрака): заготовка с часиками ждёт, пока сервер опубликует сообщение.
+    private static readonly TimeSpan DeliveryTimeout = TimeSpan.FromSeconds(45);
+    private readonly List<UploadViewModel> _awaitingDelivery = [];
+
+    private async void KeepUntilDelivered(UploadViewModel pending)
+    {
+        _awaitingDelivery.Add(pending);
+        await Task.Delay(DeliveryTimeout);
+        // Обновление не дошло (обрыв связи): сообщение покажет сверка с сервером, заготовку не оставляем навсегда.
+        if (_awaitingDelivery.Remove(pending)) Items.Remove(pending);
+    }
+
+    private void ReplaceDelivered(MessageItem m)
+    {
+        // Текст с цитатой длиннее заготовки: цитата стоит перед ним.
+        if (_awaitingDelivery.FirstOrDefault(p => m.Text.EndsWith(p.Caption ?? "\0", StringComparison.Ordinal)) is not { } pending) return;
+        _awaitingDelivery.Remove(pending);
+        Items.Remove(pending);
+    }
+
+    /// <summary>Режим призрака выключен: прочитанное снова уходит на сервер, в том числе в уже открытых чатах.</summary>
+    public void OnGhostLeft() => MarkReadAgain();
+
     /// <summary>Номер для обычного ответа: на удалённое сообщение отвечают цитатой.</summary>
     private int? LiveReplyId => ReplyTo is { IsDeleted: true } ? null : ReplyTo?.Id;
 

@@ -127,6 +127,20 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public GhostViewModel Ghost => GhostViewModel.Instance;
 
+    // ---- разделы настроек: свёрнуты, раскрываются своей кнопкой, состояние запоминается
+
+    [ObservableProperty] private bool _notificationsOpen = UiSettings.IsSettingsSectionOpen(nameof(NotificationsOpen));
+    [ObservableProperty] private bool _interfaceOpen = UiSettings.IsSettingsSectionOpen(nameof(InterfaceOpen));
+    [ObservableProperty] private bool _dataOpen = UiSettings.IsSettingsSectionOpen(nameof(DataOpen));
+    [ObservableProperty] private bool _ghostOpen = UiSettings.IsSettingsSectionOpen(nameof(GhostOpen));
+    [ObservableProperty] private bool _privacyOpen = UiSettings.IsSettingsSectionOpen(nameof(PrivacyOpen));
+
+    partial void OnNotificationsOpenChanged(bool value) => UiSettings.SetSettingsSectionOpen(nameof(NotificationsOpen), value);
+    partial void OnInterfaceOpenChanged(bool value) => UiSettings.SetSettingsSectionOpen(nameof(InterfaceOpen), value);
+    partial void OnDataOpenChanged(bool value) => UiSettings.SetSettingsSectionOpen(nameof(DataOpen), value);
+    partial void OnGhostOpenChanged(bool value) => UiSettings.SetSettingsSectionOpen(nameof(GhostOpen), value);
+    partial void OnPrivacyOpenChanged(bool value) => UiSettings.SetSettingsSectionOpen(nameof(PrivacyOpen), value);
+
     // ---- удалённые и правки: отдельная очистка, кэш их не трогает
 
     public Func<Task<IReadOnlyList<TgCheck.Core.Services.VaultChat>>>? GetVaultChats { get; set; }

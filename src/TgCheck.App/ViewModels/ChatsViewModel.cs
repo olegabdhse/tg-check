@@ -45,6 +45,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         _tg.UserTyping += OnUserTyping;
         _tg.UserStatusChanged += OnUserStatus;
         _tg.PollUpdated += OnPollUpdated;
+        GhostMode.Changed += OnGhostChanged;
 
         _presenceTimer.Tick += (_, _) => { if (Shell.MainOnScreen) _ = RefreshPresenceAsync(); };
         _presenceTimer.Start();
@@ -232,6 +233,12 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
 
     /// <summary>Где-то остался неотправленный текст или вложение, идёт отправка или запись голосового.</summary>
     public bool HasUnfinishedWork => _conversations.Values.Any(c => !string.IsNullOrEmpty(c.Draft) || c.HasAttachments || c.IsSending || c.IsRecording);
+
+    private void OnGhostChanged()
+    {
+        if (GhostMode.Enabled) return;
+        foreach (var conv in _conversations.Values.ToList()) conv.OnGhostLeft();
+    }
 
     /// <summary>Удалённые и правки выбранных чатов очищены — убрать их и с экрана.</summary>
     public void OnVaultCleared(IEnumerable<long> peers)
@@ -1008,6 +1015,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
         _presenceTimer.Stop();
         _syncTimer.Stop();
         _tg.MessageReceived -= OnMessageReceivedEvent;
+        GhostMode.Changed -= OnGhostChanged;
         _tg.MessageEdited -= OnMessageEdited;
         _tg.ReactionsUpdated -= OnReactionsUpdated;
         _tg.MessagesDeleted -= OnMessagesDeleted;

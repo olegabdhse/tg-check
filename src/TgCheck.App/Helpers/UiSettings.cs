@@ -17,6 +17,7 @@ public static class UiSettings
         public bool HideIsland { get; set; }
         public bool HideIslandMusic { get; set; }
         public bool MusicPanelCollapsed { get; set; }
+        public List<string>? OpenSettingsSections { get; set; }
         public bool NotificationsOff { get; set; }
         public bool SoundOff { get; set; }
         public bool ArchiveNotificationsOff { get; set; }
@@ -54,6 +55,17 @@ public static class UiSettings
     /// <summary>Островок с чатами при сворачивании окна.</summary>
     public static bool ShowIsland { get => !_data.HideIsland; set { _data.HideIsland = !value; Save(); } }
     public static bool MusicPanelCollapsed { get => _data.MusicPanelCollapsed; set { _data.MusicPanelCollapsed = value; Save(); } }
+
+    /// <summary>Раскрыт ли раздел настроек (по умолчанию все свёрнуты).</summary>
+    public static bool IsSettingsSectionOpen(string name) => _data.OpenSettingsSections?.Contains(name) == true;
+
+    public static void SetSettingsSectionOpen(string name, bool open)
+    {
+        var sections = _data.OpenSettingsSections ??= [];
+        sections.Remove(name);
+        if (open) sections.Add(name);
+        Save();
+    }
     /// <summary>Плеер музыки в островке (по умолчанию включён).</summary>
     /// <summary>Инлайн-боты, которыми пользовались последними (@имена, новые — первыми).</summary>
     public static IReadOnlyList<string> RecentInlineBots => _data.RecentInlineBots ?? [];

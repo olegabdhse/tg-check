@@ -33,6 +33,13 @@ public sealed partial class TelegramService
 
     public bool WasDeletedHere(int id) => _deletedHere.ContainsKey(id);
 
+    // Хранилище вспомогательное: его сбой не должен мешать выходу из аккаунта, очистке истории и кэша.
+    private void TryVault(Action<MessageVault> action)
+    {
+        try { action(Vault); }
+        catch (Exception ex) { Logging.Write("vault: " + ex.Message); }
+    }
+
     private void RememberSeen(IEnumerable<MessageBase> messages)
     {
         try
@@ -48,16 +55,36 @@ public sealed partial class TelegramService
         if (m is not Message message) return;
         RememberSeen([message]);
         if (MessageVault.IsViewOnce(message) && !message.flags.HasFlag(Message.Flags.out_)) _ = SaveFileAsync(MapMessage(message));
-        // Сервер сам может показать «в сети» после отправки — призрак сразу возвращает статус обратно.
-        if (GhostMode.Enabled && message.flags.HasFlag(Message.Flags.out_)) _ = GoOfflineAsync();
     }
 
-    private async Task GoOfflineAsync()
+    /// <summary>
+    /// Отправка в режиме призрака: отложенным сообщением на несколько секунд вперёд. В «Избранном» отложенное стало бы напоминанием.
+    /// Сервер отказал в отложенной отправке (неверное время на компьютере и т. п.) — отправляем обычным способом.
+    /// </summary>
+    /// <returns>Delayed — сообщение ещё не вышло: в ленту оно придёт обычным обновлением, а Result — его отложенная копия.</returns>
+    private static async Task<(T Result, bool Delayed)> SendMaybeDelayedAsync<T>(PeerRef peer, Func<DateTime, Task<T>> send, bool isFile = false)
     {
-        if (Interlocked.Exchange(ref _offlineQueued, 1) == 1) return;
-        await Task.Delay(500);
+        if (!GhostMode.DelaysNow || peer.IsSelf) return (await send(default), false);
+        try { return (await send(DateTime.UtcNow + (isFile ? GhostMode.FileDelay : GhostMode.MessageDelay)), true); }
+        catch (RpcException ex) when (ex.Message.Contains("SCHEDULE", StringComparison.Ordinal))
+        {
+            Logging.Write("ghost: отложенная отправка отклонена: " + ex.Message);
+            return (await send(default), false);
+        }
+    }
+
+    /// <summary>
+    /// Своё действие (сообщение, реакция, правка) сервер сам считает появлением в сети и держит статус, пока его не снимут.
+    /// Призрак снимает его сразу и ещё раз чуть позже: первый запрос может обогнать саму отправку.
+    /// </summary>
+    private async Task GoOfflineAfterActionAsync()
+    {
+        if (!GhostMode.CoversOnlineNow || Interlocked.Exchange(ref _offlineQueued, 1) == 1) return;
+        await Task.Delay(300).ConfigureAwait(false);
         Volatile.Write(ref _offlineQueued, 0);
-        await SetOnlineAsync(false);
+        await SetOnlineAsync(false).ConfigureAwait(false);
+        await Task.Delay(3000).ConfigureAwait(false);
+        if (GhostMode.CoversOnlineNow) await SetOnlineAsync(false).ConfigureAwait(false);
     }
 
     private void OnDeleted(long? peerKey, int[] ids)

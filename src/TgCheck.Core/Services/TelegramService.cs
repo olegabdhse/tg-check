@@ -33,11 +33,14 @@ public sealed partial class TelegramService : IAsyncDisposable
     private string? _passwordHint;
     private int? _convertPeriodSeconds;
 
+    private readonly LocalReads _localReads;
+
     public TelegramService(AppEnv env)
     {
         _env = env;
         _session = new ProtectedSessionStore(Path.Combine(env.DataDirectory, "session.dat"));
         _cache = new LocalCache(Path.Combine(env.DataDirectory, "cache", "chats"));
+        _localReads = new LocalReads(Path.Combine(env.DataDirectory, "ghost_reads.json"));
         Logging.Init(Path.Combine(env.DataDirectory, "logs"));
         // Свой туннель (Xray) — в фоне, чтобы не задерживать окно; подключение его дождётся.
         // По туннелю на каждый адрес сервера (второй адрес — первым).
@@ -55,6 +58,8 @@ public sealed partial class TelegramService : IAsyncDisposable
         var client = new Client(Config, _session.Load(), _session.Save);
         client.OnUpdates += OnUpdatesAsync;
         client.OnOwnUpdates += OnUpdatesAsync;
+        // Сюда приходит и краткий ответ на текст в личку: обычного обновления о нём нет.
+        client.OnOwnUpdates += updates => { _ = GoOfflineAfterActionAsync(); return Task.CompletedTask; };
         client.OnOther += OnOtherAsync;
         // Одновременных загрузок у библиотеки по умолчанию мало — открытая песня или видео ждали в очереди за превью,
         // стикерами и аватарами. Больше параллельных — то, что открыто, качается сразу.
@@ -288,7 +293,8 @@ public sealed partial class TelegramService : IAsyncDisposable
             {
                 _session.Delete();
                 _cache.Clear();
-                Vault.Wipe();
+                TryVault(v => v.Wipe());
+                _localReads.Clear();
             }
             _passwordHint = null;
             _client = CreateClient();

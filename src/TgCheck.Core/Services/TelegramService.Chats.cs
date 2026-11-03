@@ -308,14 +308,15 @@ public sealed partial class TelegramService
 
                 var key = PeerRef.KeyOf(d.peer);
                 lastById.TryGetValue((key, d.top_message), out var last);
+                var (unread, readInbox) = _localReads.Apply(key, d.top_message, d.unread_count, d.read_inbox_max_id);
                 result.Add(new ChatSummary
                 {
                     Peer = peer,
                     Last = last is not null and not MessageEmpty ? MapMessage(last) : null,
-                    UnreadCount = d.unread_count,
+                    UnreadCount = unread,
                     UnreadMentions = d.unread_mentions_count,
                     UnreadReactions = d.unread_reactions_count,
-                    ReadInboxMaxId = d.read_inbox_max_id,
+                    ReadInboxMaxId = readInbox,
                     ReadOutboxMaxId = d.read_outbox_max_id,
                     IsPinned = d.flags.HasFlag(Dialog.Flags.pinned),
                     IsMarkedUnread = d.flags.HasFlag(Dialog.Flags.unread_mark),
@@ -379,7 +380,8 @@ public sealed partial class TelegramService
     }
 
     /// <param name="quote">Цитата перед текстом: на удалённое сообщение нельзя ответить обычным ответом.</param>
-    public async Task<MessageItem> SendTextAsync(PeerRef peer, string text, int? replyToId = null, string? quote = null)
+    /// <returns>Отправленное сообщение; null — отправка отложена, оно придёт обновлением.</returns>
+    public async Task<MessageItem?> SendTextAsync(PeerRef peer, string text, int? replyToId = null, string? quote = null)
     {
         var (clean, entities) = MarkdownEntities.Parse(text);
         if (quote is { Length: > 0 })
@@ -388,8 +390,8 @@ public sealed partial class TelegramService
             entities = [new MessageEntityBlockquote { offset = 0, length = quote.Length }, .. entities ?? []];
             clean = quote + "\n" + clean;
         }
-        var msg = await _client.SendMessageAsync(peer.Info.ToInputPeer(), clean, reply_to_msg_id: replyToId ?? 0, entities: entities);
-        return MapMessage(msg);
+        var (msg, delayed) = await SendMaybeDelayedAsync(peer, at => _client.SendMessageAsync(peer.Info.ToInputPeer(), clean, reply_to_msg_id: replyToId ?? 0, entities: entities, schedule_date: at));
+        return delayed ? null : MapMessage(msg);
     }
 
     public async Task EditTextAsync(PeerRef peer, int messageId, string text)
@@ -405,6 +407,13 @@ public sealed partial class TelegramService
         foreach (var id in ids) _deletedHere[id] = 0;
         if (peer.Info is Channel channel) await _client.Channels_DeleteMessages(channel, ids);
         else await _client.Messages_DeleteMessages(ids, revoke: forEveryone);
+    }
+
+    /// <summary>Прочитано при включённом «Не отмечать прочитанным»: серверу не сообщаем, запоминаем у себя.</summary>
+    /// <param name="nowRead">Сколько сообщений из счётчика чата этим прочитано.</param>
+    public void NoteLocalRead(long peerKey, int maxId, int nowRead)
+    {
+        if (GhostMode.BlocksRead) _localReads.Note(peerKey, maxId, nowRead);
     }
 
     /// <returns>false — сервер отметку не получил (нет связи): её нужно отправить ещё раз.</returns>
