@@ -35,7 +35,9 @@ public sealed class MusicPlayer
     public bool IsPlaying => _player is not null && !_paused && !_ended;
     /// <summary>Песня играет или стоит на паузе.</summary>
     public bool HasSong => _player is not null && !_ended;
-    public TimeSpan Position => TimeSpan.FromMilliseconds(Math.Max(0, _player?.Time ?? 0));
+    public TimeSpan Position => _player is { } p
+        ? TimeSpan.FromMilliseconds(Math.Max(0, Math.Max(p.Time, DeliveredMs - (long)(_buffer?.BufferedDuration.TotalMilliseconds ?? 0))))
+        : TimeSpan.Zero;
     public TimeSpan Duration => TimeSpan.FromMilliseconds(Math.Max(_lengthMs, _player?.Length ?? 0));
     public float Level { get; private set; }
     public float Bass { get; private set; }
@@ -128,7 +130,7 @@ public sealed class MusicPlayer
             _ended = false;
             _paused = false;
             _lengthMs = 0;
-            _heardMs = 0;
+            ResetDelivered(0);
             _earlyEnds = 0;
             Key = key;
             _player.Play(_media);
@@ -141,7 +143,6 @@ public sealed class MusicPlayer
                 });
             _timer = new Timer(_ =>
             {
-                if (_player is { Time: > 0 and var time }) _heardMs = time;
                 if (IsPlaying || IsBuffering) Notify();
             }, null, 0, 250);
         }
@@ -240,6 +241,7 @@ public sealed class MusicPlayer
         {
             Marshal.Copy(samples, chunk, 0, bytes);
             buffer.AddSamples(chunk, 0, bytes);
+            Interlocked.Add(ref _deliveredSamples, count);
         }
         catch (Exception ex) { Logging.Write("music: " + ex.Message); }
         finally { System.Buffers.ArrayPool<byte>.Shared.Return(chunk); }
@@ -294,16 +296,24 @@ public sealed class MusicPlayer
             lock (_lock)
             {
                 if (Key != key || _player is not { } p) return;
-                if (Loop) { Restart(p); return; }
                 // До конца ещё далеко: чтение оборвалось, а не песня кончилась. Продолжаем с того же места, а не переключаем на следующую.
-                if (_lengthMs - _heardMs > EarlyEndMs && _earlyEnds < MaxEarlyEnds && _media is { } media)
+                var delivered = DeliveredMs;
+                var missing = _lengthMs - delivered;
+                if (!Loop && missing > EarlyEndMs && _earlyEnds < MaxEarlyEnds && !(IsWholeFileRead() && missing <= WrongLengthMs) && _media is { } media)
                 {
                     _earlyEnds++;
-                    Logging.Write($"music: {key} оборвалась на {_heardMs / 1000} с из {_lengthMs / 1000} — продолжаем");
-                    media.AddOption($":start-time={_heardMs / 1000.0:0.0}".Replace(',', '.'));
+                    Logging.Write($"music: {key} оборвалась на {delivered / 1000} с из {_lengthMs / 1000} — продолжаем");
+                    media.AddOption($":start-time={delivered / 1000.0:0.0}".Replace(',', '.'));
                     Restart(p);
+                    ResetDelivered(delivered);
                     return;
                 }
+            }
+            WaitUntilHeard(key);
+            lock (_lock)
+            {
+                if (Key != key || _player is not { } p) return;
+                if (Loop) { Restart(p); return; }
                 _ended = true;
                 Level = Bass = 0;
             }
@@ -313,14 +323,45 @@ public sealed class MusicPlayer
     }
 
     private const long EarlyEndMs = 5000;
+    // Файл прочитан целиком, а до заявленного конца ещё немного: длина в заголовке песни завышена, это и есть её конец.
+    private const long WrongLengthMs = 30000;
     private const int MaxEarlyEnds = 2;
-    private long _heardMs;
+    private static readonly TimeSpan MaxDrainWait = TimeSpan.FromSeconds(5);
     private int _earlyEnds;
+
+    // Сколько звука VLC реально отдал. Его Time для этого не годится: при чтении из потока он обновляется редко
+    // и у самого конца мог отставать на 10–15 с, из-за чего целая песня считалась оборвавшейся и концовка игралась заново.
+    private long _deliveredBaseMs;
+    private long _deliveredSamples;
+    private long DeliveredMs => _deliveredBaseMs + Interlocked.Read(ref _deliveredSamples) * 1000 / Rate;
+
+    private void ResetDelivered(long fromMs)
+    {
+        _deliveredBaseMs = fromMs;
+        Interlocked.Exchange(ref _deliveredSamples, 0);
+    }
+
+    private bool IsWholeFileRead() => _source is null || _source is IStreamingSource { Done: { IsCompletedSuccessfully: true, Result: not null } };
+
+    // VLC сообщает о конце, когда отдал нам последний звук, а в нашем буфере он ещё лежит (до 3 с): переключение на
+    // следующую песню сразу обрезало бы концовку. Ждём, пока он доиграет; на паузе время ожидания не идёт.
+    private void WaitUntilHeard(string? key)
+    {
+        var waited = TimeSpan.Zero;
+        var step = TimeSpan.FromMilliseconds(50);
+        while (waited < MaxDrainWait && Key == key && _buffer is { } buffer && buffer.BufferedDuration > step)
+        {
+            Thread.Sleep(step);
+            if (!_paused) waited += step;
+        }
+        Thread.Sleep(200); // то, что уже ушло в звуковую карту (DesiredLatency)
+    }
 
     private void Restart(VlcPlayer p)
     {
         _ended = false;
         _buffer?.ClearBuffer();
+        ResetDelivered(0);
         if (_source is { CanSeek: true } s) s.Position = 0;
         p.Stop();
         p.Play(_media!);
@@ -350,7 +391,10 @@ public sealed class MusicPlayer
         {
             if (_player is not { } p) return;
             if (_ended) { Restart(p); }
-            p.Position = (float)Math.Clamp(fraction, 0, 0.999);
+            var position = Math.Clamp(fraction, 0, 0.999);
+            p.Position = (float)position;
+            _buffer?.ClearBuffer();
+            ResetDelivered((long)(position * Duration.TotalMilliseconds));
         }
         Notify();
     }
