@@ -446,25 +446,77 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     // ===================================================================== Обновления
 
-    // Обновление ставится молча: новая версия скачивается и встаёт на место exe, никаких кнопок и полосок.
+    // Два пути к одной версии: она сразу скачивается в фоне и встаёт на место exe, а плашка предлагает перезапуститься сейчас.
+    // Не нажали — программа перезапустится сама, когда этого не будет видно.
     private async Task CheckUpdatesAsync()
     {
-        if (_updates is null || _updateBusy) return;
+        if (_updates is null || _updateBusy || _updateInstalled) return;
         _updateBusy = true;
         try
         {
-            if (await _updates.CheckAsync() is not { } update) return;
+            if (await _updates.CheckAsync() is not { } update)
+            {
+                if (IsUpdating) StopUpdating(null);
+                return;
+            }
+            var version = update.Version.ToString(3);
+            if (!_updateDismissed && !IsUpdating) UpdateText = $"Доступна версия {version}";
+            _updateVersion = version;
             await _updates.InstallAsync(update);
-            Logging.Write($"update: версия {update.Version.ToString(3)} установлена, заработает после перезапуска");
+            Logging.Write($"update: версия {version} установлена, заработает после перезапуска");
+            _updateInstalled = true;
             _updateTimer.Stop(); // пока работает старый код, следующая версия подождёт: патч к ней строится от новой
             UpdateInstalled?.Invoke();
+            if (IsUpdating) RestartRequested?.Invoke();
         }
-        catch (Exception ex) { Logging.Write("update: не установилось, попробуем позже: " + ex.Message); }
+        catch (Exception ex)
+        {
+            Logging.Write("update: не установилось, попробуем позже: " + ex.Message);
+            if (IsUpdating) StopUpdating(TgErrors.Describe(ex));
+        }
         finally { _updateBusy = false; }
     }
 
+    private void StopUpdating(string? error)
+    {
+        IsUpdating = false;
+        UpdateText = _updateVersion is { } version ? $"Доступна версия {version}" : null;
+        if (error is not null) ShowToast(error, true);
+    }
+
+    /// <summary>Кнопка на плашке: готово — перезапуск сразу; ещё качается — перезапуск по окончании; не вышло — ещё попытка.</summary>
+    [RelayCommand]
+    private async Task InstallUpdate()
+    {
+        if (IsUpdating) return;
+        if (_updateInstalled)
+        {
+            RestartRequested?.Invoke();
+            return;
+        }
+        IsUpdating = true;
+        UpdateText = "Скачивание обновления…";
+        await CheckUpdatesAsync(); // уже качается — дождётся та загрузка: она проверит IsUpdating
+    }
+
+    /// <summary>Крестик прячет только плашку: обновление всё равно поставится само.</summary>
+    [RelayCommand]
+    private void DismissUpdate()
+    {
+        _updateDismissed = true;
+        UpdateText = null;
+    }
+
+    [ObservableProperty] private string? _updateText;
+    [ObservableProperty] private bool _isUpdating;
+    private bool _updateInstalled;
+    private bool _updateDismissed;
+    private string? _updateVersion;
+
     /// <summary>Новая версия уже на диске; главное окно ищет момент для незаметного перезапуска.</summary>
     public event Action? UpdateInstalled;
+    /// <summary>Нажали «Обновить», и новая версия готова: перезапуститься сразу.</summary>
+    public event Action? RestartRequested;
 
     /// <summary>Перезапуск сейчас что-то потерял бы: черновик, отправка, сохранение файла, открытое мини-окно.</summary>
     public bool HasUnfinishedWork => MiniChat is not null || Chats.HasUnfinishedWork || ConversationViewModel.ActiveTransfers > 0;

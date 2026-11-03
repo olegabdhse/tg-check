@@ -60,7 +60,12 @@ public partial class MainWindow : Window
             WindowStartupLocation = WindowStartupLocation.Manual;
             (Left, Top, Width, Height) = (b.Left, b.Top, b.Width, b.Height);
         }
-        if (start.Minimized)
+        if (start.Visible)
+        {
+            if (start.Maximized) WindowState = WindowState.Maximized;
+            Show();
+        }
+        else if (start.Minimized)
         {
             _maximizeOnRestore = start.Maximized;
             ShowActivated = false;
@@ -107,15 +112,20 @@ public partial class MainWindow : Window
         return GetLastInputInfo(ref input) && unchecked((uint)Environment.TickCount - input.Time) >= UserAwayBeforeRestart.TotalMilliseconds;
     }
 
-    private void RestartQuietly()
+    // Нажали «Обновить»: перезапуск сразу, окно остаётся на экране.
+    private void OnRestartRequested() => RestartOnNewVersion(visible: true);
+
+    private void RestartQuietly() => RestartOnNewVersion(visible: false);
+
+    private void RestartOnNewVersion(bool visible)
     {
         _restartTimer?.Stop();
         var bounds = WindowState == WindowState.Normal && !double.IsNaN(Left) && !double.IsNaN(Top) ? new Rect(Left, Top, Width, Height) : RestoreBounds;
         var start = new QuietStart(Environment.ProcessId, WindowState == WindowState.Minimized, _shownState == WindowState.Maximized,
-            bounds.IsEmpty || double.IsInfinity(bounds.Left) ? null : bounds);
+            bounds.IsEmpty || double.IsInfinity(bounds.Left) ? null : bounds, visible);
         try
         {
-            Logging.Write("update: окно скрыто, ничего не идёт — перезапуск на новую версию");
+            Logging.Write(visible ? "update: нажали «Обновить» — перезапуск на новую версию" : "update: окно скрыто, ничего не идёт — перезапуск на новую версию");
             TgCheck.Core.Services.UpdateService.StartInstalled(start.ToArgs());
         }
         catch (Exception ex)
@@ -229,6 +239,7 @@ public partial class MainWindow : Window
             _notifyShell.Incoming -= OnIncoming;
             _notifyShell.ReactionIncoming -= OnReaction;
             _notifyShell.UpdateInstalled -= OnUpdateInstalled;
+            _notifyShell.RestartRequested -= OnRestartRequested;
         }
         _notifyShell = shell;
         if (shell is not null)
@@ -236,6 +247,7 @@ public partial class MainWindow : Window
             shell.Incoming += OnIncoming;
             shell.ReactionIncoming += OnReaction;
             shell.UpdateInstalled += OnUpdateInstalled;
+            shell.RestartRequested += OnRestartRequested;
         }
         UpdateOnScreen();
         ShowWhatsNew();
