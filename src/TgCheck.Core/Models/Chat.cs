@@ -150,6 +150,12 @@ public sealed class MessageItem : MediaHolder
     public string Text { get; set; } = "";
     public bool IsOut { get; init; }
     public DateTime? EditDateUtc { get; set; }
+    /// <summary>Когда сообщение удалили (null — не удалено): оно остаётся только у нас.</summary>
+    public DateTime? DeletedAtUtc { get; set; }
+    /// <summary>Сохранена история правок этого сообщения.</summary>
+    public bool HasEditHistory { get; set; }
+    /// <summary>Одноразовое фото, видео или голосовое.</summary>
+    public bool IsViewOnce { get; set; }
     /// <summary>Голосовое/кружок ещё не прослушано (у своих — собеседником). Меняется, когда послушают.</summary>
     public bool MediaUnread { get; set; }
     /// <summary>Сложное сообщение (статья, коллаж, музыка) — блоки по порядку; null — обычное.</summary>

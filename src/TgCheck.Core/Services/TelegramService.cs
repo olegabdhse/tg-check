@@ -43,7 +43,7 @@ public sealed partial class TelegramService : IAsyncDisposable
         // По туннелю на каждый адрес сервера (второй адрес — первым).
         _xrayStarts = env.XrayLinks.Select(link => Task.Run(() => XrayTunnel.Start(link))).ToList();
         _client = CreateClient();
-        Media = new MediaService(() => _client, Path.Combine(env.DataDirectory, "cache")) { RefreshDocument = RefreshDocumentAsync, RefreshPhoto = RefreshPhotoAsync };
+        Media = new MediaService(() => _client, Path.Combine(env.DataDirectory, "cache")) { RefreshDocument = RefreshDocumentAsync, RefreshPhoto = RefreshPhotoAsync, KeepMedia = () => Vault.KeptMedia() };
     }
 
     public MediaService Media { get; }
@@ -288,6 +288,7 @@ public sealed partial class TelegramService : IAsyncDisposable
             {
                 _session.Delete();
                 _cache.Clear();
+                Vault.Wipe();
             }
             _passwordHint = null;
             _client = CreateClient();

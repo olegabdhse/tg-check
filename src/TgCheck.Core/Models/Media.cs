@@ -199,3 +199,6 @@ public sealed class LinkPreview : MediaHolder
         Url = url, SiteName = site, Title = title, Description = description, Photo = photo, LargeImage = large,
     };
 }
+
+/// <summary>Что известно о видео перед отправкой: размер с учётом поворота, длительность, кадр для превью (JPEG).</summary>
+public sealed record VideoInfo(int Width, int Height, double Seconds, byte[]? Thumb);

@@ -6,7 +6,7 @@
         WindowStartupLocation="CenterOwner" Background="{DynamicResource SurfaceBrush}"
         FontFamily="{StaticResource UiFont}" Foreground="{DynamicResource TextBrush}" UseLayoutRounding="True"
         TextOptions.TextFormattingMode="Display">
-    <!-- «Что нового»: описание релиза с GitHub; текст листается, кнопка обновления всегда внизу -->
+    <!-- «Что нового»: описание релиза с GitHub; текст листается, кнопка всегда внизу -->
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -17,7 +17,7 @@
         <Border Padding="24,20,24,14" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
             <DockPanel>
                 <Border DockPanel.Dock="Left" Width="44" Height="44" CornerRadius="22" Background="{DynamicResource AccentBrush}" Margin="0,0,14,0">
-                    <TextBlock Text="&#xE896;" Style="{StaticResource Icon}" FontSize="20" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <TextBlock Text="&#xE73E;" Style="{StaticResource Icon}" FontSize="20" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock x:Name="TitleText" FontSize="19" FontWeight="SemiBold" />
@@ -31,10 +31,7 @@
         </ScrollViewer>
 
         <Border Grid.Row="2" Padding="24,14,24,20" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0">
-            <DockPanel>
-                <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="Позже" Padding="18,10" Click="Later_Click" Margin="0,0,10,0" />
-                <Button Style="{StaticResource PrimaryButton}" Content="Начать обновление" Padding="18,10" FontSize="14" Click="Start_Click" IsDefault="True" />
-            </DockPanel>
+            <Button Style="{StaticResource PrimaryButton}" Content="Понятно" Padding="18,10" FontSize="14" Click="Ok_Click" IsDefault="True" />
         </Border>
     </Grid>
 </Window>

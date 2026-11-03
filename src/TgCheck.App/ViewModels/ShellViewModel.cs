@@ -17,7 +17,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly Action _onLoggedOut;
     private readonly Stack<object> _back = new();
     private readonly UpdateService? _updates;
-    private UpdateInfo? _update;
+    private bool _updateBusy;
     private CancellationTokenSource? _toastCts;
 
     public ShellViewModel(TelegramService tg, AppEnv env, Action onLoggedOut, Func<string?, Task>? changeProxy = null)
@@ -38,6 +38,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // Выбранный способ не проходил — связь поднялась другим (встроенный прокси / напрямую): сказать, как подключены.
         tg.RouteChanged += route => Helpers.Anim.Ui(() => ShowToast($"Связь восстановлена: {route}"));
         _currentPage = Chats;
+        MusicNow.Instance.PropertyChanged += OnMusicNowChanged;
     }
 
     public ChatsViewModel Chats { get; }
@@ -70,7 +71,17 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// <summary>Значок соединения над настройками (щит — через прокси, «антенна» — напрямую) и окно смены прокси.</summary>
     public ProxyChoiceViewModel Proxy { get; }
 
-    [ObservableProperty] private object _currentPage;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowMusicPanel))] private object _currentPage;
+
+    /// <summary>Боковой плеер: песня играет, а раздел «Музыка» (там свой плеер) закрыт.</summary>
+    public bool ShowMusicPanel => MusicNow.Instance.ShowMusicBar && !ReferenceEquals(CurrentPage, Music);
+
+    private void OnMusicNowChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(MusicNow.ShowMusicBar)) return;
+        OnPropertyChanged(nameof(ShowMusicPanel));
+        if (ShowMusicPanel) Music.Activate(); // подборки и история в панели
+    }
     [ObservableProperty] private Section _section = Section.Chats;
     [ObservableProperty] private string _profileQuery = "";
     [ObservableProperty] private bool _isResolving;
@@ -87,9 +98,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         if (connected) _ = Chats.Conversation?.LoadAsync();
     });
 
-    [ObservableProperty] private string? _updateText;
-    [ObservableProperty] private bool _isUpdating;
-    [ObservableProperty] private double _updateProgress;
 
     public bool CanGoBack => _back.Count > 0;
 
@@ -211,10 +219,16 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         Settings.ClearCacheAction = (progress, alsoKeep) => _tg.ClearCacheAsync(Chats.Chats.Where(c => c.IsPersonal && !c.Peer.IsSelf)
             .OrderByDescending(c => c.SortDate).Take(5).Select(c => c.Peer).ToList(), progress, alsoKeep);
         Settings.GetCleanupSticker = _tg.GetCleanupStickerAsync;
+        Settings.GetVaultChats = _tg.GetVaultChatsAsync;
+        Settings.ClearVaultAction = async peers =>
+        {
+            await _tg.ClearVaultAsync(peers);
+            Chats.OnVaultCleared(peers);
+        };
         Settings.GetSessions = _tg.GetSessionsAsync;
         Settings.TerminateSessionAction = _tg.TerminateSessionAsync;
         Settings.TerminateOthersAction = _tg.TerminateOtherSessionsAsync;
-        _presence ??= new OnlinePresence(_tg); // «в сети», пока окно активно и с ним работают
+        _presence ??= new OnlinePresence(_tg, MyProfile.ShowOwnPresence); // «в сети», пока главное окно открыто и с ним работают
         // Ссылки Telegram (в тексте сообщений, описаниях, кнопках) — открываются внутри приложения.
         Helpers.RichText.MentionExists = name => _tg.UsernameExistsAsync(name); // @имя в сообщениях — ссылка, если такое есть
         Helpers.RichText.OpenMention = name => _ = OpenMentionAsync(name);
@@ -230,7 +244,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _ = ReactionCatalog.LoadAsync(_tg);
         // Обновления — сразу при старте (не дожидаясь загрузки всех чатов) и затем каждые 30 минут.
         _ = CheckUpdatesAsync();
-        _updateTimer.Tick += (_, _) => { if (_update is null) _ = CheckUpdatesAsync(); };
+        _updateTimer.Tick += (_, _) => _ = CheckUpdatesAsync();
         _updateTimer.Start();
         await Chats.EnsureLoadedAsync();
         Helpers.VlcRuntime.Prewarm(); // видеоплеер — заранее, в фоне: первое видео откроется без распаковки движка
@@ -256,6 +270,24 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     }
 
     // ===================================================================== Навигация
+
+    /// <summary>
+    /// Кнопка раздела. Нажатие на уже выбранный раздел тоже работает: открытый поверх чужой профиль закрывается,
+    /// а в чатах — сбрасывается поиск и снова виден список.
+    /// </summary>
+    [RelayCommand]
+    private void OpenSection(Section section)
+    {
+        if (Section != section)
+        {
+            Section = section;
+            return;
+        }
+        _back.Clear();
+        OnPropertyChanged(nameof(CanGoBack));
+        CurrentPage = section switch { Section.Chats => Chats, Section.Music => Music, _ => MyProfile };
+        if (section == Section.Chats) Chats.Search = "";
+    }
 
     public void OpenProfile(PeerRef peer) => OpenProfile(peer, null);
 
@@ -414,48 +446,28 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     // ===================================================================== Обновления
 
+    // Обновление ставится молча: новая версия скачивается и встаёт на место exe, никаких кнопок и полосок.
     private async Task CheckUpdatesAsync()
     {
-        if (_updates is null) return;
-        _update = await _updates.CheckAsync();
-        if (_update is not null) UpdateText = $"Доступна версия {_update.Version.ToString(3)}";
-    }
-
-    [RelayCommand]
-    private async Task InstallUpdate()
-    {
-        if (_updates is null || _update is null || IsUpdating) return;
-        // Сначала «Что нового» (описание релиза с GitHub); обновление — по кнопке «Начать обновление».
-        var whatsNew = new Views.UpdateWindow(_update) { Owner = Application.Current.MainWindow };
-        if (whatsNew.ShowDialog() != true) return;
-        IsUpdating = true;
+        if (_updates is null || _updateBusy) return;
+        _updateBusy = true;
         try
         {
-            UpdateText = "Скачивание обновления…";
-            await _updates.PrepareAsync(_update, new Progress<double>(p =>
-            {
-                UpdateProgress = p;
-                UpdateText = $"Скачивание обновления… {p:P0}";
-            }));
-            UpdateText = "Перезапуск…";
-            // Новая версия запускается, как только этот процесс завершится. Если что-то (поток плеера, загрузка) не даёт
-            // процессу выйти — через несколько секунд завершаем принудительно, чтобы обновление применилось само.
-            _ = Task.Run(async () => { await Task.Delay(TimeSpan.FromSeconds(5)); Environment.Exit(0); });
-            Application.Current.Shutdown();
+            if (await _updates.CheckAsync() is not { } update) return;
+            await _updates.InstallAsync(update);
+            Logging.Write($"update: версия {update.Version.ToString(3)} установлена, заработает после перезапуска");
+            _updateTimer.Stop(); // пока работает старый код, следующая версия подождёт: патч к ней строится от новой
+            UpdateInstalled?.Invoke();
         }
-        catch (Exception ex)
-        {
-            UpdateText = $"Доступна версия {_update.Version.ToString(3)}";
-            ShowToast(TgErrors.Describe(ex), true);
-        }
-        finally
-        {
-            IsUpdating = false;
-        }
+        catch (Exception ex) { Logging.Write("update: не установилось, попробуем позже: " + ex.Message); }
+        finally { _updateBusy = false; }
     }
 
-    [RelayCommand]
-    private void DismissUpdate() => UpdateText = null;
+    /// <summary>Новая версия уже на диске; главное окно ищет момент для незаметного перезапуска.</summary>
+    public event Action? UpdateInstalled;
+
+    /// <summary>Перезапуск сейчас что-то потерял бы: черновик, отправка, сохранение файла, открытое мини-окно.</summary>
+    public bool HasUnfinishedWork => MiniChat is not null || Chats.HasUnfinishedWork || ConversationViewModel.ActiveTransfers > 0;
 
     // ===================================================================== Уведомления
 
@@ -479,6 +491,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _updateTimer.Stop();
+        MusicNow.Instance.PropertyChanged -= OnMusicNowChanged;
         _presence?.Dispose();
         _tg.ConnectionChanged -= OnConnectionChanged;
         Chats.Dispose();

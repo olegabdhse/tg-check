@@ -7,6 +7,7 @@ using TgCheck.App.Helpers;
 using TgCheck.App.ViewModels;
 using TgCheck.App.Views;
 using TgCheck.Core.Models;
+using TgCheck.Core.Services;
 
 namespace TgCheck.App;
 
@@ -51,6 +52,104 @@ public partial class MainWindow : Window
         };
     }
 
+    /// <summary>Запуск после фонового обновления: окно не показывается и не забирает фокус, размер и положение — прежние.</summary>
+    internal void StartQuietly(QuietStart start)
+    {
+        if (start.Bounds is { } b)
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            (Left, Top, Width, Height) = (b.Left, b.Top, b.Width, b.Height);
+        }
+        if (start.Minimized)
+        {
+            _maximizeOnRestore = start.Maximized;
+            ShowActivated = false;
+            WindowState = WindowState.Minimized;
+            Show();
+            ShowActivated = true;
+        }
+        else if (start.Maximized) WindowState = WindowState.Maximized;
+    }
+
+    // ===================================================================== Фоновое обновление
+
+    private bool _maximizeOnRestore;
+    private WindowState _shownState = WindowState.Normal;
+    private DispatcherTimer? _restartTimer;
+    private int _hiddenTicks;
+    private bool _whatsNewTaken;
+    private static readonly TimeSpan UserAwayBeforeRestart = TimeSpan.FromMinutes(2);
+
+    // Новая версия уже на диске. Перезапускаемся, только когда этого нельзя заметить; такого момента не было — она заработает при следующем запуске.
+    private void OnUpdateInstalled()
+    {
+        _restartTimer ??= CreateRestartTimer();
+        _restartTimer.Start();
+    }
+
+    private DispatcherTimer CreateRestartTimer()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
+        timer.Tick += (_, _) =>
+        {
+            if (IsOnScreen) { _hiddenTicks = 0; return; }
+            if (++_hiddenTicks >= 2 && CanRestartUnnoticed()) RestartQuietly();
+        };
+        return timer;
+    }
+
+    private bool CanRestartUnnoticed()
+    {
+        if (_notifyShell is not { HasUnfinishedWork: false } || _island?.IsMouseOver == true) return false;
+        if (MusicPlayer.Instance.HasSong || NowPlaying.Instance.IsActive) return false; // играет или на паузе: перезапуск потерял бы место в песне
+        if (Application.Current.Windows.OfType<Window>().Any(w => w != this && w != _island && w.IsVisible)) return false;
+        var input = new LastInputInfo { Size = (uint)System.Runtime.InteropServices.Marshal.SizeOf<LastInputInfo>() };
+        return GetLastInputInfo(ref input) && unchecked((uint)Environment.TickCount - input.Time) >= UserAwayBeforeRestart.TotalMilliseconds;
+    }
+
+    private void RestartQuietly()
+    {
+        _restartTimer?.Stop();
+        var bounds = WindowState == WindowState.Normal && !double.IsNaN(Left) && !double.IsNaN(Top) ? new Rect(Left, Top, Width, Height) : RestoreBounds;
+        var start = new QuietStart(Environment.ProcessId, WindowState == WindowState.Minimized, _shownState == WindowState.Maximized,
+            bounds.IsEmpty || double.IsInfinity(bounds.Left) ? null : bounds);
+        try
+        {
+            Logging.Write("update: окно скрыто, ничего не идёт — перезапуск на новую версию");
+            TgCheck.Core.Services.UpdateService.StartInstalled(start.ToArgs());
+        }
+        catch (Exception ex)
+        {
+            Logging.Write("update: новая версия не запустилась: " + ex.Message);
+            return;
+        }
+        // Если что-то (поток плеера, загрузка) не даёт процессу выйти — завершаем принудительно: новая копия ждёт этого.
+        _ = Task.Run(async () => { await Task.Delay(TimeSpan.FromSeconds(5)); Environment.Exit(0); });
+        ExitApp();
+    }
+
+    // Окно открыли — рассказать, что программа обновилась, пока её не видели.
+    private void ShowWhatsNew()
+    {
+        if (_whatsNewTaken || !IsOnScreen || _notifyShell is null) return;
+        _whatsNewTaken = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
+        {
+            if (TgCheck.Core.Services.UpdateService.TakeInstalled() is { } update)
+                new UpdateWindow(update) { Owner = this }.ShowDialog();
+        });
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct LastInputInfo
+    {
+        public uint Size;
+        public uint Time;
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool GetLastInputInfo(ref LastInputInfo info);
+
     // Заголовок окна рисует Windows — ему тема сообщается отдельно.
     private void ApplyThemeToWindow() => WindowEffects.ApplyDarkTitleBar(this, AppTheme.WindowBackground, AppTheme.IsLight);
 
@@ -94,6 +193,16 @@ public partial class MainWindow : Window
         base.OnClosing(e);
     }
 
+    protected override void OnPreviewKeyDown(System.Windows.Input.KeyEventArgs e)
+    {
+        base.OnPreviewKeyDown(e);
+        if (e.Key != System.Windows.Input.Key.G || System.Windows.Input.Keyboard.Modifiers != System.Windows.Input.ModifierKeys.Control || _notifyShell is null) return;
+        e.Handled = true;
+        var ghost = GhostViewModel.Instance;
+        ghost.IsEnabled = !ghost.IsEnabled;
+        _notifyShell.ShowToast(ghost.IsEnabled ? "Режим призрака включён" : "Режим призрака выключен");
+    }
+
     // Печать, когда фокус не в поле ввода: в открытый чат или в поиск (как в Telegram).
     protected override void OnPreviewTextInput(System.Windows.Input.TextCompositionEventArgs e)
     {
@@ -115,13 +224,30 @@ public partial class MainWindow : Window
         if (e.PropertyName != nameof(MainViewModel.CurrentPage)) return;
         var shell = (sender as MainViewModel)?.CurrentPage as ShellViewModel;
         if (ReferenceEquals(shell, _notifyShell)) return;
-        if (_notifyShell is not null) { _notifyShell.Incoming -= OnIncoming; _notifyShell.ReactionIncoming -= OnReaction; }
+        if (_notifyShell is not null)
+        {
+            _notifyShell.Incoming -= OnIncoming;
+            _notifyShell.ReactionIncoming -= OnReaction;
+            _notifyShell.UpdateInstalled -= OnUpdateInstalled;
+        }
         _notifyShell = shell;
-        if (shell is not null) { shell.Incoming += OnIncoming; shell.ReactionIncoming += OnReaction; }
+        if (shell is not null)
+        {
+            shell.Incoming += OnIncoming;
+            shell.ReactionIncoming += OnReaction;
+            shell.UpdateInstalled += OnUpdateInstalled;
+        }
+        UpdateOnScreen();
+        ShowWhatsNew();
         // Островок готовим заранее, в простое: первое создание окна занимает ~2 с, и при первом сворачивании
         // он появлялся с задержкой, сначала не того размера и не на своём месте — «дважды».
+        // Запустились без окна (после фонового обновления) — он и должен быть на экране.
         if (shell is not null && UiSettings.ShowIsland)
-            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () => EnsureIsland()?.Prewarm());
+            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
+            {
+                if (IsOnScreen) EnsureIsland()?.Prewarm();
+                else ShowIsland();
+            });
     }
 
     private void OnIncoming(ChatItemViewModel chat) => Dispatcher.BeginInvoke(() =>
@@ -158,6 +284,13 @@ public partial class MainWindow : Window
     // Свернули — сверху появляется «островок» с последними чатами; развернули — он прячется.
     private void OnStateChanged(object? sender, EventArgs e)
     {
+        if (_maximizeOnRestore && WindowState == WindowState.Normal)
+        {
+            _maximizeOnRestore = false;
+            WindowState = WindowState.Maximized; // вызовет этот обработчик снова
+            return;
+        }
+        if (WindowState != WindowState.Minimized) _shownState = WindowState;
         UpdateOnScreen();
         Controls.StickerView.WindowStateChanged();
         if (WindowState == WindowState.Minimized) { ShowIsland(); TrimMemorySoon(); }
@@ -218,6 +351,7 @@ public partial class MainWindow : Window
         _trimCts?.Cancel();
         _awayTimer?.Stop();
         ShellView.Current?.RestoreChat();
+        ShowWhatsNew();
     }
 
     [System.Runtime.InteropServices.DllImport("kernel32.dll")]

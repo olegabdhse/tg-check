@@ -1,27 +1,38 @@
 using System.Diagnostics;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using TgCheck.Core.Config;
 
 namespace TgCheck.Core.Services;
 
 /// <param name="PatchUrl">Патч от текущей версии (TgCheck-&lt;версия&gt;.patch), если он есть в релизе.</param>
-/// <param name="HashUrl">SHA-256 нового exe (TgCheck.exe.sha256) — собранный из патча exe сверяется с ним.</param>
+/// <param name="HashUrl">SHA-256 нового exe (TgCheck.exe.sha256) — скачанный или собранный из патча exe сверяется с ним.</param>
 public sealed record UpdateInfo(Version Version, string Tag, string? Notes, string DownloadUrl, long Size,
     string? PatchUrl = null, long PatchSize = 0, string? HashUrl = null);
+
+/// <summary>Установленное обновление, о котором ещё не рассказали: версия и описание релиза.</summary>
+public sealed record InstalledUpdate(string Version, string? Notes);
 
 /// <summary>
 /// Обновления через GitHub Releases: берётся последний релиз репозитория, из него — ассет TgCheck.exe.
 /// Если в релизе есть патч именно от текущей версии — качается только он (меньше мегабайта), и новый exe собирается из
-/// текущего; не вышло (нет патча, сумма не сошлась) — качается полный exe. Новый exe ставится рядом и после закрытия
-/// приложения подменяет старый.
+/// текущего; не вышло (нет патча, сумма не сошлась) — качается полный exe. Всё идёт в фоне: запущенный exe можно
+/// переименовать, поэтому новая версия сразу встаёт на его место и работает со следующего запуска.
 /// </summary>
 public sealed class UpdateService(string repo)
 {
     private const string AssetName = "TgCheck.exe";
     private const string HashName = "TgCheck.exe.sha256";
+    private const string OldExeName = "TgCheck.old.exe";
+    private const string NewExeName = "TgCheck.new.exe";
+    // Файл рядом с exe отключает обновления: так живут тестовые сборки, которые нельзя подменять выпущенной версией.
+    private const string NoUpdateMarker = "TgCheck.noupdate";
     private static string PatchName => $"TgCheck-{BuildInfo.VersionText}.patch";
     private static readonly HttpClient Http = CreateHttp();
+    private static readonly string InstalledFile = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TgCheck", "installed_update.json");
 
     private static HttpClient CreateHttp()
     {
@@ -36,6 +47,7 @@ public sealed class UpdateService(string repo)
     {
         try
         {
+            if (File.Exists(Path.Combine(AppContext.BaseDirectory, NoUpdateMarker))) return null;
             using var resp = await Http.GetAsync($"https://api.github.com/repos/{repo}/releases/latest", ct);
             if (!resp.IsSuccessStatusCode)
             {
@@ -71,66 +83,92 @@ public sealed class UpdateService(string repo)
     }
 
     /// <summary>
-    /// Скачивает новую версию и готовит замену. После вызова приложение нужно закрыть —
-    /// скрипт дождётся выхода процесса, заменит exe и запустит новую версию.
+    /// Скачивает новую версию и ставит её на место exe. Программа продолжает работать: старый код остаётся в памяти,
+    /// а файл под прежним именем — уже новый. Ошибка ничего не ломает: exe остаётся прежним, в следующий раз попробуем снова.
     /// </summary>
-    public async Task PrepareAsync(UpdateInfo update, IProgress<double>? progress = null, CancellationToken ct = default)
+    public async Task InstallAsync(UpdateInfo update, CancellationToken ct = default)
     {
         var exe = Environment.ProcessPath ?? throw new InvalidOperationException("Не удалось определить путь к exe.");
         var dir = Path.GetDirectoryName(exe)!;
-        var newExe = Path.Combine(dir, "TgCheck.new.exe");
-
-        if (!await TryPatchAsync(update, exe, newExe, progress, ct))
+        var newExe = Path.Combine(dir, NewExeName);
+        var oldExe = Path.Combine(dir, OldExeName);
+        try
         {
-            await using (var dst = File.Create(newExe))
-                await DownloadAsync(update.DownloadUrl, update.Size, dst, progress, ct);
-            if (update.Size > 0 && new FileInfo(newExe).Length != update.Size)
+            if (!await TryPatchAsync(update, exe, newExe, ct)) await DownloadWholeAsync(update, newExe, ct);
+            File.Move(exe, oldExe, overwrite: true);
+            try { File.Move(newExe, exe); }
+            catch
             {
-                File.Delete(newExe);
-                throw new IOException("Файл обновления скачан не полностью. Попробуйте ещё раз.");
+                File.Move(oldExe, exe);
+                throw;
             }
         }
-
-        var pid = Environment.ProcessId;
-        var script = Path.Combine(Path.GetTempPath(), $"tgcheck_update_{pid}.cmd");
-        File.WriteAllText(script,
-            "@echo off\r\n" +
-            "chcp 65001 >nul\r\n" +
-            ":wait\r\n" +
-            $"tasklist /FI \"PID eq {pid}\" 2>nul | find \"{pid}\" >nul && (timeout /t 1 /nobreak >nul & goto wait)\r\n" +
-            // exe может ещё несколько секунд держать антивирус или система — повторяем замену (до 30 с), затем запускаем.
-            "set n=0\r\n" +
-            ":move\r\n" +
-            $"move /y \"{newExe}\" \"{exe}\" >nul 2>&1 && goto run\r\n" +
-            "set /a n+=1\r\n" +
-            "if %n% geq 30 goto run\r\n" +
-            "timeout /t 1 /nobreak >nul\r\n" +
-            "goto move\r\n" +
-            ":run\r\n" +
-            $"start \"\" \"{exe}\"\r\n" +
-            "del \"%~f0\"\r\n");
-
-        Process.Start(new ProcessStartInfo("cmd.exe", $"/c \"{script}\"")
+        finally
         {
-            CreateNoWindow = true,
-            UseShellExecute = false,
-            WindowStyle = ProcessWindowStyle.Hidden,
-            WorkingDirectory = dir,
-        });
+            try { File.Delete(newExe); } catch { }
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false); // оба exe читались в память целиком
+        }
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(InstalledFile)!);
+            await File.WriteAllTextAsync(InstalledFile, JsonSerializer.Serialize(new InstalledUpdate(update.Version.ToString(3), update.Notes)), ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { Logging.Write("update: описание не сохранилось: " + ex.Message); }
+    }
+
+    /// <summary>Запустить уже установленную версию. Вызывающий сразу после этого завершается.</summary>
+    public static void StartInstalled(string args)
+    {
+        var exe = Environment.ProcessPath ?? throw new InvalidOperationException("Не удалось определить путь к exe.");
+        Process.Start(new ProcessStartInfo(exe, args) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(exe)! });
+    }
+
+    /// <summary>Убрать прежний exe, оставшийся от обновления (к новому запуску он уже никем не занят).</summary>
+    public static void CleanUpAfterUpdate()
+    {
+        try
+        {
+            if (Path.GetDirectoryName(Environment.ProcessPath) is { } dir && File.Exists(Path.Combine(dir, OldExeName)))
+                File.Delete(Path.Combine(dir, OldExeName));
+        }
+        catch (Exception ex) { Logging.Write("update: прежний exe не удалён: " + ex.Message); }
+    }
+
+    /// <summary>
+    /// Описание обновления, которым сейчас работает программа; показывается один раз. Пока работает ещё старый код, файл
+    /// с описанием более новой версии не трогаем — его заберёт уже она.
+    /// </summary>
+    public static InstalledUpdate? TakeInstalled()
+    {
+        try
+        {
+            if (!File.Exists(InstalledFile)) return null;
+            var installed = JsonSerializer.Deserialize<InstalledUpdate>(File.ReadAllText(InstalledFile));
+            if (installed is not null && Version.TryParse(installed.Version, out var version) && Normalize(version) > Normalize(BuildInfo.Version)) return null;
+            File.Delete(InstalledFile);
+            if (installed is null || installed.Version != BuildInfo.VersionText) return null;
+            // Раздел про установку нужен на странице релиза, внутри программы он ни к чему.
+            return installed with { Notes = installed.Notes is { } notes ? Regex.Replace(notes, @"(?ms)^##\s*Установка.*\z", "").Trim() : null };
+        }
+        catch (Exception ex)
+        {
+            Logging.Write("update: описание не прочитано: " + ex.Message);
+            return null;
+        }
     }
 
     // Обновиться патчем: скачать его, собрать новый exe из текущего и сверить SHA-256 с опубликованной.
     // false — патча нет или что-то не сошлось (тогда качается полный exe).
-    private static async Task<bool> TryPatchAsync(UpdateInfo update, string exe, string newExe, IProgress<double>? progress, CancellationToken ct)
+    private static async Task<bool> TryPatchAsync(UpdateInfo update, string exe, string newExe, CancellationToken ct)
     {
         if (update.PatchUrl is null || update.HashUrl is null) return false;
         try
         {
-            var expected = (await Http.GetStringAsync(update.HashUrl, ct)).Trim().Split(' ', '\t', '\r', '\n')[0].ToLowerInvariant();
+            var expected = await GetExpectedHashAsync(update.HashUrl, ct);
             using var patch = new MemoryStream();
-            await DownloadAsync(update.PatchUrl, update.PatchSize, patch, progress, ct);
+            await DownloadAsync(update.PatchUrl, patch, ct);
             var built = await Task.Run(() => DeltaPatch.Apply(File.ReadAllBytes(exe), patch.ToArray()), ct);
-            var actual = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(built)).ToLowerInvariant();
+            var actual = Convert.ToHexString(SHA256.HashData(built)).ToLowerInvariant();
             if (actual != expected)
             {
                 Logging.Write($"update: собранный из патча exe не совпал с релизом — качаем целиком");
@@ -147,21 +185,29 @@ public sealed class UpdateService(string repo)
         }
     }
 
-    private static async Task DownloadAsync(string url, long size, Stream dst, IProgress<double>? progress, CancellationToken ct)
+    // Подмена идёт без участия человека, поэтому и полный exe проверяется по SHA-256, а не только по размеру.
+    private static async Task DownloadWholeAsync(UpdateInfo update, string newExe, CancellationToken ct)
+    {
+        await using (var dst = File.Create(newExe))
+            await DownloadAsync(update.DownloadUrl, dst, ct);
+        if (update.Size > 0 && new FileInfo(newExe).Length != update.Size)
+            throw new IOException("Файл обновления скачан не полностью.");
+        if (update.HashUrl is null) return;
+        var expected = await GetExpectedHashAsync(update.HashUrl, ct);
+        await using var file = File.OpenRead(newExe);
+        if (Convert.ToHexString(await SHA256.HashDataAsync(file, ct)).ToLowerInvariant() != expected)
+            throw new IOException("Сумма файла обновления не совпала с релизом.");
+    }
+
+    private static async Task<string> GetExpectedHashAsync(string url, CancellationToken ct) =>
+        (await Http.GetStringAsync(url, ct)).Trim().Split(' ', '\t', '\r', '\n')[0].ToLowerInvariant();
+
+    private static async Task DownloadAsync(string url, Stream dst, CancellationToken ct)
     {
         using var resp = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
         resp.EnsureSuccessStatusCode();
-        var total = resp.Content.Headers.ContentLength ?? size;
         await using var src = await resp.Content.ReadAsStreamAsync(ct);
-        var buffer = new byte[81920];
-        long done = 0;
-        int read;
-        while ((read = await src.ReadAsync(buffer, ct)) > 0)
-        {
-            await dst.WriteAsync(buffer.AsMemory(0, read), ct);
-            done += read;
-            if (total > 0) progress?.Report((double)done / total);
-        }
+        await src.CopyToAsync(dst, ct);
     }
 
     private static Version Normalize(Version v) => new(v.Major, v.Minor, Math.Max(v.Build, 0));

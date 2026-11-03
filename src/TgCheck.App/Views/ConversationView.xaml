@@ -9,6 +9,17 @@
 
     <UserControl.Resources>
         <!-- Медиа и файлы в боковой панели: правый клик — показать сообщение в ленте -->
+        <ContextMenu x:Key="DeletedMessageMenu" x:Shared="False">
+            <MenuItem Header="{Binding DeletedText}" Tag="&#xE74D;" IsHitTestVisible="False" Foreground="#FF6B6B" />
+            <Separator />
+            <MenuItem Header="Копировать" Tag="&#xE8C8;"
+                      Command="{Binding PlacementTarget.Tag.CopyCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
+            <MenuItem Header="Ответить цитатой" Tag="&#xE97A;"
+                      Command="{Binding PlacementTarget.Tag.ReplyCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
+            <MenuItem Header="История правок" Tag="&#xE81C;"
+                      Command="{Binding PlacementTarget.Tag.ShowEditHistoryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}"
+                      Visibility="{Binding HasEditHistory, Converter={StaticResource BoolToVis}}" />
+        </ContextMenu>
         <ContextMenu x:Key="SharedItemMenu" x:Shared="False">
             <MenuItem Header="Показать в чате" Tag="&#xE8BD;"
                       Command="{Binding PlacementTarget.Tag.ShowInChatCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
@@ -776,6 +787,10 @@
                                           Command="{Binding PlacementTarget.Tag.EditCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}"
                                           Visibility="{Binding IsOut, Converter={StaticResource BoolToVis}}" />
+                                <MenuItem Header="История правок" Tag="&#xE81C;"
+                                          Command="{Binding PlacementTarget.Tag.ShowEditHistoryCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          CommandParameter="{Binding}"
+                                          Visibility="{Binding HasEditHistory, Converter={StaticResource BoolToVis}}" />
                                 <MenuItem Header="Сохранить файл" Tag="&#xE896;"
                                           Command="{Binding PlacementTarget.Tag.DownloadCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                           CommandParameter="{Binding}"
@@ -958,6 +973,15 @@
                                                    Visibility="{Binding ViewsText, Converter={StaticResource NullToVis}}" />
                                         <TextBlock Text="{Binding ViewsText}" FontSize="11" Foreground="{DynamicResource MetaBrush}" Margin="0,0,8,0"
                                                    Visibility="{Binding ViewsText, Converter={StaticResource NullToVis}}" />
+                                        <TextBlock Text="&#xE74D;" Style="{StaticResource Icon}" FontSize="11" Foreground="#FF5A5A" Margin="0,0,5,0" VerticalAlignment="Center"
+                                                   Visibility="{Binding IsDeleted, Converter={StaticResource BoolToVis}}" />
+                                        <TextBlock Text="одноразовое" FontSize="11" Foreground="{DynamicResource MetaBrush}" Margin="0,0,5,0"
+                                                   Visibility="{Binding IsViewOnce, Converter={StaticResource BoolToVis}}" />
+                                        <Button Style="{StaticResource BareButton}" Cursor="Hand" Margin="0,0,5,0" VerticalAlignment="Center"
+                                                Command="{Binding DataContext.ShowEditHistoryCommand, ElementName=Root}" CommandParameter="{Binding}"
+                                                Visibility="{Binding HasEditHistory, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock Text="&#xE81C;" Style="{StaticResource Icon}" FontSize="12" Foreground="{DynamicResource LinkBrush}" />
+                                        </Button>
                                         <TextBlock Text="изменено" FontSize="11" Foreground="{DynamicResource MetaBrush}" Margin="0,0,5,0"
                                                    Visibility="{Binding IsEdited, Converter={StaticResource BoolToVis}}" />
                                         <TextBlock Text="{Binding TimeText}" FontSize="11" Foreground="{DynamicResource MetaBrush}" />
@@ -1154,6 +1178,12 @@
                     <Setter TargetName="Meta" Property="Padding" Value="7,2" />
                     <Setter TargetName="Meta" Property="Margin" Value="0,2,0,0" />
                 </DataTrigger>
+                <!-- Удалённое: полупрозрачное, реагировать нельзя, в меню только время удаления, копирование и цитата -->
+                <DataTrigger Binding="{Binding IsDeleted}" Value="True">
+                    <Setter TargetName="BubbleWrap" Property="Opacity" Value="0.55" />
+                    <Setter TargetName="ReactButton" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="Bubble" Property="ContextMenu" Value="{StaticResource DeletedMessageMenu}" />
+                </DataTrigger>
                 <DataTrigger Binding="{Binding IsNew}" Value="True">
                     <DataTrigger.EnterActions>
                         <BeginStoryboard>
@@ -1345,6 +1375,7 @@
                                         </Style>
                                     </MenuItem.Style>
                                 </MenuItem>
+                                <MenuItem Header="Удалённые сообщения" Tag="&#xE81C;" Command="{Binding OpenDeletedListCommand}" />
                                 <MenuItem Header="Очистить историю" Tag="&#xE894;" Command="{Binding ClearHistoryCommand}"
                                           Visibility="{Binding CanClearHistory, Converter={StaticResource BoolToVis}}" />
                                 <MenuItem Header="{Binding DeleteChatText}" Tag="&#xE74D;" Command="{Binding DeleteChatCommand}" Foreground="#FF6B6B" />
@@ -1423,6 +1454,81 @@
                     </Border.RenderTransform>
                     <TextBlock x:Name="FloatingDateText" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSoftBrush}" />
                 </Border>
+
+                <!-- Все удалённые сообщения чата: клик — к сообщению в ленте -->
+                <Grid Panel.ZIndex="5" Visibility="Collapsed" helpers:Anim.Mode="Fade" helpers:Anim.Show="{Binding IsDeletedListOpen}">
+                    <Border Background="{DynamicResource OverlayBrush}">
+                        <Border.InputBindings>
+                            <MouseBinding MouseAction="LeftClick" Command="{Binding CloseDeletedListCommand}" />
+                        </Border.InputBindings>
+                    </Border>
+                    <Border Width="420" MaxHeight="520" Margin="16" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="16" Padding="0,12,0,10"
+                            Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                        <DockPanel>
+                            <DockPanel DockPanel.Dock="Top" Margin="18,0,10,8">
+                                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="11" Padding="8" Command="{Binding CloseDeletedListCommand}" />
+                                <TextBlock Text="Удалённые сообщения" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            </DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Text="{Binding DeletedListStatus}" Style="{StaticResource Caption}" Margin="18,4,18,12" TextWrapping="Wrap" />
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True">
+                                <ItemsControl x:Name="DeletedList" ItemsSource="{Binding DeletedMessages}" Focusable="False">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border x:Name="Row" Padding="18,8" Cursor="Hand" Background="Transparent">
+                                                <Border.InputBindings>
+                                                    <MouseBinding MouseAction="LeftClick" Command="{Binding DataContext.OpenDeletedMessageCommand, ElementName=DeletedList}" CommandParameter="{Binding}" />
+                                                </Border.InputBindings>
+                                                <StackPanel>
+                                                    <DockPanel>
+                                                        <TextBlock DockPanel.Dock="Right" Text="{Binding DateText}" FontSize="11.5" Foreground="#FF6B6B" Margin="10,0,0,0" />
+                                                        <TextBlock Text="{Binding Sender}" FontWeight="SemiBold" FontSize="12.5" TextTrimming="CharacterEllipsis" />
+                                                    </DockPanel>
+                                                    <TextBlock Text="{Binding Text}" FontSize="13" Foreground="{DynamicResource TextSoftBrush}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                                                </StackPanel>
+                                            </Border>
+                                            <DataTemplate.Triggers>
+                                                <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Row" Property="Background" Value="{DynamicResource HoverBrush}" />
+                                                </Trigger>
+                                            </DataTemplate.Triggers>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+
+                <!-- История правок сообщения -->
+                <Grid Panel.ZIndex="5" Visibility="Collapsed" helpers:Anim.Mode="Fade" helpers:Anim.Show="{Binding IsEditHistoryOpen}">
+                    <Border Background="{DynamicResource OverlayBrush}">
+                        <Border.InputBindings>
+                            <MouseBinding MouseAction="LeftClick" Command="{Binding CloseEditHistoryCommand}" />
+                        </Border.InputBindings>
+                    </Border>
+                    <Border Width="380" MaxHeight="460" Margin="16" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="16" Padding="0,12,0,10"
+                            Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                        <DockPanel>
+                            <DockPanel DockPanel.Dock="Top" Margin="18,0,10,8">
+                                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="11" Padding="8" Command="{Binding CloseEditHistoryCommand}" />
+                                <TextBlock Text="История правок" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            </DockPanel>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True">
+                                <ItemsControl ItemsSource="{Binding EditVersions}" Focusable="False">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="18,6,18,8">
+                                                <TextBlock Text="{Binding When}" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <TextBox Text="{Binding Text, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Background="Transparent" Padding="0"
+                                                         Foreground="{DynamicResource TextBrush}" FontSize="13.5" Margin="0,3,0,0" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+                </Grid>
 
                 <!-- Верх ленты: панель плеера (голосовые, аудио, кружки) и закреплённые -->
                 <StackPanel x:Name="FeedTop" VerticalAlignment="Top">

@@ -283,10 +283,25 @@ public sealed partial class MessageViewModel : ObservableObject
         _formatting = item.Formatting;
         _isEdited = item.EditDateUtc is not null;
         _isMediaUnread = item.MediaUnread;
+        _isDeleted = item.DeletedAtUtc is not null;
+        _hasEditHistory = item.HasEditHistory;
         RebuildPoll();
     }
 
     public PeerRef Chat { get; }
+
+    /// <summary>Удалено другими: осталось только у нас, полупрозрачное, с красной мусоркой.</summary>
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(DeletedText))] private bool _isDeleted;
+    /// <summary>Есть сохранённая история правок — рядом с «изменено» кнопка.</summary>
+    [ObservableProperty] private bool _hasEditHistory;
+    public bool IsViewOnce => Item.IsViewOnce;
+    public string DeletedText => Item.DeletedAtUtc is { } at ? "Удалено " + at.ToLocalTime().ToString("d MMMM, HH:mm") : "";
+
+    public void MarkDeleted(DateTime atUtc)
+    {
+        Item.DeletedAtUtc = atUtc;
+        IsDeleted = true;
+    }
 
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(VoiceDurationText))] private MessageItem _item;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasText), nameof(IsJumboEmoji), nameof(TextEmojiSize), nameof(HasCodeBlocks), nameof(ShowPlainText), nameof(Segments))] private string _text;

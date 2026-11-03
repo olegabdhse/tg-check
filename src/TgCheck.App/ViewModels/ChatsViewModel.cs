@@ -230,6 +230,16 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
                 _conversations.Remove(key);
     }
 
+    /// <summary>Где-то остался неотправленный текст или вложение, идёт отправка или запись голосового.</summary>
+    public bool HasUnfinishedWork => _conversations.Values.Any(c => !string.IsNullOrEmpty(c.Draft) || c.HasAttachments || c.IsSending || c.IsRecording);
+
+    /// <summary>Удалённые и правки выбранных чатов очищены — убрать их и с экрана.</summary>
+    public void OnVaultCleared(IEnumerable<long> peers)
+    {
+        foreach (var key in peers)
+            if (_conversations.TryGetValue(key, out var conv)) conv.DropDeleted();
+    }
+
     public ConversationViewModel? FindConversation(long key) => _conversations.GetValueOrDefault(key);
     public ChatItemViewModel? FindChat(long key) => _byKey.GetValueOrDefault(key);
 

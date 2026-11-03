@@ -349,19 +349,24 @@ public sealed partial class TelegramService
         return await Task.Run(() =>
         {
             if (offsetId == 0) _cache.Save($"history_{peer.Key}", res);
-            return MapHistory(res);
+            return WeavePage(peer, MapHistory(res), offsetId, limit);
         });
     }
 
     /// <summary>Последние сообщения чата из локального кэша (показываются сразу, пока грузится сеть).</summary>
-    public IReadOnlyList<MessageItem>? GetCachedHistory(PeerRef peer) =>
-        _cache.Load<Messages_MessagesBase>($"history_{peer.Key}") is { } cached ? MapHistory(cached) : null;
+    public IReadOnlyList<MessageItem>? GetCachedHistory(PeerRef peer)
+    {
+        if (_cache.Load<Messages_MessagesBase>($"history_{peer.Key}") is not { } cached) return null;
+        var page = MapHistory(cached, fromServer: false); // кэш не доказывает, что сообщение живо: метку «удалено» он не снимает
+        return page.Count == 0 ? page : Weave(peer, page, page.Min(m => m.Id), int.MaxValue);
+    }
 
-    private List<MessageItem> MapHistory(Messages_MessagesBase res)
+    private List<MessageItem> MapHistory(Messages_MessagesBase res, bool fromServer = true)
     {
         res.CollectUsersChats(_users, _chats);
+        if (fromServer) RememberSeen(res.Messages);
         return res.Messages.Where(m => m is not MessageEmpty)
-            .Select(MapMessage).Reverse().ToList();
+            .Select(m => MapMessage(WithSavedMedia(m))).Reverse().ToList();
     }
 
     /// <summary>Отдельные сообщения (например, для превью ответа).</summary>
@@ -369,12 +374,20 @@ public sealed partial class TelegramService
     {
         var res = await _client.GetMessages(peer.Info.ToInputPeer(), ids.Select(i => (InputMessage)new InputMessageID { id = i }).ToArray());
         res.CollectUsersChats(_users, _chats);
-        return res.Messages.Where(m => m is not MessageEmpty).Select(MapMessage).ToList();
+        RememberSeen(res.Messages);
+        return res.Messages.Where(m => m is not MessageEmpty).Select(m => MapMessage(WithSavedMedia(m))).ToList();
     }
 
-    public async Task<MessageItem> SendTextAsync(PeerRef peer, string text, int? replyToId = null)
+    /// <param name="quote">Цитата перед текстом: на удалённое сообщение нельзя ответить обычным ответом.</param>
+    public async Task<MessageItem> SendTextAsync(PeerRef peer, string text, int? replyToId = null, string? quote = null)
     {
         var (clean, entities) = MarkdownEntities.Parse(text);
+        if (quote is { Length: > 0 })
+        {
+            foreach (var e in entities ?? []) e.offset += quote.Length + 1;
+            entities = [new MessageEntityBlockquote { offset = 0, length = quote.Length }, .. entities ?? []];
+            clean = quote + "\n" + clean;
+        }
         var msg = await _client.SendMessageAsync(peer.Info.ToInputPeer(), clean, reply_to_msg_id: replyToId ?? 0, entities: entities);
         return MapMessage(msg);
     }
@@ -389,6 +402,7 @@ public sealed partial class TelegramService
     /// <param name="forEveryone">Удалить у всех (для каналов/супергрупп — всегда у всех).</param>
     public async Task DeleteAsync(PeerRef peer, int[] ids, bool forEveryone = true)
     {
+        foreach (var id in ids) _deletedHere[id] = 0;
         if (peer.Info is Channel channel) await _client.Channels_DeleteMessages(channel, ids);
         else await _client.Messages_DeleteMessages(ids, revoke: forEveryone);
     }
@@ -396,6 +410,7 @@ public sealed partial class TelegramService
     /// <returns>false — сервер отметку не получил (нет связи): её нужно отправить ещё раз.</returns>
     public async Task<bool> MarkReadAsync(PeerRef peer, int maxId)
     {
+        if (GhostMode.BlocksRead) return true;
         try { await _client.ReadHistory(peer.Info.ToInputPeer(), maxId); return true; }
         catch (Exception ex) { Logging.Write("read: " + ex.Message); return false; }
     }
@@ -407,7 +422,10 @@ public sealed partial class TelegramService
     }
 
     /// <summary>Отметить голосовое/кружок прослушанным (у собеседника пропадёт точка «не прослушано»).</summary>
-    public async Task MarkMediaListenedAsync(PeerRef peer, int messageId)
+    public Task MarkMediaListenedAsync(PeerRef peer, int messageId) =>
+        GhostMode.BlocksListened ? Task.CompletedTask : ReadContentsAsync(peer, messageId);
+
+    internal async Task ReadContentsAsync(PeerRef peer, int messageId)
     {
         try
         {
@@ -420,6 +438,7 @@ public sealed partial class TelegramService
     /// <summary>Показать собеседнику «печатает…» (не чаще раза в 5 секунд).</summary>
     public async Task NotifyTypingAsync(PeerRef peer)
     {
+        if (GhostMode.BlocksTyping) return;
         var now = DateTime.UtcNow;
         if (_typingSent.TryGetValue(peer.Key, out var last) && now - last < TimeSpan.FromSeconds(5)) return;
         _typingSent[peer.Key] = now;
@@ -497,15 +516,19 @@ public sealed partial class TelegramService
         switch (update)
         {
             case UpdateNewMessage { message: { } m } when m is not MessageEmpty:
+                OnNewMessage(m);
                 MessageReceived?.Invoke(MapMessage(m));
                 break;
             case UpdateEditMessage { message: { } m } when m is not MessageEmpty:
+                RememberSeen([m]);
                 MessageEdited?.Invoke(MapMessage(m));
                 break;
             case UpdateEditChannelMessage { message: { } m } when m is not MessageEmpty:
+                RememberSeen([m]);
                 MessageEdited?.Invoke(MapMessage(m));
                 break;
             case UpdateDeleteChannelMessages d:
+                OnDeleted(-1_000_000_000_000 - d.channel_id, d.messages);
                 MessagesDeleted?.Invoke(-1_000_000_000_000 - d.channel_id, d.messages);
                 break;
             // Голосовые/кружки прослушаны (собеседником — наши, или нами на другом устройстве).
@@ -516,6 +539,7 @@ public sealed partial class TelegramService
                 MediaListened?.Invoke(-1_000_000_000_000 - rcc.channel_id, rcc.messages);
                 break;
             case UpdateDeleteMessages d:
+                OnDeleted(null, d.messages);
                 MessagesDeleted?.Invoke(null, d.messages);
                 break;
             case UpdateReadHistoryOutbox r:
@@ -624,6 +648,7 @@ public sealed partial class TelegramService
             Reactions = MapReactions(msg.reactions),
         };
         var mappedItem = WithMedia(item, msg.media);
+        mappedItem.IsViewOnce = MessageVault.IsViewOnce(msg);
         if (msg.rich_message is { } rich) mappedItem.Rich = MapRich(item, rich); // статья, коллаж, музыка — блоками
         return mappedItem;
     }

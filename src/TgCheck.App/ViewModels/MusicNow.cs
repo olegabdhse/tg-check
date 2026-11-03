@@ -7,7 +7,7 @@ using TgCheck.Core.Media;
 namespace TgCheck.App.ViewModels;
 
 /// <summary>
-/// Играющая песня — плеер музыки под списком чатов и в островке. У музыки свой проигрыватель
+/// Играющая песня — боковой плеер и плеер в островке. У музыки свой проигрыватель
 /// (<see cref="MusicPlayer"/> на VLC): просмотр фото её не трогает, а голосовое, кружок, видео или история
 /// ставят её на паузу — когда они закончились, песня продолжается сама.
 /// </summary>
@@ -27,6 +27,9 @@ public sealed partial class MusicNow : ObservableObject
     [ObservableProperty] private bool _isBuffering;
     [ObservableProperty] private double _progress;
     [ObservableProperty] private string _timeText = "";
+    /// <summary>Время по краям полоски бокового плеера.</summary>
+    [ObservableProperty] private string _positionText = "";
+    [ObservableProperty] private string _durationText = "";
     [ObservableProperty] private ImageSource? _cover;
     [ObservableProperty] private Brush? _coverBrush;
     /// <summary>Громкость сейчас (0..1) — для волн вокруг обложки.</summary>
@@ -39,6 +42,35 @@ public sealed partial class MusicNow : ObservableObject
     /// <summary>Плеер музыки на экране (при закрытии сначала уезжает он, а песня останавливается следом).</summary>
     public bool ShowMusicBar => IsActive && !_closing;
     public bool ShowIslandMusic => ShowMusicBar && IslandMusicEnabled;
+
+    // ---- боковой плеер: панель целиком или узкая полоса
+
+    private bool _sidePanelCollapsed = UiSettings.MusicPanelCollapsed;
+    private bool _isWindowNarrow;
+    private bool _narrowExpanded;
+
+    /// <summary>Окно узкое: панель сама становится полосой, но её можно развернуть вручную.</summary>
+    public bool IsWindowNarrow
+    {
+        get => _isWindowNarrow;
+        set
+        {
+            if (_isWindowNarrow == value) return;
+            _isWindowNarrow = value;
+            _narrowExpanded = false;
+            OnPropertyChanged(nameof(IsSidePanelStrip));
+        }
+    }
+
+    public bool IsSidePanelStrip => _isWindowNarrow ? !_narrowExpanded : _sidePanelCollapsed;
+
+    [RelayCommand]
+    private void ToggleSidePanel()
+    {
+        if (_isWindowNarrow) _narrowExpanded = !_narrowExpanded;
+        else UiSettings.MusicPanelCollapsed = _sidePanelCollapsed = !_sidePanelCollapsed;
+        OnPropertyChanged(nameof(IsSidePanelStrip));
+    }
 
     partial void OnLoopChanged(bool value) => Player.Loop = value;
 
@@ -72,6 +104,8 @@ public sealed partial class MusicNow : ObservableObject
         Progress = 0;
         Level = 0;
         TimeText = "Загрузка…";
+        PositionText = "Загрузка…";
+        DurationText = "";
         Player.Stop(); // прошлая песня замолкает сразу
         IsBuffering = true;
         _resumeAfter = false;
@@ -113,6 +147,8 @@ public sealed partial class MusicNow : ObservableObject
         var total = Player.Duration.TotalSeconds;
         Progress = total > 0 ? Player.Position.TotalSeconds / total : 0;
         TimeText = $"{Fmt.Duration(Player.Position.TotalSeconds)} / {Fmt.Duration(total)}";
+        PositionText = Fmt.Duration(Player.Position.TotalSeconds);
+        DurationText = Fmt.Duration(total);
     }
 
     /// <summary>Зазвучало что-то другое (голосовое, кружок, видео, история, запись) — песня на паузу.</summary>

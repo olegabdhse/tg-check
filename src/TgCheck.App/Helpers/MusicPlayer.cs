@@ -33,6 +33,8 @@ public sealed class MusicPlayer
 
     public string? Key { get; private set; }
     public bool IsPlaying => _player is not null && !_paused && !_ended;
+    /// <summary>Песня играет или стоит на паузе.</summary>
+    public bool HasSong => _player is not null && !_ended;
     public TimeSpan Position => TimeSpan.FromMilliseconds(Math.Max(0, _player?.Time ?? 0));
     public TimeSpan Duration => TimeSpan.FromMilliseconds(Math.Max(_lengthMs, _player?.Length ?? 0));
     public float Level { get; private set; }

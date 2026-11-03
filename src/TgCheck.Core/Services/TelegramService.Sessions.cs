@@ -77,7 +77,7 @@ public sealed partial class TelegramService
     }
 
     /// <summary>Реакции на сообщение просмотрены (у сообщения — как прочитанное содержимое).</summary>
-    public Task MarkReactionSeenAsync(PeerRef peer, int messageId) => MarkMediaListenedAsync(peer, messageId);
+    public Task MarkReactionSeenAsync(PeerRef peer, int messageId) => ReadContentsAsync(peer, messageId);
 
     /// <summary>Все реакции в чате просмотрены.</summary>
     public async Task ReadAllReactionsAsync(PeerRef peer)

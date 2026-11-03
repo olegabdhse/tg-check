@@ -16,14 +16,17 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        var quiet = QuietStart.Parse(e.Args);
+        quiet?.WaitForPrevious();
         _single = new Mutex(true, @"Local\TgCheck.SingleInstance", out var first);
         _activate = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\TgCheck.Activate");
         if (!first)
         {
-            _activate.Set();
+            if (quiet is null) _activate.Set(); // при тихом запуске окно никто не просил — уже работающую копию не трогаем
             Shutdown();
             return;
         }
+        UpdateService.CleanUpAfterUpdate();
         var listener = new Thread(() =>
         {
             while (_activate.WaitOne())
@@ -47,7 +50,8 @@ public partial class App : Application
         _main = new MainViewModel();
         var window = new MainWindow { DataContext = _main };
         MainWindow = window;
-        window.Show();
+        if (quiet is null) window.Show();
+        else window.StartQuietly(quiet);
         _ = _main.InitializeAsync();
     }
 

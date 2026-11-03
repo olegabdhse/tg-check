@@ -88,6 +88,7 @@
                 </Button>
                 <StackPanel>
                     <RadioButton Style="{StaticResource RailButton}" GroupName="rail"
+                                 Command="{Binding OpenSectionCommand}" CommandParameter="{x:Static vm:Section.Chats}"
                                  IsChecked="{Binding Section, Converter={StaticResource EnumToBool}, ConverterParameter=Chats}">
                         <Grid>
                             <StackPanel>
@@ -102,6 +103,7 @@
                         </Grid>
                     </RadioButton>
                     <RadioButton Style="{StaticResource RailButton}" GroupName="rail"
+                                 Command="{Binding OpenSectionCommand}" CommandParameter="{x:Static vm:Section.Profile}"
                                  IsChecked="{Binding Section, Converter={StaticResource EnumToBool}, ConverterParameter=Profile}">
                         <StackPanel>
                             <controls:AvatarView Width="30" Height="30" HorizontalAlignment="Center" Source="{Binding MyProfile.Avatar}"
@@ -111,6 +113,7 @@
                         </StackPanel>
                     </RadioButton>
                     <RadioButton Style="{StaticResource RailButton}" GroupName="rail"
+                                 Command="{Binding OpenSectionCommand}" CommandParameter="{x:Static vm:Section.Music}"
                                  IsChecked="{Binding Section, Converter={StaticResource EnumToBool}, ConverterParameter=Music}">
                         <StackPanel>
                             <TextBlock Text="&#xEC4F;" Style="{StaticResource Icon}" FontSize="20" HorizontalAlignment="Center" />
@@ -131,29 +134,19 @@
 
             <Border Height="12" />
 
-            <!-- Баннер обновления -->
-            <Border Grid.Row="1" Margin="18,10,18,0" CornerRadius="12" Padding="14,9" Background="{DynamicResource BannerBrush}"
-                    helpers:Anim.FadeOnVisible="True"
-                    Visibility="{Binding UpdateText, Converter={StaticResource NullToVis}}">
-                <DockPanel>
-                    <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" Padding="6" FontSize="11"
-                            Command="{Binding DismissUpdateCommand}" Margin="6,0,0,0"
-                            Visibility="{Binding IsUpdating, Converter={StaticResource InvBoolToVis}}" />
-                    <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Padding="14,6" Content="Обновить"
-                            Command="{Binding InstallUpdateCommand}"
-                            Visibility="{Binding IsUpdating, Converter={StaticResource InvBoolToVis}}" />
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="&#xE896;" Style="{StaticResource Icon}" Foreground="{DynamicResource AccentBrush}" Margin="0,0,10,0" />
-                        <TextBlock Text="{Binding UpdateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    </StackPanel>
-                </DockPanel>
-            </Border>
-
             <Grid Grid.Row="2">
-                <views:ChatsView x:Name="ChatsPage" DataContext="{Binding Chats}" />
-                <views:ProfileView x:Name="MyProfilePage" DataContext="{Binding MyProfile}" Visibility="Collapsed" />
-                <views:MusicView x:Name="MusicPage" DataContext="{Binding Music}" Visibility="Collapsed" />
-                <ContentControl x:Name="PageHost" Focusable="False" Visibility="Collapsed" />
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid>
+                    <views:ChatsView x:Name="ChatsPage" DataContext="{Binding Chats}" />
+                    <views:ProfileView x:Name="MyProfilePage" DataContext="{Binding MyProfile}" Visibility="Collapsed" />
+                    <views:MusicView x:Name="MusicPage" DataContext="{Binding Music}" Visibility="Collapsed" />
+                    <ContentControl x:Name="PageHost" Focusable="False" Visibility="Collapsed" />
+                </Grid>
+                <views:MusicSidePanel Grid.Column="1" DataContext="{Binding Music}"
+                                      Visibility="{Binding DataContext.ShowMusicPanel, ElementName=ContentArea, Converter={StaticResource BoolToVis}}" />
             </Grid>
         </Grid>
 
@@ -238,6 +231,41 @@
                     </StackPanel>
                     <Button Content="Готово" Style="{StaticResource PrimaryButton}" MinWidth="140" HorizontalAlignment="Center" Margin="0,20,0,0"
                             Command="{Binding CloseClearDialogCommand}" Visibility="{Binding IsDoneStage, Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- ================================================= Очистка удалённых и правок: личные чаты, группы, каналы по галочкам -->
+        <Grid Grid.ColumnSpan="2" Panel.ZIndex="20" Visibility="Collapsed" helpers:Anim.Mode="Scale" helpers:Anim.Show="{Binding IsVaultDialogOpen}"
+              DataContext="{Binding Settings}">
+            <Border Background="{DynamicResource OverlayBrush}">
+                <Border.InputBindings>
+                    <MouseBinding MouseAction="LeftClick" Command="{Binding CloseVaultDialogCommand}" />
+                </Border.InputBindings>
+            </Border>
+            <Border Width="380" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="18" Padding="24,20,24,18"
+                    Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Text="Очистить удалённые и правки" FontSize="18" FontWeight="SemiBold" />
+                    <TextBlock Text="Отметьте, где убрать сохранённое. Вернуть его будет нельзя." Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,4,0,10" />
+                    <ItemsControl ItemsSource="{Binding VaultGroups}" Focusable="False">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:VaultGroupViewModel}">
+                                <DockPanel Margin="0,6">
+                                    <CheckBox DockPanel.Dock="Left" Style="{StaticResource AppCheck}" IsChecked="{Binding IsChecked}" Margin="0,0,12,0" VerticalAlignment="Center" />
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding CountText}" Style="{StaticResource Caption}" Margin="0,1,0,0" />
+                                    </StackPanel>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="{Binding VaultStatus}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,12,0,0">
+                        <Button Content="Отмена" Style="{StaticResource SecondaryButton}" MinWidth="120" Margin="0,0,10,0" Command="{Binding CloseVaultDialogCommand}" />
+                        <Button Content="Очистить" Style="{StaticResource DangerButton}" MinWidth="120" Command="{Binding ClearVaultCommand}" />
+                    </StackPanel>
                 </StackPanel>
             </Border>
         </Grid>
@@ -438,14 +466,15 @@
                             <TextBlock Text="Когда окно свёрнуто или не в фокусе" Style="{StaticResource Caption}" Margin="0,2,0,0" />
                         </StackPanel>
                     </CheckBox>
-                    <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE767;" IsChecked="{Binding NotificationSound}" IsEnabled="{Binding Notifications}"
-                              Content="Звук уведомлений" />
-                    <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE7B8;" IsChecked="{Binding NotifyArchived}" IsEnabled="{Binding Notifications}">
-                        <StackPanel>
-                            <TextBlock Text="Чаты из архива" />
-                            <TextBlock Text="Чаты без звука не уведомляют" Style="{StaticResource Caption}" Margin="0,2,0,0" />
-                        </StackPanel>
-                    </CheckBox>
+                    <StackPanel Visibility="Collapsed" helpers:Anim.Mode="SlideDown" helpers:Anim.Show="{Binding Notifications}">
+                        <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE767;" IsChecked="{Binding NotificationSound}" Content="Звук уведомлений" />
+                        <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE7B8;" IsChecked="{Binding NotifyArchived}">
+                            <StackPanel>
+                                <TextBlock Text="Чаты из архива" />
+                                <TextBlock Text="Чаты без звука не уведомляют" Style="{StaticResource Caption}" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </CheckBox>
+                    </StackPanel>
 
                     <Border Style="{StaticResource TgDivider}" />
                     <TextBlock Text="Интерфейс" Style="{StaticResource TgSection}" />
@@ -487,7 +516,9 @@
                             <TextBlock Text="Последние чаты сверху экрана" Style="{StaticResource Caption}" Margin="0,2,0,0" />
                         </StackPanel>
                     </CheckBox>
-                    <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE8D6;" IsChecked="{Binding ShowIslandMusic}" IsEnabled="{Binding ShowIsland}" Content="Плеер музыки в островке" />
+                    <StackPanel Visibility="Collapsed" helpers:Anim.Mode="SlideDown" helpers:Anim.Show="{Binding ShowIsland}">
+                        <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE8D6;" IsChecked="{Binding ShowIslandMusic}" Content="Плеер музыки в островке" />
+                    </StackPanel>
 
                     <Border Style="{StaticResource TgDivider}" />
                     <TextBlock Text="Данные и память" Style="{StaticResource TgSection}" />
@@ -497,6 +528,32 @@
                             <TextBlock Text="Очистить кэш" VerticalAlignment="Center" />
                         </DockPanel>
                     </Button>
+
+                    <Button Style="{StaticResource TgRow}" Tag="&#xE81C;" Command="{Binding OpenVaultDialogCommand}">
+                        <TextBlock Text="Удалённые и правки" VerticalAlignment="Center" />
+                    </Button>
+
+                    <Border Style="{StaticResource TgDivider}" />
+                    <TextBlock Text="Режим призрака" Style="{StaticResource TgSection}" />
+                    <StackPanel DataContext="{Binding Ghost}">
+                        <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xED1A;" IsChecked="{Binding IsEnabled}">
+                            <StackPanel>
+                                <TextBlock Text="Режим призрака" />
+                                <TextBlock Text="Ctrl+G. «В сети» не отправляется совсем" Style="{StaticResource Caption}" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </CheckBox>
+                        <StackPanel Visibility="Collapsed" helpers:Anim.Mode="SlideDown" helpers:Anim.Show="{Binding IsEnabled}">
+                            <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE8B9;" IsChecked="{Binding HideStoryViews}" Content="Скрывать просмотр историй" />
+                            <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE73E;" IsChecked="{Binding HideRead}">
+                                <StackPanel>
+                                    <TextBlock Text="Не отмечать прочитанным" />
+                                    <TextBlock Text="Чаты останутся непрочитанными" Style="{StaticResource Caption}" Margin="0,2,0,0" />
+                                </StackPanel>
+                            </CheckBox>
+                            <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE70F;" IsChecked="{Binding HideTyping}" Content="Скрывать «печатает»" />
+                            <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE767;" IsChecked="{Binding HideListened}" Content="Не отмечать голосовые прослушанными" />
+                        </StackPanel>
+                    </StackPanel>
 
                     <Border Style="{StaticResource TgDivider}" />
                     <TextBlock Text="Конфиденциальность" Style="{StaticResource TgSection}" />

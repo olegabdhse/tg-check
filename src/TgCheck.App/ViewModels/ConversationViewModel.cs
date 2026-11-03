@@ -223,7 +223,9 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     public bool CanWrite => !IsForum && (IsThread || Peer.CanWrite);
     public bool HasComposerBar => ReplyTo is not null || Editing is not null;
     public bool HasAttachments => Attachments.Count > 0;
-    public string ComposerBarTitle => Editing is not null ? "Редактирование" : $"В ответ {(ReplyTo is { IsOut: true } ? "себе" : ReplyTo?.SenderName)}";
+    public string ComposerBarTitle => Editing is not null ? "Редактирование"
+        : ReplyTo is { IsDeleted: true } ? "Цитата из удалённого сообщения"
+        : $"В ответ {(ReplyTo is { IsOut: true } ? "себе" : ReplyTo?.SenderName)}";
     public string ComposerBarText => (Editing ?? ReplyTo)?.Item.Preview ?? "";
 
     /// <summary>View: прокрутить вниз (true — плавно).</summary>
@@ -339,8 +341,13 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         if (fresh.Count == 0) return;
         var freshIds = fresh.Select(m => m.Id).ToHashSet();
         var min = fresh.Min(m => m.Id);
-        var gone = _byId.Keys.Where(id => id >= min && !freshIds.Contains(id)).ToList();
-        if (gone.Count > 0) OnMessagesDeleted(gone);
+        var max = fresh.Max(m => m.Id); // новее — могло прийти, пока шёл запрос: это не удаление
+        var gone = _byId.Keys.Where(id => id >= min && id <= max && !freshIds.Contains(id)).ToList();
+        if (gone.Count > 0)
+        {
+            _tg.MarkGone(Peer, gone);
+            OnMessagesDeleted(gone);
+        }
         foreach (var m in fresh.Where(m => _byId.ContainsKey(m.Id))) OnMessageEdited(m);
         var newer = fresh.Where(m => !_byId.ContainsKey(m.Id)).ToList();
         if (newer.Count > 0)
@@ -584,10 +591,12 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         }
         if (m.Poll is { } poll) vm.SetPoll(poll);
         if (!m.Reactions.SequenceEqual(vm.ReactionInfos)) vm.SetReactions(m.Reactions);
+        if (m.HasEditHistory) vm.HasEditHistory = true;
         if (vm.Text == m.Text && vm.IsEdited == (m.EditDateUtc is not null)) return;
         vm.Formatting = m.Formatting;
         vm.Text = m.Text;
         vm.IsEdited = m.EditDateUtc is not null;
+        if (!vm.HasEditHistory) _ = CheckEditHistoryAsync(vm);
     }
 
     public void OnPollUpdated(long pollId, PollInfo poll)
@@ -608,28 +617,37 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         if (m.IsOut || !m.IsMediaUnread) return;
         m.IsMediaUnread = false;
         m.Item.MediaUnread = false;
+        if (m.IsViewOnce) return; // иначе сервер сразу заберёт файл: одноразовое смотрим сколько нужно
         _ = _tg.MarkMediaListenedAsync(Peer, m.Id);
     }
 
+    /// <summary>Удалили другие — сообщение остаётся полупрозрачным; удалил сам пользователь или это служебное — исчезает.</summary>
     public void OnMessagesDeleted(IEnumerable<int> ids)
     {
         foreach (var id in ids)
         {
-            if (!_byId.Remove(id, out var vm)) continue;
-            if (vm.IsAlbum && vm.Album.Count > 1)
-            {
-                vm.RemoveFromAlbum(id);
-                if (vm.Album.Count > 0) continue;
-            }
-            var index = Items.IndexOf(vm);
-            if (index < 0) continue;
-            Items.RemoveAt(index);
-            // Убираем «висящий» разделитель даты.
-            if (index > 0 && Items[index - 1] is DateSeparatorViewModel && (index >= Items.Count || Items[index] is DateSeparatorViewModel))
-                Items.RemoveAt(index - 1);
-            Regroup(Math.Min(index, Items.Count - 1));
-            Regroup(index - 1);
+            if (!_byId.TryGetValue(id, out var vm)) continue;
+            if (_tg.WasDeletedHere(id) || vm.IsService) RemoveShown(id);
+            else MarkShownDeleted(vm, id);
         }
+    }
+
+    private void RemoveShown(int id)
+    {
+        if (!_byId.Remove(id, out var vm)) return;
+        if (vm.IsAlbum && vm.Album.Count > 1)
+        {
+            vm.RemoveFromAlbum(id);
+            if (vm.Album.Count > 0) return;
+        }
+        var index = Items.IndexOf(vm);
+        if (index < 0) return;
+        Items.RemoveAt(index);
+        // Убираем «висящий» разделитель даты.
+        if (index > 0 && Items[index - 1] is DateSeparatorViewModel && (index >= Items.Count || Items[index] is DateSeparatorViewModel))
+            Items.RemoveAt(index - 1);
+        Regroup(Math.Min(index, Items.Count - 1));
+        Regroup(index - 1);
     }
 
     public void OnOutboxRead(int maxId)
@@ -758,12 +776,14 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
                 await _tg.EditTextAsync(Peer, edit.Id, text);
                 edit.Text = text;
                 edit.IsEdited = true;
+                _ = CheckEditHistoryAsync(edit);
                 Editing = null;
                 Draft = "";
             }
             else
             {
-                var reply = ReplyTo?.Id ?? SendTopId;
+                var reply = LiveReplyId ?? SendTopId;
+                var quote = ReplyTo is { IsDeleted: true } deleted ? (deleted.HasText ? deleted.Text : deleted.Item.Preview) : null;
                 Draft = "";
                 ReplyTo = null;
                 // Как в Telegram: сообщение сразу в ленте с часиками, а когда сервер принял — на его месте настоящее.
@@ -775,7 +795,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
                     ScrollToBottomRequested?.Invoke(true);
                 }
                 MessageItem sent;
-                try { sent = await _tg.SendTextAsync(Peer, text, reply); }
+                try { sent = await _tg.SendTextAsync(Peer, text, reply, quote); }
                 catch
                 {
                     if (pending is not null) Items.Remove(pending);
@@ -1042,7 +1062,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     // а вместо «играть» — загрузка с крестиком. Сообщение пришло — пузырь меняется на настоящий без скачка.
     private async Task SendVoiceAsync(VoiceRecording voice, float[]? peaks)
     {
-        var reply = ReplyTo?.Id ?? SendTopId;
+        var reply = LiveReplyId ?? SendTopId;
         ReplyTo = null;
         var up = new UploadViewModel("Голосовое сообщение", "")
         {
@@ -1137,7 +1157,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     {
         // Окно вложений закрывается сразу, а загрузка идёт элементом в ленте — с прогрессом и отменой.
         var files = Attachments.ToList();
-        var reply = ReplyTo?.Id ?? SendTopId;
+        var reply = LiveReplyId ?? SendTopId;
         var asFiles = SendAsFiles;
         Attachments.Clear();
         OnPropertyChanged(nameof(HasAttachments));
@@ -1150,9 +1170,17 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         // Заготовка той же формы, что сообщение после отправки: фото и видео — сеткой, файлы — строками;
         // у каждой части свой ободок загрузки, сама заготовка не пересоздаётся.
         var asMedia = !asFiles && files.All(f => f.IsImage || f.IsVideo);
-        var parts = files.Select(f => new UploadPart(f.Name, f.SizeText, f.Thumb,
-            f.Thumb is System.Windows.Media.Imaging.BitmapSource b && b.PixelHeight > 0 ? (double)b.PixelWidth / b.PixelHeight : 16 / 9.0, f.IsVideo)).ToList();
-        var up = new UploadViewModel(title, files[0].Icon, files.FirstOrDefault(f => f.Thumb is not null)?.Thumb)
+        // Видео: размер, длина и кадр — и для заготовки, и для самого сообщения (без них в пузыре 0:00 и серый квадрат).
+        var videos = asFiles ? new Dictionary<string, Core.Models.VideoInfo>() : await VideoProbe.ProbeAllAsync(files.Where(f => f.IsVideo).Select(f => f.Path));
+        ImageSource? ThumbOf(AttachmentViewModel f) => f.Thumb ?? (videos.GetValueOrDefault(f.Path)?.Thumb is { } jpeg ? Images.FromBytes(jpeg) : null);
+        var parts = files.Select(f =>
+        {
+            var thumb = ThumbOf(f);
+            var aspect = thumb is System.Windows.Media.Imaging.BitmapSource b && b.PixelHeight > 0 ? (double)b.PixelWidth / b.PixelHeight
+                : videos.GetValueOrDefault(f.Path) is { Height: > 0 } v ? (double)v.Width / v.Height : 16 / 9.0;
+            return new UploadPart(f.Name, f.SizeText, thumb, aspect, f.IsVideo);
+        }).ToList();
+        var up = new UploadViewModel(title, files[0].Icon, parts.FirstOrDefault(p => p.Preview is not null)?.Preview)
         {
             Tiles = asMedia ? parts : [],
             Files = asMedia ? [] : parts,
@@ -1167,7 +1195,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
                     fractions[p.Index] = p.Fraction;
                     if (p.Index < parts.Count) parts[p.Index].Progress = p.Fraction;
                     up.Progress = fractions.Average();
-                }), up.Cts.Token);
+                }), up.Cts.Token, videos);
             return sent;
         }, sent =>
         {
@@ -1189,6 +1217,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
     {
         Items.Add(up);
         ScrollToBottomRequested?.Invoke(true);
+        ActiveTransfers++;
         try
         {
             var sent = await send();
@@ -1209,7 +1238,11 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             Items.Remove(up);
             if (!up.Cts.IsCancellationRequested) _owner.ShowToast(TgErrors.Describe(ex), true); // отменили сами — без ошибки
         }
+        finally { ActiveTransfers--; }
     }
+
+    /// <summary>Сколько файлов сейчас отправляется или сохраняется на диск (считается в потоке интерфейса).</summary>
+    public static int ActiveTransfers { get; private set; }
 
     [RelayCommand]
     private void TogglePicker() => IsPickerOpen = !IsPickerOpen;
@@ -1234,7 +1267,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         IsPickerOpen = false;
         try
         {
-            var reply = ReplyTo?.Id ?? SendTopId;
+            var reply = LiveReplyId ?? SendTopId;
             ReplyTo = null;
             var sent = await _tg.SendDocumentAsync(Peer, media, reply);
             OnMessageReceived(sent);
@@ -1574,6 +1607,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         var name = m.Item.Media is MediaKind.Document or MediaKind.Audio && m.FileTitle is { } t ? t : $"telegram_{m.Id}{ext}";
         var dlg = new Microsoft.Win32.SaveFileDialog { FileName = Sanitize(name) };
         if (dlg.ShowDialog() != true) return;
+        ActiveTransfers++;
         try
         {
             m.DownloadProgress = 0;
@@ -1588,6 +1622,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         finally
         {
             m.DownloadProgress = -1;
+            ActiveTransfers--;
         }
     }
 

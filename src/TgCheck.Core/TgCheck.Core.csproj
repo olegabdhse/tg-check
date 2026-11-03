@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <!-- Официальный MTProto API Telegram (api_id / api_hash с my.telegram.org) -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
     <PackageReference Include="WTelegramClient" Version="4.4.9" />
     <PackageReference Include="ZstdSharp.Port" Version="0.8.6" />
     <!-- Голосовые сообщения: декодер Opus/Ogg и вывод звука -->

@@ -1004,6 +1004,22 @@ public sealed class MediaService
     private readonly ConcurrentDictionary<long, bool> _promoted = new();
 
     // Путь готового файла в кэше: {id}.{расширение по типу}.
+    /// <summary>Отправленный файл — в кэш под именем его документа (в фоне). Копия: исходный файл могут переместить или удалить.</summary>
+    public void AdoptSentFile(MediaHolder media, string source) => _ = Task.Run(() =>
+    {
+        if (media.Document is not { size: > 0 } doc) return;
+        try
+        {
+            if (new FileInfo(source).Length != doc.size) return; // сервер изменил файл — такой не годится
+            var path = MediaFilePath(doc);
+            if (File.Exists(path)) return;
+            var temp = path + ".sent";
+            File.Copy(source, temp, overwrite: true);
+            File.Move(temp, path, overwrite: true);
+        }
+        catch (Exception ex) { Logging.Write($"sent file: {ex.Message}"); }
+    });
+
     private string MediaFilePath(Document doc)
     {
         var dir = Path.Combine(_cacheDir, "media");
@@ -1159,6 +1175,9 @@ public sealed class MediaService
         return bytes;
     }
 
+    /// <summary>Файлы, которые нельзя выбрасывать при ограничении кэша (документы, фото).</summary>
+    public Func<(HashSet<long> Docs, HashSet<long> Photos)>? KeepMedia { get; init; }
+
     /// <summary>Ограничивает размер кэша медиа (самые давно открытые файлы удаляются первыми).</summary>
     public void TrimMediaCache(long maxBytes = 2L * 1024 * 1024 * 1024)
     {
@@ -1167,9 +1186,12 @@ public sealed class MediaService
             var dir = new DirectoryInfo(Path.Combine(_cacheDir, "media"));
             if (!dir.Exists) return;
             var files = dir.GetFiles().OrderByDescending(f => f.LastAccessTimeUtc).ToList();
+            var (keepDocs, keepPhotos) = KeepMedia?.Invoke() ?? ([], []);
             long total = 0;
             foreach (var f in files)
             {
+                var id = f.Name.TrimStart('p').Split('.')[0];
+                if (long.TryParse(id, out var fileId) && (f.Name.StartsWith('p') ? keepPhotos.Contains(fileId) : keepDocs.Contains(fileId))) continue;
                 total += f.Length;
                 if (total > maxBytes || f.Name.EndsWith(".part")) f.Delete();
             }

@@ -125,6 +125,55 @@ public sealed partial class SettingsViewModel : ObservableObject
         await RefreshCacheSizeAsync();
     }
 
+    public GhostViewModel Ghost => GhostViewModel.Instance;
+
+    // ---- удалённые и правки: отдельная очистка, кэш их не трогает
+
+    public Func<Task<IReadOnlyList<TgCheck.Core.Services.VaultChat>>>? GetVaultChats { get; set; }
+    public Func<IReadOnlyCollection<long>, Task>? ClearVaultAction { get; set; }
+
+    [ObservableProperty] private bool _isVaultDialogOpen;
+    [ObservableProperty] private string _vaultStatus = "";
+    public System.Collections.ObjectModel.ObservableCollection<VaultGroupViewModel> VaultGroups { get; } = [];
+
+    [RelayCommand]
+    private async Task OpenVaultDialog()
+    {
+        VaultGroups.Clear();
+        VaultStatus = "";
+        IsVaultDialogOpen = true;
+        if (GetVaultChats is null) return;
+        try
+        {
+            var chats = await GetVaultChats();
+            void Add(string title, Func<TgCheck.Core.Services.VaultChat, bool> pick)
+            {
+                if (chats.Where(pick).ToList() is { Count: > 0 } part) VaultGroups.Add(new VaultGroupViewModel(title, part));
+            }
+            Add("Личные чаты", c => c.Kind is PeerKind.User or PeerKind.Bot); // боты — тоже личные переписки
+            Add("Группы", c => c.Kind == PeerKind.Group);
+            Add("Каналы", c => c.Kind == PeerKind.Channel);
+            if (chats.Count == 0) VaultStatus = "Удалённых сообщений и правок пока нет";
+        }
+        catch (Exception ex) { VaultStatus = TgCheck.Core.Services.TgErrors.Describe(ex); }
+    }
+
+    [RelayCommand]
+    private void CloseVaultDialog() => IsVaultDialogOpen = false;
+
+    [RelayCommand]
+    private async Task ClearVault()
+    {
+        var peers = VaultGroups.Where(g => g.IsChecked).SelectMany(g => g.Chats).Select(c => c.PeerKey).ToList();
+        if (peers.Count == 0 || ClearVaultAction is null) return;
+        try
+        {
+            await ClearVaultAction(peers);
+            IsVaultDialogOpen = false;
+        }
+        catch (Exception ex) { VaultStatus = TgCheck.Core.Services.TgErrors.Describe(ex); }
+    }
+
     // ---- активные сеансы (как в Telegram): этот сеанс, остальные устройства; завершить один или все, кроме этого
 
     public Func<Task<IReadOnlyList<SessionInfo>>>? GetSessions { get; set; }
@@ -221,6 +270,20 @@ public sealed partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(HasOtherSessions));
         await LoadSessionsAsync();
     }
+}
+
+/// <summary>Раздел окна очистки удалённых: галочка на весь раздел.</summary>
+public sealed partial class VaultGroupViewModel(string title, IReadOnlyList<TgCheck.Core.Services.VaultChat> chats) : ObservableObject
+{
+    public string Title { get; } = title;
+    public IReadOnlyList<TgCheck.Core.Services.VaultChat> Chats { get; } = chats;
+    public string CountText => string.Join(" · ", new[]
+    {
+        Chats.Sum(c => c.Deleted) is > 0 and var deleted ? $"удалённых: {Fmt.N(deleted)}" : null,
+        Chats.Sum(c => c.Edited) is > 0 and var edited ? $"правок: {Fmt.N(edited)}" : null,
+    }.Where(s => s is not null));
+
+    [ObservableProperty] private bool _isChecked;
 }
 
 /// <summary>Карточка темы в настройках: мини-образец (фон, сообщение, акцент) и название.</summary>

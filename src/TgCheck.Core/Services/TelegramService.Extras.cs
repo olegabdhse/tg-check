@@ -124,6 +124,7 @@ public sealed partial class TelegramService
 
     public async Task MarkStoriesReadAsync(PeerRef peer, int maxId)
     {
+        if (GhostMode.BlocksStoryViews) return;
         try { await _client.Stories_ReadStories(peer.Info.ToInputPeer(), maxId); }
         catch (Exception ex) { Logging.Write("stories read: " + ex.Message); }
     }
@@ -309,6 +310,7 @@ public sealed partial class TelegramService
     /// <summary>Свой статус «в сети» (true) или «был(а) недавно» (false).</summary>
     public async Task SetOnlineAsync(bool online)
     {
+        if (online && GhostMode.Enabled) return;
         try { await _client.Account_UpdateStatus(offline: !online); }
         catch (Exception ex) { Logging.Write("status: " + ex.Message); }
     }
@@ -318,6 +320,7 @@ public sealed partial class TelegramService
     /// <summary>Очистить историю (чат остаётся). forEveryone — и у собеседника (личка, бот, обычная группа).</summary>
     public async Task ClearHistoryAsync(PeerRef peer, bool forEveryone)
     {
+        Vault.ForgetLive(peer.Key);
         if (peer.Info is Channel ch) { await _client.Channels_DeleteHistory(ch, 0, for_everyone: true); return; }
         await DeleteHistoryAllAsync(peer, justClear: true, revoke: forEveryone);
     }
@@ -534,7 +537,8 @@ public sealed partial class TelegramService
     /// </summary>
     /// <returns>Отправленные сообщения (лента ставит их на место заготовки сразу, не дожидаясь обновления).</returns>
     public async Task<IReadOnlyList<MessageItem>> SendFilesAsync(PeerRef peer, IReadOnlyList<string> paths, string? caption, int? replyToId,
-        bool asFiles, IProgress<(int Index, double Fraction)>? progress = null, CancellationToken ct = default)
+        bool asFiles, IProgress<(int Index, double Fraction)>? progress = null, CancellationToken ct = default,
+        IReadOnlyDictionary<string, VideoInfo>? videos = null)
     {
         var input = peer.Info.ToInputPeer();
         var medias = new List<InputMedia>();
@@ -555,15 +559,29 @@ public sealed partial class TelegramService
             else
             {
                 var attrs = new List<DocumentAttribute> { new DocumentAttributeFilename { file_name = Path.GetFileName(path) } };
+                var video = !asFiles && videos?.GetValueOrDefault(path) is { } known ? known : null;
                 if (!asFiles && VideoExt.Contains(ext))
-                    attrs.Add(new DocumentAttributeVideo { flags = DocumentAttributeVideo.Flags.supports_streaming });
-                medias.Add(new InputMediaUploadedDocument
+                    attrs.Add(new DocumentAttributeVideo
+                    {
+                        flags = DocumentAttributeVideo.Flags.supports_streaming,
+                        duration = video?.Seconds ?? 0,
+                        w = video?.Width ?? 0,
+                        h = video?.Height ?? 0,
+                    });
+                var document = new InputMediaUploadedDocument
                 {
                     file = file,
                     mime_type = MimeOf(ext),
                     attributes = [.. attrs],
                     flags = asFiles ? InputMediaUploadedDocument.Flags.force_file : 0,
-                });
+                };
+                if (video?.Thumb is { } thumb)
+                {
+                    using var jpeg = new MemoryStream(thumb);
+                    document.thumb = await _client.UploadFileAsync(jpeg, "thumb.jpg");
+                    document.flags |= InputMediaUploadedDocument.Flags.has_thumb;
+                }
+                medias.Add(document);
             }
         }
 
@@ -577,6 +595,9 @@ public sealed partial class TelegramService
             else sent.AddRange((await _client.SendAlbumAsync(input, chunk, text, first ? replyToId ?? 0 : 0, entities)).Select(MapMessage));
             first = false;
         }
+        // Свой файл уже на диске: смотреть отправленное видео можно сразу, без скачивания.
+        if (sent.Count == paths.Count)
+            for (var i = 0; i < sent.Count; i++) Media.AdoptSentFile(sent[i], paths[i]);
         return sent;
     }
 
@@ -746,14 +767,22 @@ public sealed partial class TelegramService
     public async Task<IReadOnlyList<MessageItem>> GetHistoryAroundAsync(PeerRef peer, int messageId, int limit = 50)
     {
         var res = await _client.Messages_GetHistory(peer.Info.ToInputPeer(), offset_id: messageId + 1, add_offset: -limit / 2, limit: limit);
-        return await Task.Run(() => MapHistory(res));
+        return await Task.Run(() =>
+        {
+            var page = MapHistory(res);
+            return page.Count == 0 ? page : Weave(peer, page, page.Min(m => m.Id), page.Max(m => m.Id));
+        });
     }
 
     /// <summary>Сообщения новее afterId (лента «оторвана» после перехода к старому сообщению — догрузка вниз).</summary>
     public async Task<IReadOnlyList<MessageItem>> GetHistoryNewerAsync(PeerRef peer, int afterId, int limit = 50)
     {
         var res = await _client.Messages_GetHistory(peer.Info.ToInputPeer(), offset_id: afterId + 1, add_offset: -limit, limit: limit);
-        return await Task.Run(() => MapHistory(res).Where(m => m.Id > afterId).OrderBy(m => m.Id).ToList());
+        return await Task.Run(() =>
+        {
+            var page = MapHistory(res).Where(m => m.Id > afterId).OrderBy(m => m.Id).ToList();
+            return page.Count == 0 ? page : Weave(peer, page, afterId + 1, page.Max(m => m.Id));
+        });
     }
 
     // ===================================================================== Кастомные (премиум) эмодзи

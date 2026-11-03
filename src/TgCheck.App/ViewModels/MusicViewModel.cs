@@ -369,6 +369,8 @@ public sealed partial class MusicViewModel : ObservableObject
 
     public MusicPlaylistShelf MyPlaylists { get; } = new("Миксы", "Каждый день новые из вашей музыки и добавленные плейлисты");
     public MusicPlaylistShelf ChatPlaylists { get; } = new("Слушают в чатах", "Что присылают в ваши чаты и каналы");
+    /// <summary>Все чаты с музыкой подряд: полка внизу бокового плеера (на странице «Музыка» они идут страницами).</summary>
+    public MusicPlaylistShelf AllChatPlaylists { get; } = new("Слушают в чатах", "");
     [ObservableProperty] private string? _playlistStats;
     private const int ChatsPerPage = 4;
     private List<MusicPlaylist> _chatOrder = [];
@@ -399,6 +401,7 @@ public sealed partial class MusicViewModel : ObservableObject
         {
             _chatOrder = [.. all.OrderBy(_ => Random.Shared.Next())];
             ChatPage = 0;
+            AllChatPlaylists.Fill(_chatOrder); // порядок тот же — боковая полка не пересобирается
         }
         OnPropertyChanged(nameof(HasChatPages));
         OnPropertyChanged(nameof(ChatsPageText));
@@ -1039,6 +1042,7 @@ public sealed partial class MusicViewModel : ObservableObject
             Query = "";
             return;
         }
+        if (value.Length > 0 && OpenedPlaylist is not null) ClosePlaylist(); // в боковом плеере поиск виден и над плейлистом
         _ = SearchAsync(value.Trim());
     }
 

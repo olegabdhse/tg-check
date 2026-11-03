@@ -176,9 +176,16 @@ public sealed partial class ProfileViewModel : ObservableObject
     // Живой статус: обновляется событиями Telegram, пока профиль открыт.
     private (Presence Presence, DateTime? Seen)? _livePresence;
 
+    /// <summary>Свой статус: сервер о нём не сообщает, поэтому его передаёт сама программа.</summary>
+    public void ShowOwnPresence(bool online)
+    {
+        _livePresence = online ? (Presence.Online, null) : (Presence.Offline, DateTime.UtcNow);
+        OnPropertyChanged(nameof(StatusText));
+    }
+
     private void OnUserStatus(long userId, Presence presence, DateTime? seen)
     {
-        if (Profile is not { Kind: PeerKind.User } p || p.Id != userId) return;
+        if (IsSelf || Profile is not { Kind: PeerKind.User } p || p.Id != userId) return; // свой статус — от OnlinePresence
         _livePresence = (presence, seen);
         Anim.Ui(() => OnPropertyChanged(nameof(StatusText)));
     }

@@ -49,6 +49,10 @@ public sealed partial class TelegramService
     {
         var keepDocs = new HashSet<long>(alsoKeepDocs ?? []);
         var keepPhotos = new HashSet<long>();
+        // Файлы удалённых и одноразовых: их больше неоткуда скачать.
+        var (vaultDocs, vaultPhotos) = await Task.Run(() => Vault.KeptMedia());
+        keepDocs.UnionWith(vaultDocs);
+        keepPhotos.UnionWith(vaultPhotos);
         try
         {
             foreach (var s in await GetRecentStickersAsync()) keepDocs.Add(s.MediaId);

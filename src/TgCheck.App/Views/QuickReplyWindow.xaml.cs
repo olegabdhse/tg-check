@@ -1,15 +1,12 @@
-using System.Collections.ObjectModel;
-using System.Collections.Specialized;
 using System.Windows;
 using System.Windows.Input;
-using System.Windows.Media;
 using System.Windows.Threading;
 using TgCheck.App.ViewModels;
 
 namespace TgCheck.App.Views;
 
 /// <summary>
-/// Быстрый ответ из островка (один клик по чату): два последних сообщения и поле ввода.
+/// Быстрый ответ из островка (один клик по чату): только поле ввода.
 /// Появляется рядом с островком со стороны экрана, куда есть место; закрывается по Esc или когда уходит фокус.
 /// </summary>
 public partial class QuickReplyWindow : Window
@@ -20,7 +17,6 @@ public partial class QuickReplyWindow : Window
     private readonly Rect _anchor;
     private readonly string _edge;
     private readonly Action _openFull;
-    private readonly ObservableCollection<MessageViewModel> _recent = [];
     private bool _closing;
 
     public QuickReplyWindow(ConversationViewModel conv, Rect anchor, string edge, Action openFull)
@@ -31,13 +27,9 @@ public partial class QuickReplyWindow : Window
         _openFull = openFull;
         DataContext = conv;
         InitializeComponent();
-        Recent.ItemsSource = _recent;
         SourceInitialized += (_, _) => Helpers.WindowEffects.ApplyRoundedCorners(this, Helpers.AppTheme.WindowBorder);
-        conv.Items.CollectionChanged += OnItemsChanged;
-        Closed += (_, _) => conv.Items.CollectionChanged -= OnItemsChanged;
         Loaded += (_, _) =>
         {
-            UpdateRecent();
             Place();
             Activate();
             Input.Focus();
@@ -47,20 +39,6 @@ public partial class QuickReplyWindow : Window
         Deactivated += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.Background, SafeClose);
         Closed += (_, _) => _closing = true;
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { e.Handled = true; SafeClose(); } };
-    }
-
-    private void OnItemsChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
-        Dispatcher.BeginInvoke(DispatcherPriority.Background, UpdateRecent);
-
-    // Последние два сообщения чата (без разделителей дат и служебных).
-    private void UpdateRecent()
-    {
-        var last = _conv.Items.OfType<MessageViewModel>().Where(m => m.Item.ServiceText is null).TakeLast(2).ToList();
-        if (_recent.SequenceEqual(last)) return;
-        _recent.Clear();
-        foreach (var m in last) _recent.Add(m);
-        Empty.Visibility = last.Count == 0 && _conv.IsLoading ? Visibility.Visible : Visibility.Collapsed;
-        if (last.Count == 0 && !_conv.IsLoading) Empty.Text = "Сообщений пока нет";
     }
 
     // Рядом с чатом в островке: снизу от верхнего островка, сверху от нижнего, сбоку от боковых.
