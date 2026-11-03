@@ -638,7 +638,7 @@
                         <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xED1A;" IsChecked="{Binding IsEnabled}">
                             <StackPanel>
                                 <TextBlock Text="Режим призрака" />
-                                <TextBlock Text="Ctrl+G. «В сети» не отправляется совсем" Style="{StaticResource Caption}" Margin="0,2,0,0" />
+                                <TextBlock Text="Ctrl+G. «В сети» не отправляется совсем" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,2,0,0" />
                             </StackPanel>
                         </CheckBox>
                         <StackPanel Visibility="Collapsed" helpers:Anim.Mode="SlideDown" helpers:Anim.Show="{Binding IsEnabled}">
@@ -649,12 +649,6 @@
                                 </StackPanel>
                             </CheckBox>
                             <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE946;" IsChecked="{Binding ShowDelayNotice}" Content="Окно об отложенной отправке" />
-                            <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE7BA;" IsChecked="{Binding CoverOnline}">
-                                <StackPanel>
-                                    <TextBlock Text="Снимать «в сети» после действий" />
-                                    <TextBlock Text="Сразу после отправки и реакций" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,2,0,0" />
-                                </StackPanel>
-                            </CheckBox>
                             <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE8B9;" IsChecked="{Binding HideStoryViews}" Content="Скрывать просмотр историй" />
                             <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE73E;" IsChecked="{Binding HideRead}">
                                 <StackPanel>
@@ -663,7 +657,9 @@
                                 </StackPanel>
                             </CheckBox>
                             <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE70F;" IsChecked="{Binding HideTyping}" Content="Скрывать «печатает»" />
-                            <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE767;" IsChecked="{Binding HideListened}" Content="Не отмечать голосовые прослушанными" />
+                            <CheckBox Style="{StaticResource TgSwitch}" Tag="&#xE767;" IsChecked="{Binding HideListened}">
+                                <TextBlock Text="Не отмечать голосовые прослушанными" TextWrapping="Wrap" />
+                            </CheckBox>
                         </StackPanel>
                     </StackPanel>
 

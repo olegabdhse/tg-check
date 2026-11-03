@@ -79,12 +79,12 @@ public sealed partial class TelegramService
     /// </summary>
     private async Task GoOfflineAfterActionAsync()
     {
-        if (!GhostMode.CoversOnlineNow || Interlocked.Exchange(ref _offlineQueued, 1) == 1) return;
+        if (!GhostMode.Enabled || Interlocked.Exchange(ref _offlineQueued, 1) == 1) return;
         await Task.Delay(300).ConfigureAwait(false);
         Volatile.Write(ref _offlineQueued, 0);
         await SetOnlineAsync(false).ConfigureAwait(false);
         await Task.Delay(3000).ConfigureAwait(false);
-        if (GhostMode.CoversOnlineNow) await SetOnlineAsync(false).ConfigureAwait(false);
+        if (GhostMode.Enabled) await SetOnlineAsync(false).ConfigureAwait(false);
     }
 
     private void OnDeleted(long? peerKey, int[] ids)

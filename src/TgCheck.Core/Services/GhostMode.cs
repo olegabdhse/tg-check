@@ -17,7 +17,6 @@ public static class GhostMode
         public bool ShowStoryViews { get; set; }
         public bool SendNow { get; set; }
         public bool HideDelayNotice { get; set; }
-        public bool KeepOnlineAfterActions { get; set; }
     }
 
     /// <summary>Через сколько сервер публикует отложенное: файлы и видео обрабатываются дольше.</summary>
@@ -55,10 +54,6 @@ public static class GhostMode
     /// <summary>Показывать при включении окно об отложенной отправке.</summary>
     public static bool ShowDelayNotice { get => !Current.HideDelayNotice; set { Current.HideDelayNotice = !value; Save(); } }
 
-    /// <summary>Снимать «в сети», которое сервер включает после своих действий (отправка, реакция).</summary>
-    public static bool CoverOnline { get => !Current.KeepOnlineAfterActions; set { Current.KeepOnlineAfterActions = !value; Save(); } }
-
-    public static bool CoversOnlineNow => Enabled && CoverOnline;
     internal static bool DelaysNow => Enabled && DelaySends;
     internal static bool BlocksRead => Enabled && HideRead;
     internal static bool BlocksTyping => Enabled && HideTyping;

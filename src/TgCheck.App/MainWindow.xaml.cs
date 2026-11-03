@@ -41,6 +41,7 @@ public partial class MainWindow : Window
             if (e.NewValue is MainViewModel main) main.PropertyChanged += OnMainChanged;
         };
         _tray = new TrayIcon(RestoreFromBackground, ExitApp);
+        WatchGdi();
         Closed += (_, _) =>
         {
             _island?.Close();
@@ -125,7 +126,7 @@ public partial class MainWindow : Window
             bounds.IsEmpty || double.IsInfinity(bounds.Left) ? null : bounds, visible);
         try
         {
-            Logging.Write(visible ? "update: нажали «Обновить» — перезапуск на новую версию" : "update: окно скрыто, ничего не идёт — перезапуск на новую версию");
+            Logging.Write(visible ? "update: перезапуск с окном на экране" : "update: тихий перезапуск, окно скрыто");
             TgCheck.Core.Services.UpdateService.StartInstalled(start.ToArgs());
         }
         catch (Exception ex)
@@ -137,6 +138,37 @@ public partial class MainWindow : Window
         _ = Task.Run(async () => { await Task.Delay(TimeSpan.FromSeconds(5)); Environment.Exit(0); });
         ExitApp();
     }
+
+    // ===================================================================== Защита от утечки графических объектов
+
+    // У процесса предел 10 000 объектов GDI: на нём WPF перестаёт рисовать (пустые окна), и программа падает.
+    // Перезапуск заранее сохраняет сессию; записи в логе помогут понять, что копит объекты.
+    private const int GdiRestartAt = 7000, GdiLogStep = 500;
+    private int _gdiLogged;
+    private DispatcherTimer? _gdiTimer;
+
+    private void WatchGdi()
+    {
+        _gdiTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+        _gdiTimer.Tick += (_, _) =>
+        {
+            var gdi = (int)GetGuiResources(System.Diagnostics.Process.GetCurrentProcess().Handle, 0);
+            if (gdi - _gdiLogged >= GdiLogStep)
+            {
+                _gdiLogged = gdi;
+                Logging.Write($"gdi: {gdi} объектов; окно на экране: {IsOnScreen}, песня: {MusicPlayer.Instance.HasSong}, " +
+                              $"скрытая панель: {MusicNow.Instance.IsSidePanelStrip}, островок: {_island?.IsVisible == true}, мини-окно: {_notifyShell?.MiniChat is not null}, окон: {Application.Current.Windows.Count}");
+            }
+            if (gdi < GdiRestartAt) return;
+            _gdiTimer.Stop();
+            Logging.Write($"gdi: {gdi} объектов — перезапуск, пока программа не упала");
+            RestartOnNewVersion(visible: IsOnScreen);
+        };
+        _gdiTimer.Start();
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetGuiResources(IntPtr process, uint flags);
 
     // Окно открыли — рассказать, что программа обновилась, пока её не видели.
     private void ShowWhatsNew()

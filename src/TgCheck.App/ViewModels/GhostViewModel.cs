@@ -15,7 +15,6 @@ public sealed partial class GhostViewModel : ObservableObject
     [ObservableProperty] private bool _hideListened = GhostMode.HideListened;
     [ObservableProperty] private bool _hideStoryViews = GhostMode.HideStoryViews;
     [ObservableProperty] private bool _delaySends = GhostMode.DelaySends;
-    [ObservableProperty] private bool _coverOnline = GhostMode.CoverOnline;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HideNoticeNextTime))] private bool _showDelayNotice = GhostMode.ShowDelayNotice;
     [ObservableProperty] private bool _isNoticeOpen;
 
@@ -30,7 +29,6 @@ public sealed partial class GhostViewModel : ObservableObject
     }
 
     partial void OnDelaySendsChanged(bool value) => GhostMode.DelaySends = value;
-    partial void OnCoverOnlineChanged(bool value) => GhostMode.CoverOnline = value;
     partial void OnShowDelayNoticeChanged(bool value) => GhostMode.ShowDelayNotice = value;
     partial void OnHideReadChanged(bool value) => GhostMode.HideRead = value;
     partial void OnHideTypingChanged(bool value) => GhostMode.HideTyping = value;
