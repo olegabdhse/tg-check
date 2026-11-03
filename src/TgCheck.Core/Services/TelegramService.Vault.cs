@@ -57,6 +57,9 @@ public sealed partial class TelegramService
         if (MessageVault.IsViewOnce(message) && !message.flags.HasFlag(Message.Flags.out_)) _ = SaveFileAsync(MapMessage(message));
     }
 
+    /// <summary>Сообщение в этот чат уйдёт отложенным (режим призрака).</summary>
+    public bool WillDelay(PeerRef peer) => GhostMode.DelaysNow && !peer.IsSelf;
+
     /// <summary>
     /// Отправка в режиме призрака: отложенным сообщением на несколько секунд вперёд. В «Избранном» отложенное стало бы напоминанием.
     /// Сервер отказал в отложенной отправке (неверное время на компьютере и т. п.) — отправляем обычным способом.

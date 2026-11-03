@@ -1499,6 +1499,36 @@
                     </Border>
                 </Grid>
 
+                <!-- Отложенные сообщения: что ещё не вышло и примерно когда уйдёт -->
+                <Grid Panel.ZIndex="5" Visibility="Collapsed" helpers:Anim.Mode="Fade" helpers:Anim.Show="{Binding IsDelayedListOpen}">
+                    <Border Background="{DynamicResource OverlayBrush}">
+                        <Border.InputBindings>
+                            <MouseBinding MouseAction="LeftClick" Command="{Binding ToggleDelayedListCommand}" />
+                        </Border.InputBindings>
+                    </Border>
+                    <Border Width="380" MaxHeight="420" Margin="16" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="16" Padding="0,12,0,10"
+                            Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                        <DockPanel>
+                            <DockPanel DockPanel.Dock="Top" Margin="18,0,10,8">
+                                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="11" Padding="8" Command="{Binding ToggleDelayedListCommand}" />
+                                <TextBlock Text="Отложенные сообщения" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            </DockPanel>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" helpers:SmoothScroll.IsEnabled="True">
+                                <ItemsControl ItemsSource="{Binding DelayedMessages}" Focusable="False">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="18,6,18,8">
+                                                <TextBlock Text="{Binding WhenText}" FontSize="11.5" Foreground="{DynamicResource AccentBrush}" />
+                                                <TextBlock Text="{Binding Text}" FontSize="13.5" TextWrapping="Wrap" MaxHeight="120" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+
                 <!-- История правок сообщения -->
                 <Grid Panel.ZIndex="5" Visibility="Collapsed" helpers:Anim.Mode="Fade" helpers:Anim.Show="{Binding IsEditHistoryOpen}">
                     <Border Background="{DynamicResource OverlayBrush}">
@@ -2033,7 +2063,7 @@
                                 </Grid>
                             </Grid>
                             <Grid>
-                            <TextBox x:Name="Composer" Style="{StaticResource InputBox}" FontSize="14" Padding="44,11,44,11"
+                            <TextBox x:Name="Composer" Style="{StaticResource InputBox}" FontSize="14" Padding="{Binding ComposerPadding}"
                                      Tag="Сообщение" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="170"
                                      VerticalScrollBarVisibility="Auto" SpellCheck.IsEnabled="True" Language="ru-RU"
                                      Text="{Binding Draft, UpdateSourceTrigger=PropertyChanged}"
@@ -2045,6 +2075,11 @@
                                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                                     HorizontalAlignment="Left" VerticalAlignment="Bottom" ToolTip="Прикрепить файл" Command="{Binding AttachCommand}"
                                     Visibility="{Binding IsVoiceUi, Converter={StaticResource InvBoolToVis}}" />
+                            <!-- Есть отложенные сообщения: список — что и примерно когда уйдёт -->
+                            <Button Style="{StaticResource IconButton}" Content="&#xE787;" FontSize="17" Width="34" Height="34" Padding="0" Margin="0,0,40,5"
+                                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Foreground="{DynamicResource AccentBrush}"
+                                    HorizontalAlignment="Right" VerticalAlignment="Bottom" Command="{Binding ToggleDelayedListCommand}"
+                                    Visibility="{Binding HasDelayed, Converter={StaticResource BoolToVis}}" />
                             <Button Style="{StaticResource IconButton}" Content="&#xE76E;" FontSize="18" Width="34" Height="34" Padding="0" Margin="0,0,5,5"
                                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                                     HorizontalAlignment="Right" VerticalAlignment="Bottom" ToolTip="Эмодзи, стикеры, GIF" Command="{Binding TogglePickerCommand}"

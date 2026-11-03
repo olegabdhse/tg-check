@@ -10,6 +10,9 @@ namespace TgCheck.App.ViewModels;
 /// <summary>Версия сообщения в окне истории правок.</summary>
 public sealed record EditVersion(string When, string Text);
 
+/// <summary>Отложенное сообщение, которое сервер ещё не опубликовал.</summary>
+public sealed record DelayedMessage(string Text, bool IsMedia, string WhenText);
+
 // Удалённые сообщения и история правок.
 public sealed partial class ConversationViewModel
 {
@@ -20,24 +23,41 @@ public sealed partial class ConversationViewModel
     public ObservableCollection<ChatSearchResult> DeletedMessages { get; } = [];
     public ObservableCollection<EditVersion> EditVersions { get; } = [];
 
-    // Отложенная отправка (режим призрака): заготовка с часиками ждёт, пока сервер опубликует сообщение.
-    private static readonly TimeSpan DeliveryTimeout = TimeSpan.FromSeconds(45);
-    private readonly List<UploadViewModel> _awaitingDelivery = [];
+    // Отложенная отправка (режим призрака): в ленте сообщения нет, пока его не опубликует сервер. До этого оно видно
+    // в списке за кнопкой календаря у поля ввода.
+    private static readonly TimeSpan DeliveryMargin = TimeSpan.FromSeconds(30);
 
-    private async void KeepUntilDelivered(UploadViewModel pending)
+    public ObservableCollection<DelayedMessage> DelayedMessages { get; } = [];
+    public bool HasDelayed => DelayedMessages.Count > 0;
+    public System.Windows.Thickness ComposerPadding => new(44, 11, HasDelayed ? 80 : 44, 11);
+    [ObservableProperty] private bool _isDelayedListOpen;
+
+    [RelayCommand]
+    private void ToggleDelayedList() => IsDelayedListOpen = !IsDelayedListOpen && HasDelayed;
+
+    private async void AddDelayed(string text, bool isMedia, TimeSpan delay)
     {
-        _awaitingDelivery.Add(pending);
-        await Task.Delay(DeliveryTimeout);
-        // Обновление не дошло (обрыв связи): сообщение покажет сверка с сервером, заготовку не оставляем навсегда.
-        if (_awaitingDelivery.Remove(pending)) Items.Remove(pending);
+        var message = new DelayedMessage(text, isMedia, "примерно в " + (DateTime.Now + delay).ToString("HH:mm:ss"));
+        DelayedMessages.Add(message);
+        DelayedChanged();
+        await Task.Delay(delay + DeliveryMargin);
+        // Обновление не дошло (обрыв связи): сообщение покажет сверка с сервером, запись не оставляем навсегда.
+        if (DelayedMessages.Remove(message)) DelayedChanged();
     }
 
+    private void DelayedChanged()
+    {
+        if (!HasDelayed) IsDelayedListOpen = false;
+        OnPropertyChanged(nameof(HasDelayed));
+        OnPropertyChanged(nameof(ComposerPadding));
+    }
+
+    // Сервер опубликовал сообщение — оно пришло в ленту обычным путём, из списка убираем.
+    // Текст с цитатой длиннее записи: цитата стоит перед ним.
     private void ReplaceDelivered(MessageItem m)
     {
-        // Текст с цитатой длиннее заготовки: цитата стоит перед ним.
-        if (_awaitingDelivery.FirstOrDefault(p => m.Text.EndsWith(p.Caption ?? "\0", StringComparison.Ordinal)) is not { } pending) return;
-        _awaitingDelivery.Remove(pending);
-        Items.Remove(pending);
+        var delivered = DelayedMessages.FirstOrDefault(d => d.IsMedia ? m.Media != MediaKind.None : m.Text.EndsWith(d.Text, StringComparison.Ordinal));
+        if (delivered is not null && DelayedMessages.Remove(delivered)) DelayedChanged();
     }
 
     /// <summary>Режим призрака выключен: прочитанное снова уходит на сервер, в том числе в уже открытых чатах.</summary>

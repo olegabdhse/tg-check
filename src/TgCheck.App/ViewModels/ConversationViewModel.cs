@@ -790,8 +790,9 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
                 Draft = "";
                 ReplyTo = null;
                 // Как в Telegram: сообщение сразу в ленте с часиками, а когда сервер принял — на его месте настоящее.
+                // Отложенное в ленте не показывается, пока сервер его не опубликует.
                 UploadViewModel? pending = null;
-                if (!_detached && !IsForum)
+                if (!_detached && !IsForum && !_tg.WillDelay(Peer))
                 {
                     pending = new UploadViewModel("", "") { Caption = MarkdownEntities.Parse(text).Text, IsText = true };
                     Items.Add(pending);
@@ -806,7 +807,7 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
                 }
                 if (sent is null)
                 {
-                    if (pending is not null) KeepUntilDelivered(pending); // отложенная отправка: часики, пока сообщение не вышло
+                    AddDelayed(MarkdownEntities.Parse(text).Text, false, GhostMode.MessageDelay);
                     return;
                 }
                 _quiet = true;
@@ -1078,7 +1079,11 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
             WaveBars = UploadViewModel.Bars(peaks),
         };
         await RunUploadAsync(up, async () =>
-            await _tg.SendVoiceAsync(Peer, voice, reply, new Progress<double>(p => up.Progress = p), up.Cts.Token));
+        {
+            var sent = await _tg.SendVoiceAsync(Peer, voice, reply, new Progress<double>(p => up.Progress = p), up.Cts.Token);
+            if (sent is null) AddDelayed("🎤 Голосовое сообщение", true, GhostMode.MessageDelay);
+            return sent;
+        });
     }
 
     public string AttachmentsTitle
@@ -1204,6 +1209,8 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
                     if (p.Index < parts.Count) parts[p.Index].Progress = p.Fraction;
                     up.Progress = fractions.Average();
                 }), up.Cts.Token, videos);
+            if (sent.Count == 0)
+                AddDelayed(caption.Length > 0 ? "📎 " + MarkdownEntities.Parse(caption).Text : $"📎 Файлов: {files.Count}", true, GhostMode.FileDelay);
             return sent;
         }, sent =>
         {
@@ -1277,11 +1284,12 @@ public sealed partial class ConversationViewModel : PeerAvatarViewModel
         {
             var reply = LiveReplyId ?? SendTopId;
             ReplyTo = null;
-            if (await _tg.SendDocumentAsync(Peer, media, reply) is { } sent) // при отложенной отправке придёт обновлением
+            if (await _tg.SendDocumentAsync(Peer, media, reply) is { } sent)
             {
                 OnMessageReceived(sent);
                 _owner.OnMessageReceived(sent, fromConversation: true);
             }
+            else AddDelayed(media is StickerItem ? "Стикер" : "GIF", true, GhostMode.MessageDelay); // придёт обновлением
             if (media is StickerItem sticker)
             {
                 _owner.Shell.Picker.AddRecentSticker(sticker);

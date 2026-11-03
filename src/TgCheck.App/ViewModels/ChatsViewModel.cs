@@ -227,7 +227,7 @@ public sealed partial class ChatsViewModel : ObservableObject, IDisposable
     {
         if (NowPlaying.Instance.IsActive || Conversation is { IsThread: true }) return; // голосовые идут очередью, а ветка ссылается на свой чат
         foreach (var (key, conv) in _conversations.ToList())
-            if (conv != Conversation && conv != Shell.MiniChat && string.IsNullOrEmpty(conv.Draft) && !conv.HasAttachments && !conv.IsSending && !conv.IsRecording)
+            if (conv != Conversation && conv != Shell.MiniChat && string.IsNullOrEmpty(conv.Draft) && !conv.HasAttachments && !conv.IsSending && !conv.IsRecording && !conv.HasDelayed)
                 _conversations.Remove(key);
     }
 
