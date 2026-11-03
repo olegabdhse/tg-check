@@ -16,6 +16,8 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Иначе причина падения остаётся только в дампе Windows, а в логе пусто.
+        AppDomain.CurrentDomain.UnhandledException += (_, a) => Logging.Write("fatal: " + a.ExceptionObject);
         var quiet = QuietStart.Parse(e.Args);
         quiet?.WaitForPrevious();
         _single = new Mutex(true, @"Local\TgCheck.SingleInstance", out var first);
@@ -27,6 +29,18 @@ public partial class App : Application
             return;
         }
         UpdateService.CleanUpAfterUpdate();
+        // Новая версия скачана, а применить её не успели (программу сняли или она упала): запускаем её вместо этой.
+        if (UpdateService.HasNewerDownloaded())
+        {
+            try
+            {
+                var bounds = quiet?.Bounds;
+                UpdateService.StartInstalled(new QuietStart(Environment.ProcessId, quiet?.Minimized == true, quiet?.Maximized == true, bounds, quiet is null || quiet.Visible).ToArgs());
+                Shutdown();
+                return;
+            }
+            catch (Exception ex) { Logging.Write("update: новая версия не запустилась: " + ex.Message); }
+        }
         var listener = new Thread(() =>
         {
             while (_activate.WaitOne())
@@ -58,6 +72,9 @@ public partial class App : Application
     protected override async void OnExit(ExitEventArgs e)
     {
         if (_main is not null) await _main.DisposeAsync();
+        // Вышли, а новая версия скачана: она и запустится в следующий раз.
+        try { UpdateService.ApplyDownloaded(); }
+        catch (Exception ex) { Logging.Write("update: при выходе не применилось: " + ex.Message); }
         base.OnExit(e);
     }
 
@@ -72,7 +89,9 @@ public partial class App : Application
         // пока оно открыто, роняла приложение (так было с тайм-аутом загрузки стикера).
         if (Current?.MainWindow?.DataContext is ViewModels.MainViewModel { CurrentPage: ViewModels.ShellViewModel shell })
         {
-            shell.ShowToast(TgErrors.Describe(e.Exception), isError: true);
+            // Сам показ ошибки не должен ронять программу.
+            try { shell.ShowToast(TgErrors.Describe(e.Exception), isError: true); }
+            catch (Exception ex) { Logging.Write("unhandled toast: " + ex.Message); }
             return;
         }
         if (_errorShown) return;

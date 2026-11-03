@@ -366,6 +366,9 @@ public sealed class MediaService
     private int _stalls;
     private long _firstStall, _lastHeal = -StallWindowMs, _lastAnswer;
 
+    /// <summary>Файлы перестали идти, соединения с файловыми серверами сброшены.</summary>
+    public Action? FilesStuck { get; init; }
+
     internal void NoteAnswer() => Volatile.Write(ref _lastAnswer, Environment.TickCount64);
 
     internal void NoteStall(int dc)
@@ -381,6 +384,7 @@ public sealed class MediaService
             _stalls = 0;
         }
         _ = Task.Run(HealFileConnectionsAsync);
+        FilesStuck?.Invoke();
     }
 
     private async Task HealFileConnectionsAsync()

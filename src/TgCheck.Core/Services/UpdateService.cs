@@ -18,8 +18,8 @@ public sealed record InstalledUpdate(string Version, string? Notes);
 /// <summary>
 /// Обновления через GitHub Releases: берётся последний релиз репозитория, из него — ассет TgCheck.exe.
 /// Если в релизе есть патч именно от текущей версии — качается только он (меньше мегабайта), и новый exe собирается из
-/// текущего; не вышло (нет патча, сумма не сошлась) — качается полный exe. Всё идёт в фоне: запущенный exe можно
-/// переименовать, поэтому новая версия сразу встаёт на его место и работает со следующего запуска (кнопка на плашке или тихий перезапуск).
+/// текущего; не вышло (нет патча, сумма не сошлась) — качается полный exe. Всё идёт в фоне: новая версия ждёт рядом с exe
+/// и встаёт на его место при перезапуске (кнопка на плашке или тихий), выходе или следующем запуске.
 /// </summary>
 public sealed class UpdateService(string repo)
 {
@@ -83,29 +83,23 @@ public sealed class UpdateService(string repo)
     }
 
     /// <summary>
-    /// Скачивает новую версию и ставит её на место exe. Программа продолжает работать: старый код остаётся в памяти,
-    /// а файл под прежним именем — уже новый. Ошибка ничего не ломает: exe остаётся прежним, в следующий раз попробуем снова.
+    /// Скачивает новую версию и кладёт её рядом с exe. Сам exe не трогаем, пока программа работает: она подгружает части
+    /// себя из этого файла по мере надобности, и подмена на ходу роняла её на первой же незагруженной библиотеке.
+    /// Встаёт на место при перезапуске, выходе или следующем запуске. Ошибка ничего не ломает: в следующий раз попробуем снова.
     /// </summary>
     public async Task InstallAsync(UpdateInfo update, CancellationToken ct = default)
     {
         var exe = Environment.ProcessPath ?? throw new InvalidOperationException("Не удалось определить путь к exe.");
         var dir = Path.GetDirectoryName(exe)!;
-        var newExe = Path.Combine(dir, NewExeName);
-        var oldExe = Path.Combine(dir, OldExeName);
+        var part = Path.Combine(dir, NewExeName + ".part");
         try
         {
-            if (!await TryPatchAsync(update, exe, newExe, ct)) await DownloadWholeAsync(update, newExe, ct);
-            File.Move(exe, oldExe, overwrite: true);
-            try { File.Move(newExe, exe); }
-            catch
-            {
-                File.Move(oldExe, exe);
-                throw;
-            }
+            if (!await TryPatchAsync(update, exe, part, ct)) await DownloadWholeAsync(update, part, ct);
+            File.Move(part, Path.Combine(dir, NewExeName), overwrite: true);
         }
         finally
         {
-            try { File.Delete(newExe); } catch { }
+            try { File.Delete(part); } catch { }
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false); // оба exe читались в память целиком
         }
         try
@@ -116,11 +110,47 @@ public sealed class UpdateService(string repo)
         catch (Exception ex) when (ex is not OperationCanceledException) { Logging.Write("update: описание не сохранилось: " + ex.Message); }
     }
 
-    /// <summary>Запустить уже установленную версию. Вызывающий сразу после этого завершается.</summary>
+    /// <summary>Поставить скачанную версию на место exe и запустить её. Вызывающий сразу после этого завершается.</summary>
     public static void StartInstalled(string args)
     {
         var exe = Environment.ProcessPath ?? throw new InvalidOperationException("Не удалось определить путь к exe.");
+        ApplyDownloaded();
         Process.Start(new ProcessStartInfo(exe, args) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(exe)! });
+    }
+
+    /// <summary>Поставить скачанную версию на место exe (программа уже завершается). Ничего не скачано — ничего не делает.</summary>
+    public static void ApplyDownloaded()
+    {
+        if (Environment.ProcessPath is not { } exe || Path.GetDirectoryName(exe) is not { } dir) return;
+        var newExe = Path.Combine(dir, NewExeName);
+        if (!File.Exists(newExe)) return;
+        var oldExe = Path.Combine(dir, OldExeName);
+        File.Move(exe, oldExe, overwrite: true);
+        try { File.Move(newExe, exe); }
+        catch
+        {
+            File.Move(oldExe, exe);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Скачанная версия ещё ждёт (программа упала или её сняли, выход не состоялся): есть что запускать.
+    /// Устаревший файл (версия не новее этой) убирается.
+    /// </summary>
+    public static bool HasNewerDownloaded()
+    {
+        try
+        {
+            if (Environment.ProcessPath is not { } exe || Path.GetDirectoryName(exe) is not { } dir) return false;
+            var newExe = Path.Combine(dir, NewExeName);
+            if (!File.Exists(newExe)) return false;
+            var info = FileVersionInfo.GetVersionInfo(newExe);
+            if (new Version(info.FileMajorPart, info.FileMinorPart, info.FileBuildPart) > Normalize(BuildInfo.Version)) return true;
+            File.Delete(newExe);
+        }
+        catch (Exception ex) { Logging.Write("update: " + ex.Message); }
+        return false;
     }
 
     /// <summary>Убрать прежний exe, оставшийся от обновления (к новому запуску он уже никем не занят).</summary>

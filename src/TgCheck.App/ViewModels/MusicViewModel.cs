@@ -191,6 +191,8 @@ public sealed partial class MusicShelf(string title, string? subtitle = null) : 
     public ObservableCollection<MusicTrackViewModel> Items { get; } = [];
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsVisible), nameof(ShowSkeleton))] private bool _isLoading = true;
     public bool IsVisible => IsLoading || Items.Count > 0;
+    /// <summary>Полка видна и пустой: «Для вас» вместо пустого места просит начать слушать.</summary>
+    public bool AlwaysVisible => true;
     /// <summary>Грузится и ещё пусто — вместо пустоты «скелеты» плиток.</summary>
     public bool ShowSkeleton => IsLoading && Items.Count == 0;
     /// <summary>Сколько «скелетов» рисовать.</summary>

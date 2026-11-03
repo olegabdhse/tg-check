@@ -58,6 +58,8 @@ public sealed partial class TelegramService
     private async Task CheckConnectionAsync(bool force = false)
     {
         if (!_online || _disposed || Volatile.Read(ref _reconnecting) != 0) return;
+        _tunnelGuard.Tick(Environment.TickCount64);
+        _ = ReturnToTunnelAsync();
         if (!force && Environment.TickCount64 - Volatile.Read(ref _lastAlive) < 25_000) return;
         try
         {
@@ -75,10 +77,57 @@ public sealed partial class TelegramService
         catch { /* сессия завершена на сервере — это обработает интерфейс при следующем запросе */ }
     }
 
+    // Один неудачный запуск или сбой уводил на встроенный прокси, и программа оставалась на нём, пока связь не оборвётся совсем:
+    // песни и медиа там грузятся в десятки раз медленнее. Раз в две минуты проверяем, не ожил ли туннель, и возвращаемся на него.
+    private const long TunnelRecheckMs = 120_000;
+    private long _lastTunnelCheck = Environment.TickCount64;
+    private int _checkingTunnel;
+    private readonly TunnelGuard _tunnelGuard = new();
+
+    private bool OnTunnel => CurrentProxy is { } proxy && XrayUrls.Contains(proxy);
+
+    // Туннель не справился: на первый способ после туннелей и пауза перед следующей попыткой вернуться.
+    private void LeaveTunnel(string why)
+    {
+        var minutes = _tunnelGuard.Failed(Environment.TickCount64);
+        _route = XrayUrls.Count % Routes.Count;
+        Logging.Write($"connection: {why}, на {minutes} мин. переходим на «{RouteName}»");
+    }
+
+    // Файлы зависают при живом основном соединении: сторож связи этого не видит, а короткая проверка туннеля проходит.
+    private void OnFilesStuck()
+    {
+        if (_disposed || !TunnelsFirst || !OnTunnel || !_tunnelGuard.FilesStuck(Environment.TickCount64)) return;
+        LeaveTunnel("файлы через туннель зависают");
+        _ = Task.Run(ReconnectAsync);
+    }
+
+    private async Task ReturnToTunnelAsync()
+    {
+        var tunnels = XrayUrls;
+        if (tunnels.Count == 0 || !TunnelsFirst || tunnels.Contains(CurrentProxy!)) return;
+        if (!_tunnelGuard.CanReturn(Environment.TickCount64)) return;
+        if (Environment.TickCount64 - Volatile.Read(ref _lastTunnelCheck) < TunnelRecheckMs) return;
+        if (Interlocked.Exchange(ref _checkingTunnel, 1) != 0) return;
+        try
+        {
+            Volatile.Write(ref _lastTunnelCheck, Environment.TickCount64);
+            using var stop = new CancellationTokenSource(TunnelProbeTimeout);
+            var answers = await Task.WhenAll(tunnels.Select(url => ProbeTunnelAsync(url, stop.Token)));
+            if (answers.All(a => a is null) || _disposed) return;
+            Logging.Write($"connection: туннель снова отвечает, уходим с маршрута «{RouteName}»");
+            _tunnelGuard.Returned(Environment.TickCount64);
+            await ReconnectAsync();
+        }
+        catch (Exception ex) { Logging.Write("connection: проверка туннеля: " + ex.Message); }
+        finally { Volatile.Write(ref _checkingTunnel, 0); }
+    }
+
     private async Task ReconnectAsync()
     {
         if (Interlocked.Exchange(ref _reconnecting, 1) != 0) return;
         var routeBefore = RouteName;
+        if (OnTunnel && _tunnelGuard.InTrial(Environment.TickCount64)) LeaveTunnel("связь через туннель оборвалась вскоре после возврата");
         try
         {
             ConnectionChanged?.Invoke(false);
@@ -102,7 +151,8 @@ public sealed partial class TelegramService
                 catch (Exception ex) when (!TgErrors.IsSessionDead(ex))
                 {
                     Logging.Write($"connection: попытка {attempt} не удалась ({ex.Message})");
-                    if (attempt % 2 == 0) NextRoute(); // две неудачи подряд — пробуем другой способ (встроенный прокси / напрямую)
+                    if (OnTunnel && _tunnelGuard.InTrial(Environment.TickCount64)) LeaveTunnel("вернуться на туннель не удалось");
+                    else if (attempt % 2 == 0) NextRoute(); // две неудачи подряд — пробуем другой способ (встроенный прокси / напрямую)
                     await Task.Delay(TimeSpan.FromSeconds(Math.Min(30, 2 + attempt * 3)));
                 }
             }

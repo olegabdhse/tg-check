@@ -46,7 +46,7 @@ public sealed partial class TelegramService : IAsyncDisposable
         // По туннелю на каждый адрес сервера (второй адрес — первым).
         _xrayStarts = env.XrayLinks.Select(link => Task.Run(() => XrayTunnel.Start(link))).ToList();
         _client = CreateClient();
-        Media = new MediaService(() => _client, Path.Combine(env.DataDirectory, "cache")) { RefreshDocument = RefreshDocumentAsync, RefreshPhoto = RefreshPhotoAsync, KeepMedia = () => Vault.KeptMedia() };
+        Media = new MediaService(() => _client, Path.Combine(env.DataDirectory, "cache")) { RefreshDocument = RefreshDocumentAsync, RefreshPhoto = RefreshPhotoAsync, KeepMedia = () => Vault.KeptMedia(), FilesStuck = OnFilesStuck };
     }
 
     public MediaService Media { get; }
@@ -86,11 +86,21 @@ public sealed partial class TelegramService : IAsyncDisposable
     // Способы подключения по очереди: выбранный в программе, встроенный прокси, напрямую. РКН режет волнами — то прокси,
     // то прямое подключение; когда выбранный не проходит несколько раз подряд, пробуем следующий.
     private int _route;
-    // Порядок: свой туннель (второй адрес, потом основной), прокси, выбранный в программе, встроенный прокси (второй адрес,
-    // потом основной), напрямую.
-    private IReadOnlyList<string?> Routes =>
-        XrayUrls.Concat(new[] { _env.UserProxy, _env.ReserveBuiltInProxyUrl, _env.BuiltInProxyUrl, _env.Proxy }.OfType<string>())
-            .Distinct().Cast<string?>().Append(null).ToList();
+    // Порядок: выбранное в программе (свой прокси или напрямую), встроенный туннель (второй адрес, потом основной), встроенный
+    // прокси (второй адрес, потом основной), напрямую.
+    private IReadOnlyList<string?> Routes
+    {
+        get
+        {
+            var chosen = _env.UserProxy is { } own ? new[] { own } : [];
+            var proxies = chosen.Concat(XrayUrls).Concat(new[] { _env.ReserveBuiltInProxyUrl, _env.BuiltInProxyUrl, _env.Proxy }.OfType<string>())
+                .Distinct().Cast<string?>();
+            return (_env.PrefersDirect ? proxies.Prepend(null) : proxies.Append(null)).ToList();
+        }
+    }
+
+    // Выбрано «без прокси» или свой прокси: на туннель сами не уходим, он только запасной.
+    private bool TunnelsFirst => _env.UserProxy is null && !_env.PrefersDirect;
 
     // Свой туннель VLESS + Reality — первым (если он есть в сборке и запустился).
     private readonly List<Task<XrayTunnel?>> _xrayStarts;
@@ -118,9 +128,9 @@ public sealed partial class TelegramService : IAsyncDisposable
     private async Task PickWorkingRouteAsync()
     {
         var tunnels = XrayUrls;
-        if (tunnels.Count == 0) return;
+        if (tunnels.Count == 0 || !TunnelsFirst || !_tunnelGuard.CanReturn(Environment.TickCount64)) return;
         var timer = System.Diagnostics.Stopwatch.StartNew();
-        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var stop = new CancellationTokenSource(TunnelProbeTimeout); // при запуске туннели только поднимаются, сеть занята
         var probes = tunnels.Select(url => ProbeTunnelAsync(url, stop.Token)).ToList();
         while (probes.Count > 0)
         {
@@ -136,6 +146,8 @@ public sealed partial class TelegramService : IAsyncDisposable
         Logging.Write($"connection: туннели не ответили за {timer.ElapsedMilliseconds} мс, пробуем {RouteName}");
     }
 
+    private static readonly TimeSpan TunnelProbeTimeout = TimeSpan.FromSeconds(8);
+
     private static async Task<string?> ProbeTunnelAsync(string url, CancellationToken stop)
     {
         try
@@ -150,7 +162,7 @@ public sealed partial class TelegramService : IAsyncDisposable
     private string? CurrentProxy => Routes[_route % Routes.Count];
 
     /// <summary>Как подключены сейчас: «встроенный прокси», «свой прокси», «напрямую».</summary>
-    public string RouteName => CurrentProxy is null ? "напрямую" : XrayUrls.Contains(CurrentProxy) ? "свой туннель" : CurrentProxy == _env.BuiltInProxyUrl || CurrentProxy == _env.ReserveBuiltInProxyUrl ? "встроенный прокси" : "свой прокси";
+    public string RouteName => CurrentProxy is null ? "напрямую" : XrayUrls.Contains(CurrentProxy) ? "встроенный туннель" : CurrentProxy == _env.BuiltInProxyUrl || CurrentProxy == _env.ReserveBuiltInProxyUrl ? "встроенный прокси" : "свой прокси";
 
     /// <summary>Подключились другим способом, чем выбран (выбранный не проходил).</summary>
     public bool OnFallbackRoute => _route % Routes.Count != 0;

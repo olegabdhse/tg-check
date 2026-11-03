@@ -21,11 +21,28 @@ public sealed partial class ProxyChoiceViewModel : ObservableObject
         _proxyText = env.UserProxy ?? "";
     }
 
-    public bool UsesProxy => _env.Proxy is not null;
-    public bool CanUseBuiltIn => _env.HasBuiltInProxy && !_env.UsesBuiltInProxy;
+    /// <summary>Как подключены на самом деле (маршрут может отличаться от настройки: свой туннель, запасной прокси).</summary>
+    public Func<string>? CurrentRoute { get; set; }
 
-    public string Tip => _env.UsesBuiltInProxy ? "Подключено через встроенный прокси"
+    public bool UsesProxy => CurrentRoute?.Invoke() is { } route ? route != "напрямую" : _env.Proxy is not null;
+    public bool CanUseBuiltIn => _env.HasBuiltInProxy && !_env.UsesBuiltInProxy;
+    public bool CanGoDirect => _env.Proxy is not null;
+
+    public string Tip => CurrentRoute?.Invoke() is { } route ? (route == "напрямую" ? "Подключено напрямую — без прокси" : "Подключено: " + route)
+        : _env.UsesBuiltInProxy ? "Подключено через встроенный прокси"
         : UsesProxy ? "Подключено через свой прокси" : "Подключено напрямую — без прокси";
+
+    private string? _shownRoute;
+
+    /// <summary>Маршрут мог смениться: обновить значок.</summary>
+    public void RefreshRoute()
+    {
+        var route = CurrentRoute?.Invoke();
+        if (route == _shownRoute) return;
+        _shownRoute = route;
+        OnPropertyChanged(nameof(UsesProxy));
+        OnPropertyChanged(nameof(Tip));
+    }
 
     /// <summary>Коротко для экрана входа.</summary>
     public string Summary => _env.UsesBuiltInProxy ? "Встроенный прокси" : UsesProxy ? "Свой прокси" : "Без прокси";

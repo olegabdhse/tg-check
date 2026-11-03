@@ -24,7 +24,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         _tg = tg;
         _onLoggedOut = onLoggedOut;
-        Proxy = new ProxyChoiceViewModel(env, changeProxy ?? (_ => Task.CompletedTask));
+        Proxy = new ProxyChoiceViewModel(env, changeProxy ?? (_ => Task.CompletedTask)) { CurrentRoute = () => tg.RouteName };
+        _routeTimer.Tick += (_, _) => Proxy.RefreshRoute();
+        _routeTimer.Start();
         Picker = new MediaPickerViewModel(tg, env.DataDirectory);
         Chats = new ChatsViewModel(tg, this);
         MyProfile = new ProfileViewModel(tg, null, LogoutAsync, this);
@@ -266,6 +268,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     }
 
     private readonly System.Windows.Threading.DispatcherTimer _updateTimer = new() { Interval = TimeSpan.FromMinutes(30) };
+    private readonly System.Windows.Threading.DispatcherTimer _routeTimer = new() { Interval = TimeSpan.FromSeconds(5) };
 
     partial void OnSectionChanged(Section value)
     {
@@ -549,6 +552,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _updateTimer.Stop();
+        _routeTimer.Stop();
         MusicNow.Instance.PropertyChanged -= OnMusicNowChanged;
         _presence?.Dispose();
         _tg.ConnectionChanged -= OnConnectionChanged;

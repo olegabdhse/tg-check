@@ -27,6 +27,9 @@ public sealed class AppEnv
     /// <summary>Свой прокси, заданный в программе (null — встроенный или без прокси). Встроенный наружу не показывается.</summary>
     public string? UserProxy { get; init; }
 
+    /// <summary>В программе выбрано «Без прокси»: сначала напрямую, остальные способы — только если не проходит.</summary>
+    public bool PrefersDirect { get; init; }
+
     /// <summary>В сборку зашит прокси (TG_PROXY).</summary>
     public bool HasBuiltInProxy { get; init; }
 
@@ -103,14 +106,16 @@ public sealed class AppEnv
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TgCheck");
         Directory.CreateDirectory(dataDir);
 
-        // Прокси, заданный в самой программе (экран обрыва соединения), важнее встроенного TG_PROXY; "none" — без прокси.
+        // Прокси, заданный в самой программе (экран обрыва соединения), важнее встроенного TG_PROXY; "direct" — без прокси.
+        // Старое значение "none" подключение не меняло (туннель всё равно шёл первым), поэтому и теперь не меняет.
         var builtIn = Get("TG_PROXY");
         var proxy = builtIn;
         string? userProxy = null;
+        var prefersDirect = false;
         var userProxyFile = Path.Combine(dataDir, UserProxyFileName);
         if (File.Exists(userProxyFile) && File.ReadAllText(userProxyFile).Trim() is { Length: > 0 } user)
         {
-            if (user.Equals("none", StringComparison.OrdinalIgnoreCase)) proxy = null;
+            if (user.Equals(DirectChoice, StringComparison.OrdinalIgnoreCase)) { proxy = null; prefersDirect = true; }
             else if (IsSupportedProxy(user)) proxy = userProxy = user;
         }
         if (proxy is not null && !IsSupportedProxy(proxy))
@@ -122,6 +127,7 @@ public sealed class AppEnv
         {
             Proxy = proxy,
             UserProxy = userProxy,
+            PrefersDirect = prefersDirect,
             HasBuiltInProxy = builtIn is not null,
             BuiltInProxyUrl = builtIn is not null && IsSupportedProxy(builtIn) ? builtIn : null,
             XrayLink = Get("TG_XRAY") is { } xray && xray.StartsWith("vless://", StringComparison.OrdinalIgnoreCase) ? xray : null,
@@ -137,13 +143,14 @@ public sealed class AppEnv
 
 
     private const string UserProxyFileName = "proxy.txt";
+    private const string DirectChoice = "direct";
 
     /// <summary>Запомнить прокси, выбранный в программе (null — без прокси). Действует со следующего подключения.</summary>
     public static void SaveUserProxy(string dataDirectory, string? proxy)
     {
         var file = Path.Combine(dataDirectory, UserProxyFileName);
         if (proxy == BuiltInProxy) File.Delete(file);
-        else File.WriteAllText(file, string.IsNullOrWhiteSpace(proxy) ? "none" : proxy.Trim());
+        else File.WriteAllText(file, string.IsNullOrWhiteSpace(proxy) ? DirectChoice : proxy.Trim());
     }
 
     /// <summary>Значение для SaveUserProxy: вернуться к встроенному прокси.</summary>

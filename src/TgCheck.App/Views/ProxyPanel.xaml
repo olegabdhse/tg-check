@@ -13,7 +13,7 @@
             <Button Content="Встроенный" Style="{StaticResource SecondaryButton}" Margin="0,0,10,0" Command="{Binding BuiltInCommand}"
                     Visibility="{Binding CanUseBuiltIn, Converter={StaticResource BoolToVis}}" />
             <Button Content="Без прокси" Style="{StaticResource SecondaryButton}" Margin="0,0,10,0" Command="{Binding NoProxyCommand}"
-                    Visibility="{Binding UsesProxy, Converter={StaticResource BoolToVis}}" />
+                    Visibility="{Binding CanGoDirect, Converter={StaticResource BoolToVis}}" />
             <Button Content="Подключиться" Style="{StaticResource PrimaryButton}" Command="{Binding ApplyCommand}" />
         </WrapPanel>
     </StackPanel>

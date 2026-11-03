@@ -375,7 +375,7 @@
                             </StackPanel>
                             <!-- Часть страницы «Музыка»: у каждого раздела своя раскладка -->
                             <StackPanel Margin="6,0,6,0" Visibility="{Binding IsSearch, Converter={StaticResource InvBoolToVis}}">
-                                <StackPanel Margin="0,0,0,16" DataContext="{Binding NextForYou}" Visibility="{Binding IsVisible, Converter={StaticResource BoolToVis}}">
+                                <StackPanel Margin="0,0,0,16" DataContext="{Binding NextForYou}">
                                     <TextBlock Text="{Binding Title}" Style="{StaticResource SectionTitle}" />
                                     <ItemsControl ItemsSource="{Binding Items}" ItemTemplate="{StaticResource SongTile}" Focusable="False">
                                         <ItemsControl.ItemsPanel>
@@ -384,6 +384,23 @@
                                             </ItemsPanelTemplate>
                                         </ItemsControl.ItemsPanel>
                                     </ItemsControl>
+                                    <TextBlock Text="Начните слушать музыку, чтобы мы могли подобрать треки для вас" TextWrapping="Wrap" FontSize="12.5" Margin="3,0,0,0">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsLoading}" Value="False" />
+                                                            <Condition Binding="{Binding Items.Count}" Value="0" />
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
                                 </StackPanel>
 
                                 <StackPanel Margin="-3,0,-3,13" DataContext="{Binding MyPlaylists}" Visibility="{Binding HasItems, Converter={StaticResource BoolToVis}}">

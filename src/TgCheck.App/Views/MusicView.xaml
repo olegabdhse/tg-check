@@ -503,7 +503,7 @@
                 <StackPanel DataContext="{Binding NextForYou}" Margin="0,0,0,28">
                     <StackPanel.Visibility>
                         <MultiBinding Converter="{x:Static views:MusicView.BothVisible}">
-                            <Binding Path="IsVisible" />
+                            <Binding Path="AlwaysVisible" />
                             <Binding Path="DataContext.IsSearch" ElementName="Root" />
                         </MultiBinding>
                     </StackPanel.Visibility>
@@ -537,6 +537,23 @@
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                         </ItemsControl>
+                        <TextBlock Text="Начните слушать музыку, чтобы мы могли подобрать треки для вас" TextWrapping="Wrap" FontSize="13.5" Margin="0,4,14,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding IsLoading}" Value="False" />
+                                                <Condition Binding="{Binding Items.Count}" Value="0" />
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </MultiDataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
                     </Grid>
                 </StackPanel>
 
