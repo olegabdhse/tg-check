@@ -80,8 +80,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         if (e.PropertyName != nameof(MusicNow.ShowMusicBar)) return;
         OnPropertyChanged(nameof(ShowMusicPanel));
-        if (ShowMusicPanel) Music.Activate(); // подборки и история в панели
+        // Подборки в панели. Один раз: это свойство меняется с каждой песней, а полная загрузка раздела (боты, плейлисты,
+        // заготовки следующих песен) отнимала соединение у медиа в чатах.
+        if (!ShowMusicPanel || _musicPanelLoaded) return;
+        _musicPanelLoaded = true;
+        Music.Activate();
     }
+
+    private bool _musicPanelLoaded;
     [ObservableProperty] private Section _section = Section.Chats;
     [ObservableProperty] private string _profileQuery = "";
     [ObservableProperty] private bool _isResolving;

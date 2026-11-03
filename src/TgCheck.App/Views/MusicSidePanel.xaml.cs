@@ -129,27 +129,41 @@ public partial class MusicSidePanel : UserControl
         if (_hoverOpen) _closeTimer.Start();
     }
 
-    // Обложки песен страница подгружает по мере прокрутки, а здесь песен немного: просим сразу те, что видны в сетке.
-    private const int MaxCovers = 40;
+    // Обложки страница подгружает по мере прокрутки, а здесь просим сразу, но только то, что видно: в сетке не больше 9 плиток.
+    // Обложка песни без своей картинки — это запрос в сеть, а панель открыта рядом с чатом, чьим медиа нужно то же соединение.
+    private const int MaxListCovers = 40, MaxGridCovers = 9;
 
     private void Attach(MusicViewModel? music)
     {
         if (ReferenceEquals(_music, music)) return;
-        foreach (var shelf in Shelves(_music)) ((INotifyCollectionChanged)shelf.Items).CollectionChanged -= OnShelfChanged;
-        _music = music;
-        foreach (var shelf in Shelves(music))
+        if (_music is not null)
         {
-            ((INotifyCollectionChanged)shelf.Items).CollectionChanged += OnShelfChanged;
-            foreach (var track in shelf.Items.Take(MaxCovers)) track.RequestCover();
+            foreach (var shelf in Lists(_music)) ((INotifyCollectionChanged)shelf.Items).CollectionChanged -= OnListChanged;
+            foreach (var shelf in Grids(_music)) ((INotifyCollectionChanged)shelf.Items).CollectionChanged -= OnGridChanged;
+        }
+        _music = music;
+        if (music is null) return;
+        foreach (var shelf in Lists(music))
+        {
+            ((INotifyCollectionChanged)shelf.Items).CollectionChanged += OnListChanged;
+            foreach (var track in shelf.Items.Take(MaxListCovers)) track.RequestCover();
+        }
+        foreach (var shelf in Grids(music))
+        {
+            ((INotifyCollectionChanged)shelf.Items).CollectionChanged += OnGridChanged;
+            foreach (var track in shelf.Items.Take(MaxGridCovers)) track.RequestCover();
         }
     }
 
-    private static IEnumerable<MusicShelf> Shelves(MusicViewModel? music) =>
-        music is null ? [] : music.SearchShelves.Concat(music.Shelves).Append(music.NextForYou).Append(music.PlaylistPage);
+    private static IEnumerable<MusicShelf> Lists(MusicViewModel music) => music.SearchShelves.Append(music.PlaylistPage);
+    private static IEnumerable<MusicShelf> Grids(MusicViewModel music) => music.Shelves.Append(music.NextForYou);
 
-    private static void OnShelfChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    private static void OnListChanged(object? sender, NotifyCollectionChangedEventArgs e) => RequestCovers(e, MaxListCovers);
+    private static void OnGridChanged(object? sender, NotifyCollectionChangedEventArgs e) => RequestCovers(e, MaxGridCovers);
+
+    private static void RequestCovers(NotifyCollectionChangedEventArgs e, int limit)
     {
-        if (e.NewStartingIndex is < 0 or >= MaxCovers) return;
+        if (e.NewStartingIndex is < 0 || e.NewStartingIndex >= limit) return;
         foreach (var track in e.NewItems?.OfType<MusicTrackViewModel>() ?? []) track.RequestCover();
     }
 
