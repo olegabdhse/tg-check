@@ -45,8 +45,41 @@ public sealed class AppEnv
     /// </summary>
     internal string? ReserveHost { get; init; }
 
-    /// <summary>Туннели по порядку: на втором адресе, потом на основном.</summary>
-    internal IReadOnlyList<string> XrayLinks => XrayLink is null ? [] : ReserveHost is { } h ? [WithHost(XrayLink, h), XrayLink] : [XrayLink];
+    /// <summary>
+    /// Входы туннеля на сервере (TG_XRAY_ALT, «порт:домен» через запятую): в России режут подключения к серверу с одними доменами
+    /// маскировки и пропускают с другими. Заданы — используются вместо входа из самой ссылки.
+    /// </summary>
+    internal IReadOnlyList<(int Port, string Domain)> XrayEntries { get; init; } = [];
+
+    /// <summary>Туннели по порядку: каждый вход на втором адресе, потом на основном.</summary>
+    internal IReadOnlyList<string> XrayLinks
+    {
+        get
+        {
+            if (XrayLink is null) return [];
+            var entries = XrayEntries.Count > 0 ? XrayEntries.Select(e => WithEntry(XrayLink, e.Port, e.Domain)).ToList() : [XrayLink];
+            return ReserveHost is { } h ? entries.SelectMany(link => new[] { WithHost(link, h), link }).ToList() : entries;
+        }
+    }
+
+    // vless://id@хост:порт?…&sni=домен… — заменить порт и домен маскировки.
+    private static string WithEntry(string vless, int port, string domain)
+    {
+        var link = new System.Text.RegularExpressions.Regex(@"(?<=@(\[[^\]]+\]|[^:/?#@]+):)\d+").Replace(vless, port.ToString(CultureInfo.InvariantCulture), 1);
+        return new System.Text.RegularExpressions.Regex(@"(?<=[?&]sni=)[^&#]*").Replace(link, domain, 1);
+    }
+
+    private static List<(int Port, string Domain)> ParseEntries(string? text)
+    {
+        var entries = new List<(int, string)>();
+        foreach (var part in (text ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var pair = part.Split(':', 2);
+            if (pair.Length == 2 && int.TryParse(pair[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var port) && pair[1].Length > 0)
+                entries.Add((port, pair[1]));
+        }
+        return entries;
+    }
 
     /// <summary>Встроенный прокси на втором адресе (null — нет второго адреса или прокси).</summary>
     internal string? ReserveBuiltInProxyUrl => BuiltInProxyUrl is { } b && ReserveHost is { } h
@@ -131,6 +164,7 @@ public sealed class AppEnv
             HasBuiltInProxy = builtIn is not null,
             BuiltInProxyUrl = builtIn is not null && IsSupportedProxy(builtIn) ? builtIn : null,
             XrayLink = Get("TG_XRAY") is { } xray && xray.StartsWith("vless://", StringComparison.OrdinalIgnoreCase) ? xray : null,
+            XrayEntries = ParseEntries(Get("TG_XRAY_ALT")),
             ReserveHost = Get("TG_RESERVE_HOST") is { Length: > 0 } reserve ? reserve.Trim() : null,
             UpdateRepo = Get("TG_UPDATE_REPO") ?? BuildInfo.UpdateRepo,
             ApiId = apiId,
